@@ -1,0 +1,15 @@
+{
+  "updatedAt": "2026-06-15T06:26:55.856Z",
+  "source": "validation",
+  "events": [
+    {
+      "id": "07247636-1780-43c9-80d1-3597f16b4595",
+      "title": "Scout planning",
+      "startAt": "2026-06-15T14:00:00.000Z",
+      "endAt": null,
+      "location": null,
+      "notes": null,
+      "source": "manual"
+    }
+  ]
+}

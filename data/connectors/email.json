@@ -1,0 +1,28 @@
+{
+  "updatedAt": "2026-06-15T03:33:40.016Z",
+  "source": "sandbox-seed",
+  "threads": [
+    {
+      "id": "e5fb9ace-ef61-4fb9-9e3a-c54e487ce569",
+      "subject": "Retirement planning follow-up",
+      "from": "Advisor",
+      "snippet": "I pulled together a few questions about timing and cash flow.",
+      "unread": false,
+      "starred": false,
+      "missionId": "retirement",
+      "source": "manual",
+      "updatedAt": "2026-06-15T03:33:40.016Z"
+    },
+    {
+      "id": "172937f9-f38f-4ad7-9f3e-cde559e1880a",
+      "subject": "Camp forms still missing",
+      "from": "Scout Leader",
+      "snippet": "Can you send the remaining summer camp forms today?",
+      "unread": true,
+      "starred": false,
+      "missionId": "family",
+      "source": "manual",
+      "updatedAt": "2026-06-15T03:33:40.015Z"
+    }
+  ]
+}

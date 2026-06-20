@@ -1,0 +1,24 @@
+{
+  "updatedAt": "2026-06-15T03:33:40.021Z",
+  "source": "sandbox-seed",
+  "accounts": [
+    {
+      "id": "883e1925-26c9-460a-b059-a7332adcbb58",
+      "name": "Operating Checking",
+      "type": "checking",
+      "balance": 4200,
+      "watchLabel": "Cash cushion before camp expenses",
+      "source": "manual",
+      "updatedAt": "2026-06-15T03:33:40.021Z"
+    },
+    {
+      "id": "5250304d-d456-4e12-9b58-ae25df8476d9",
+      "name": "Retirement Brokerage",
+      "type": "investment",
+      "balance": 185000,
+      "watchLabel": "Retirement runway and long-horizon tradeoffs",
+      "source": "manual",
+      "updatedAt": "2026-06-15T03:33:40.021Z"
+    }
+  ]
+}

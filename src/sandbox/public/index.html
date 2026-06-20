@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Monday Sandbox</title>
+    <link rel="stylesheet" href="/sandbox.css?v=8" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div>
+          <h1>Monday Sandbox</h1>
+          <p>Developer validation environment for posture, contract, voice, and workspace.</p>
+        </div>
+        <div class="controls">
+          <button id="dailyBriefButton" type="button">Daily Brief</button>
+          <button id="missionsButton" type="button">Mission Threads</button>
+          <button id="calendarButton" type="button">Calendar Context</button>
+          <button id="documentsButton" type="button">Documents Context</button>
+          <button id="emailButton" type="button">Email Context</button>
+          <button id="financesButton" type="button">Financial Context</button>
+          <button id="canonicalEvalButton" type="button">Canonical Eval</button>
+          <label>
+            Context
+            <select id="contextSelect">
+              <option value="general">General</option>
+              <option value="summer-camp">Summer Camp</option>
+              <option value="wounded-significance">Wounded Significance</option>
+            </select>
+          </label>
+          <button id="toggleInspector">Hide Inspector</button>
+        </div>
+      </header>
+
+      <section class="status-strip" aria-label="Runtime status">
+        <div class="status-card">
+          <div class="status-label">Route</div>
+          <div id="statusRoute" class="status-value">Checking…</div>
+        </div>
+        <div class="status-card">
+          <div class="status-label">Intelligence</div>
+          <div id="statusIntelligence" class="status-value">Checking…</div>
+        </div>
+        <div class="status-card">
+          <div class="status-label">Speech</div>
+          <div id="statusTts" class="status-value">Checking…</div>
+        </div>
+        <div class="status-card">
+          <div class="status-label">Voice</div>
+          <div id="statusVoice" class="status-value">Waiting…</div>
+        </div>
+      </section>
+
+      <main class="layout">
+        <section class="panel conversation-panel">
+          <div class="panel-header">
+            <h2>Conversation</h2>
+            <p>Answer first. Workspace supports the answer.</p>
+          </div>
+          <div id="messages" class="messages"></div>
+          <form id="composer" class="composer">
+            <textarea id="input" placeholder="Talk to Monday..." rows="3"></textarea>
+            <div class="composer-actions">
+              <button type="button" id="micButton">Mic</button>
+              <button type="button" id="pttButton">Push To Talk</button>
+              <button type="button" id="speakButton" disabled>Speak Last Reply</button>
+              <button type="submit">Send</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel workspace-panel">
+          <div class="panel-header">
+            <h2>Workspace Materialization</h2>
+            <p>The workspace supports the answer. It never becomes the answer.</p>
+          </div>
+          <div id="workspace" class="workspace-empty">
+            Send a message to materialize support intent.
+          </div>
+        </section>
+
+        <aside id="inspector" class="panel inspector-panel">
+          <div class="panel-header">
+            <h2>Engine State Inspector</h2>
+          </div>
+          <pre id="engineState">No engine state yet.</pre>
+          <div class="review-tools">
+            <div class="review-card">
+              <div class="panel-header compact">
+                <h3>Learning Inspector</h3>
+                <p>What Monday has learned so far.</p>
+              </div>
+              <div id="learningSummary" class="learning-empty">No learning state yet.</div>
+              <div id="learningDecision" class="learning-empty">No turn-level learning decision yet.</div>
+              <div id="learningExamples" class="learning-list"></div>
+              <div id="learningRecoveries" class="learning-list"></div>
+              <details class="learning-raw">
+                <summary>Raw learning payload</summary>
+                <pre id="learningState">No learning state yet.</pre>
+              </details>
+            </div>
+            <div class="review-card">
+              <div class="panel-header compact">
+                <h3>Conversation Review</h3>
+                <p>Tag failures and export live transcripts.</p>
+              </div>
+              <div class="review-actions">
+                <button id="refreshReview" type="button">Refresh Review</button>
+                <button id="exportTranscript" type="button">Export Transcript</button>
+                <button id="exportFieldNotes" type="button">Export Field Notes</button>
+              </div>
+              <div id="reviewSummary" class="learning-empty">No review summary yet.</div>
+              <div id="reviewList" class="review-list">No conversation review yet.</div>
+            </div>
+            <div class="review-card">
+              <div class="panel-header compact">
+                <h3>Canonical Evaluator</h3>
+                <p>Run the five core Monday conversations in one pass.</p>
+              </div>
+              <div class="review-actions">
+                <button id="runCanonicalEval" type="button">Run Canonical Eval</button>
+              </div>
+              <div id="canonicalEvalSummary" class="learning-empty">No canonical evaluation yet.</div>
+              <div id="canonicalEvalList" class="review-list"></div>
+            </div>
+            <div class="review-card">
+              <div class="panel-header compact">
+                <h3>Usefulness Evaluator</h3>
+                <p>Run the daily-companion benchmark from the success criteria.</p>
+              </div>
+              <div class="review-actions">
+                <button id="runUsefulnessEval" type="button">Run Usefulness Eval</button>
+              </div>
+              <div id="usefulnessEvalSummary" class="learning-empty">No usefulness evaluation yet.</div>
+              <div id="usefulnessEvalList" class="review-list"></div>
+            </div>
+          </div>
+        </aside>
+      </main>
+    </div>
+
+    <script src="/sandbox.js?v=10" type="module"></script>
+  </body>
+</html>

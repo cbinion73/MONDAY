@@ -1,0 +1,26 @@
+{
+  "updatedAt": "2026-06-15T03:33:40.021Z",
+  "source": "sandbox-seed",
+  "documents": [
+    {
+      "id": "d7de7b97-2bfd-4f82-897f-db57f5d0e776",
+      "title": "Health Reset Notes",
+      "summary": "A simple plan for losing weight without turning it into another system.",
+      "excerpt": "Start with walking, protein, and sleep instead of chasing intensity.",
+      "url": null,
+      "missionId": "health",
+      "source": "manual",
+      "updatedAt": "2026-06-15T03:33:40.021Z"
+    },
+    {
+      "id": "5db7dd62-57c4-471f-b6c2-96dcbdcadd8c",
+      "title": "Retirement Questions",
+      "summary": "A live note about what retirement is really for.",
+      "excerpt": "Freedom, calling, and family time are all in tension here.",
+      "url": null,
+      "missionId": "retirement",
+      "source": "manual",
+      "updatedAt": "2026-06-15T03:33:40.021Z"
+    }
+  ]
+}

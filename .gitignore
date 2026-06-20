@@ -1,0 +1,23 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+
+node_modules/
+npm-debug.log*
+
+# Local agent/tooling installs.
+.agents/
+_bmad/
+_bmad-output/
+
+# Runtime state and local learning logs.
+data/*
+!data/connectors/
+!data/connectors/*.json
+
+# Local caches and temporary output.
+.cache/
+.tmp/
+tmp/
+coverage/
