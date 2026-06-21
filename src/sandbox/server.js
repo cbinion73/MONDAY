@@ -1525,6 +1525,38 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ── Vault Indexer routes ──────────────────────────────────────────────────
+
+  if (req.method === "GET" && pathname === "/api/monday-sandbox/obsidian/index/status") {
+    try {
+      sendJson(res, 200, { ok: true, ...obsidian.getIndexingStatus() });
+    } catch (err) {
+      sendJson(res, 500, { ok: false, error: err.message });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/obsidian/index/sync") {
+    // Runs async — responds immediately with runId, then indexes in background
+    obsidian.syncVault().then((result) => {
+      console.log("[obsidian] sync complete:", result);
+    }).catch((err) => {
+      console.warn("[obsidian] sync error:", err.message);
+    });
+    sendJson(res, 202, { ok: true, status: "sync started" });
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/obsidian/index/reindex") {
+    obsidian.reindexVault().then((result) => {
+      console.log("[obsidian] reindex complete:", result);
+    }).catch((err) => {
+      console.warn("[obsidian] reindex error:", err.message);
+    });
+    sendJson(res, 202, { ok: true, status: "reindex started" });
+    return;
+  }
+
   // ── end Obsidian routes ───────────────────────────────────────────────────
 
   res.writeHead(404);
@@ -1543,6 +1575,15 @@ server.listen(PORT, () => {
   } catch (err) {
     console.warn("[obsidian] Vault init skipped:", err.message);
   }
+
+  // Incremental vault sync on startup — picks up any changes since last run
+  obsidian.syncVault().then((result) => {
+    if (result.ok) {
+      console.log(`[obsidian] vault sync: ${result.indexed} indexed, ${result.skipped} skipped, ${result.deleted} deleted`);
+    } else if (!result.skipped) {
+      console.warn("[obsidian] vault sync:", result.error || result.reason);
+    }
+  }).catch((err) => console.warn("[obsidian] vault sync error:", err.message));
 
   // Bootstrap vector memory (fire-and-forget — safe if drive not mounted)
   memory.bootstrap().catch((err) => {
