@@ -31,6 +31,8 @@
     "test:canonical": "node ./tests/canonical-conversations.test.js",
     "test:behavioral": "node ./tests/behavioral.test.js",
     "test:behavioral:ollama": "MONDAY_OLLAMA_ENABLED=true node ./tests/behavioral.test.js",
+    "test:pkm": "node ./tests/pkm-pipeline.test.js",
+    "test:pkm:e2e": "node ./tests/pkm-e2e.test.js",
     "demo:sandbox": "node ./src/engine/demo/sandbox.js",
     "demo:sandbox:all": "node ./src/engine/demo/sandbox.js all",
     "demo:repl": "node ./src/engine/demo/repl.js",
