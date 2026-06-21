@@ -1025,6 +1025,73 @@ async function handleMissionOpportunity(req, res, id) {
   sendJson(res, 200, { ok: true });
 }
 
+// ── Obsidian handlers (async — called from createServer router) ───────────────
+
+async function handleObsidianCreateNote(req, res) {
+  try {
+    const body = await parseBody(req);
+    const { title, content, domain, type } = body;
+    if (!title || !content) return sendJson(res, 400, { ok: false, error: "title and content required" });
+    const result = obsidian.createNote(title, content, { domain, type });
+    sendJson(res, result.ok ? 200 : 500, result);
+  } catch (err) { sendJson(res, 500, { ok: false, error: err.message }); }
+}
+
+async function handleObsidianMissionInit(req, res) {
+  try {
+    const body = await parseBody(req);
+    const { missionId, purpose, focus, theory } = body;
+    if (!missionId) return sendJson(res, 400, { ok: false, error: "missionId required" });
+    const result = obsidian.createMissionDocs(missionId, { purpose, focus, theory });
+    sendJson(res, result.ok ? 200 : 500, result);
+  } catch (err) { sendJson(res, 500, { ok: false, error: err.message }); }
+}
+
+async function handleObsidianTheory(req, res) {
+  try {
+    const body = await parseBody(req);
+    const { domain, theory, confidence, evidence = [] } = body;
+    if (!domain || !theory) return sendJson(res, 400, { ok: false, error: "domain and theory required" });
+    const result = obsidian.saveWorkingTheory(domain, theory, confidence, evidence);
+    sendJson(res, result.ok ? 200 : 500, result);
+  } catch (err) { sendJson(res, 500, { ok: false, error: err.message }); }
+}
+
+async function handleObsidianDecision(req, res) {
+  try {
+    const body = await parseBody(req);
+    const { title, reason, domain, context } = body;
+    if (!title || !reason) return sendJson(res, 400, { ok: false, error: "title and reason required" });
+    const result = obsidian.saveDecision(title, reason, { domain, context });
+    sendJson(res, result.ok ? 200 : 500, result);
+  } catch (err) { sendJson(res, 500, { ok: false, error: err.message }); }
+}
+
+async function handleObsidianContradiction(req, res) {
+  try {
+    const body = await parseBody(req);
+    const { domain, declaredValue, observedPattern } = body;
+    if (!domain || !declaredValue || !observedPattern) {
+      return sendJson(res, 400, { ok: false, error: "domain, declaredValue, and observedPattern required" });
+    }
+    const result = obsidian.saveContradiction(domain, declaredValue, observedPattern);
+    sendJson(res, result.ok ? 200 : 500, result);
+  } catch (err) { sendJson(res, 500, { ok: false, error: err.message }); }
+}
+
+async function handleObsidianJournal(req, res) {
+  try {
+    const body = await parseBody(req);
+    const result = obsidian.writeDailyJournal({
+      significant:   body.significant || [],
+      decisions:     body.decisions || [],
+      theories:      body.theories || [],
+      openQuestions: body.openQuestions || [],
+    });
+    sendJson(res, result.ok ? 200 : 500, result);
+  } catch (err) { sendJson(res, 500, { ok: false, error: err.message }); }
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   const pathname = url.pathname;
@@ -1383,15 +1450,7 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === "POST" && pathname === "/api/monday-sandbox/obsidian/note") {
-    try {
-      const body = await parseBody(req);
-      const { title, content, domain, type } = body;
-      if (!title || !content) return sendJson(res, 400, { ok: false, error: "title and content required" });
-      const result = obsidian.createNote(title, content, { domain, type });
-      sendJson(res, result.ok ? 200 : 500, result);
-    } catch (err) {
-      sendJson(res, 500, { ok: false, error: err.message });
-    }
+    handleObsidianCreateNote(req, res);
     return;
   }
 
@@ -1406,72 +1465,27 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === "POST" && pathname === "/api/monday-sandbox/obsidian/mission/init") {
-    try {
-      const body = await parseBody(req);
-      const { missionId, purpose, focus, theory } = body;
-      if (!missionId) return sendJson(res, 400, { ok: false, error: "missionId required" });
-      const result = obsidian.createMissionDocs(missionId, { purpose, focus, theory });
-      sendJson(res, result.ok ? 200 : 500, result);
-    } catch (err) {
-      sendJson(res, 500, { ok: false, error: err.message });
-    }
+    handleObsidianMissionInit(req, res);
     return;
   }
 
   if (req.method === "POST" && pathname === "/api/monday-sandbox/obsidian/theory") {
-    try {
-      const body = await parseBody(req);
-      const { domain, theory, confidence, evidence = [] } = body;
-      if (!domain || !theory) return sendJson(res, 400, { ok: false, error: "domain and theory required" });
-      const result = obsidian.saveWorkingTheory(domain, theory, confidence, evidence);
-      sendJson(res, result.ok ? 200 : 500, result);
-    } catch (err) {
-      sendJson(res, 500, { ok: false, error: err.message });
-    }
+    handleObsidianTheory(req, res);
     return;
   }
 
   if (req.method === "POST" && pathname === "/api/monday-sandbox/obsidian/decision") {
-    try {
-      const body = await parseBody(req);
-      const { title, reason, domain, context } = body;
-      if (!title || !reason) return sendJson(res, 400, { ok: false, error: "title and reason required" });
-      const result = obsidian.saveDecision(title, reason, { domain, context });
-      sendJson(res, result.ok ? 200 : 500, result);
-    } catch (err) {
-      sendJson(res, 500, { ok: false, error: err.message });
-    }
+    handleObsidianDecision(req, res);
     return;
   }
 
   if (req.method === "POST" && pathname === "/api/monday-sandbox/obsidian/contradiction") {
-    try {
-      const body = await parseBody(req);
-      const { domain, declaredValue, observedPattern } = body;
-      if (!domain || !declaredValue || !observedPattern) {
-        return sendJson(res, 400, { ok: false, error: "domain, declaredValue, and observedPattern required" });
-      }
-      const result = obsidian.saveContradiction(domain, declaredValue, observedPattern);
-      sendJson(res, result.ok ? 200 : 500, result);
-    } catch (err) {
-      sendJson(res, 500, { ok: false, error: err.message });
-    }
+    handleObsidianContradiction(req, res);
     return;
   }
 
   if (req.method === "POST" && pathname === "/api/monday-sandbox/obsidian/journal") {
-    try {
-      const body = await parseBody(req);
-      const result = obsidian.writeDailyJournal({
-        significant: body.significant || [],
-        decisions: body.decisions || [],
-        theories: body.theories || [],
-        openQuestions: body.openQuestions || [],
-      });
-      sendJson(res, result.ok ? 200 : 500, result);
-    } catch (err) {
-      sendJson(res, 500, { ok: false, error: err.message });
-    }
+    handleObsidianJournal(req, res);
     return;
   }
 
@@ -1483,4 +1497,14 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Monday Sandbox running at http://localhost:${PORT}/monday-sandbox`);
+
+  // Init Obsidian vault directories on startup (no-op if already present or volume not mounted)
+  try {
+    const vaultResult = obsidian.ensureVault();
+    if (vaultResult?.ok) {
+      console.log(`[obsidian] Vault ready at ${process.env.MONDAY_VAULT_ROOT || "/Volumes/Monday/Obsidian/Monday"}`);
+    }
+  } catch (err) {
+    console.warn("[obsidian] Vault init skipped:", err.message);
+  }
 });

@@ -1403,3 +1403,198 @@ pre {
   background: var(--accent-soft);
   border-radius: 4px;
 }
+
+/* ── Obsidian Vault Explorer ──────────────────────────────────────────────── */
+
+.obsidian-status {
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.obsidian-online {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.obsidian-online-badge {
+  color: #4caf50;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.obsidian-file-count {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.obsidian-offline {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 6px;
+  background: var(--surface2);
+  border-radius: 4px;
+}
+
+.obsidian-dirs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.obsidian-dir {
+  font-size: 10px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--surface2);
+  color: var(--muted);
+}
+
+.obsidian-dir.has-files {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.obsidian-dir em {
+  font-style: normal;
+  color: var(--accent);
+  margin-left: 2px;
+  font-size: 10px;
+}
+
+.obsidian-recent-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.obsidian-note-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  background: var(--surface2);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.obsidian-note-row:hover {
+  background: var(--accent-soft);
+}
+
+.obsidian-note-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.obsidian-note-path {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.obsidian-note-snippet {
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.obsidian-note-viewer {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.obsidian-note-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+  gap: 8px;
+}
+
+.obsidian-note-viewer-header button {
+  font-size: 11px;
+  padding: 1px 6px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.obsidian-note-viewer pre {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  white-space: pre-wrap;
+  max-height: 300px;
+  overflow-y: auto;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.obsidian-mission-docs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.obsidian-mission-file {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  background: var(--surface2);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.obsidian-mission-file:hover {
+  background: var(--accent-soft);
+}
+
+.obsidian-mission-filename {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.obsidian-empty {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 6px 0;
+}
+
+.obsidian-success {
+  color: #4caf50;
+  font-size: 11px;
+  padding: 4px 8px;
+  background: rgba(76, 175, 80, 0.1);
+  border-radius: 4px;
+  margin-bottom: 6px;
+}
+
+.obsidian-error {
+  color: #e57373;
+  font-size: 11px;
+  padding: 4px 8px;
+  background: rgba(229, 115, 115, 0.1);
+  border-radius: 4px;
+}

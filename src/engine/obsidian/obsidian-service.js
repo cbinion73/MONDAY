@@ -36,10 +36,9 @@ const WRITE_SIGNIFICANCE = new Set([
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 function ensureVault() {
-  if (!vaultAvailable()) {
-    return initVault();
-  }
-  return { ok: true };
+  // Always run initVault — it uses recursive:true so existing dirs are no-ops.
+  // This ensures subdirectories get created even if the vault root already exists.
+  return initVault();
 }
 
 // ── Capture handling ──────────────────────────────────────────────────────────
