@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Monday Sandbox (Web UI)",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["/Users/chris/Desktop/CODE/MONDAY/MONDAY/src/sandbox/server.js"],
+      "port": 4311,
+      "autoPort": false
+    }
+  ]
+}

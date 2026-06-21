@@ -49,9 +49,19 @@ const {
   summarizeReviewPayload,
   toFieldNotesMarkdown,
 } = require("./review-analysis");
+const {
+  initFromMissions,
+  processAfterTurn,
+  getWorkspaceSummaries,
+} = require("../engine/workspace/workspace-manager");
+const workspaceStore = require("../engine/workspace/workspace-store");
+const obsidian = require("../engine/obsidian/obsidian-service");
 
 loadSandboxEnv(path.resolve(__dirname, "../.."));
 process.env.MONDAY_CLOSED_LOOP_LEARNING ??= "true";
+
+// Ensure all six domain workspaces exist on startup
+try { initFromMissions(); } catch (e) { console.warn("[workspace] init warning:", e.message); }
 
 const PORT = Number(process.env.MONDAY_SANDBOX_PORT || 4311);
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -305,11 +315,13 @@ async function handleMessage(req, res) {
       documents: getDocumentsSummary({ limit: 6 }),
       email: getEmailSummary({ limit: 6 }),
       finances: getFinancialSummary({ limit: 6 }),
+      priorWorkingTheory: session.context?.workingTheory || null,
     };
 
     const result = await runMondayTurn({
       input: body.input,
       context: mergedContext,
+      councilEnabled: body.councilEnabled === true,
     });
     const enrichedPersonalContext = {
       ...personalContext,
@@ -318,14 +330,48 @@ async function handleMessage(req, res) {
       }),
     };
 
+    // ── JARVIS loop: skill invocation ────────────────────────────────────────
+    // Intent detection → trust gate → parallel execution → normalization → theory update
+    // Runs between engine resolution and LLM call so Monday answers from live data.
+    const { invokeSkillsForTurn } = require("../engine/skills/skill-invoker");
+    const { updateTheoryFromEvidence } = require("../engine/skills/theory-from-evidence");
+
+    const turnDomain = result.truth?.domain || result.finalState?.domain || null;
+    const turnWorkspaceId = turnDomain ? turnDomain.toLowerCase() : null;
+
+    let skillInvocation = { used: false, skills: [], failed: [] };
+    try {
+      skillInvocation = await invokeSkillsForTurn(body.input, {
+        workspaceId: turnWorkspaceId,
+        domain: turnDomain,
+        channel: "sandbox",
+      });
+    } catch (err) {
+      console.warn("[server] skill invocation error:", err.message);
+    }
+
+    const theoryEvidence = skillInvocation.used
+      ? updateTheoryFromEvidence(enrichedPersonalContext.priorWorkingTheory, skillInvocation.skills)
+      : null;
+
+    const finalPersonalContext = {
+      ...enrichedPersonalContext,
+      skillResults: skillInvocation.skills,
+      theoryEvidence,
+    };
+    // ── end JARVIS loop ───────────────────────────────────────────────────────
+
     const intelligentResult = await applyMondayIntelligence({
       result,
       input: body.input,
       history: session.messages,
-      personalContext: enrichedPersonalContext,
+      personalContext: finalPersonalContext,
     });
 
-    session.context = intelligentResult.nextContext;
+    session.context = {
+      ...intelligentResult.nextContext,
+      workingTheory: intelligentResult.workingTheory || null,
+    };
     const timestamp = new Date().toISOString();
     session.messages.push({
       user: body.input,
@@ -340,6 +386,34 @@ async function handleMessage(req, res) {
       timestamp,
       runtime: sessionRuntime,
     });
+
+    // Log exchange to domain workspace
+    const turnDomainFinal = intelligentResult.finalState?.domain || intelligentResult.truth?.domain || null;
+    processAfterTurn({
+      domain: turnDomainFinal,
+      userText: body.input,
+      mondayReply: intelligentResult.voice.text,
+      workingTheory: intelligentResult.workingTheory || null,
+      skillsUsed: skillInvocation.skills.map((s) => s.skillId),
+      channel: "sandbox",
+    });
+
+    // ── Mission detection ────────────────────────────────────────────────────
+    // Check if this domain's conversation history has reached mission threshold.
+    let missionSuggestion = null;
+    if (turnDomainFinal) {
+      try {
+        const { detectMissionOpportunity } = require("../engine/missions/mission-engine");
+        const wsLog = workspaceStore.getLog(turnDomainFinal.toLowerCase(), { limit: 40 });
+        missionSuggestion = detectMissionOpportunity(turnDomainFinal, wsLog);
+        if (missionSuggestion.suggested) {
+          console.log(`[mission] suggestion triggered for ${turnDomainFinal}: ${missionSuggestion.reason}`);
+        }
+      } catch (err) {
+        console.warn("[mission] detection error:", err.message);
+      }
+    }
+    // ── end mission detection ─────────────────────────────────────────────────
 
     const learning = recordTurnLearning({
       input: body.input,
@@ -365,6 +439,32 @@ async function handleMessage(req, res) {
           })
         : null;
 
+    // ── Obsidian writes ───────────────────────────────────────────────────────
+    // Capture → Inbox. Significant turns → theory export. Never blocks the reply.
+    if (capture) {
+      try {
+        obsidian.handleCapture({
+          content: body.input,
+          significance: intelligentResult.finalState?.significance,
+          domain: intelligentResult.finalState?.candidateDomain,
+          missionId: intelligentResult.finalState?.candidateDomain?.toLowerCase(),
+        });
+      } catch (err) {
+        console.warn("[obsidian] capture write:", err.message);
+      }
+    }
+    try {
+      obsidian.handleTurnEnd({
+        significance: intelligentResult.finalState?.significance,
+        domain: intelligentResult.finalState?.candidateDomain || intelligentResult.truth?.domain,
+        workingTheory: intelligentResult.workingTheory,
+        modelDecision: intelligentResult.modelDecision,
+      });
+    } catch (err) {
+      console.warn("[obsidian] theory export:", err.message);
+    }
+    // ── end Obsidian writes ───────────────────────────────────────────────────
+
     sendJson(res, 200, {
       sessionId: sessionInfo.sessionId,
       result: {
@@ -375,6 +475,30 @@ async function handleMessage(req, res) {
           ...learning,
           clarifiedExample,
         },
+        council: intelligentResult.council || null,
+        skillsUsed: skillInvocation.used ? skillInvocation.skills.map((s) => {
+          // Pass raw result for research skills so the UI can render
+          // clickable search results and page read cards (Phase 4).
+          const RESEARCH_SKILLS = new Set(["browser-search", "browser-read"]);
+          return {
+            skillId: s.skillId,
+            reason: s.reason,
+            confidence: s.confidence,
+            observations: s.observations,
+            patterns: s.patterns,
+            summary: s.summary,
+            ms: s.ms,
+            _raw: RESEARCH_SKILLS.has(s.skillId) ? (s.raw || null) : null,
+          };
+        }) : [],
+        missionSuggestion: missionSuggestion?.suggested ? missionSuggestion : null,
+        voiceMemory: body.channel === "voice" ? (() => {
+          try {
+            const { logVoiceTurn } = require("../engine/voice/voice-memory");
+            return logVoiceTurn(body.input, intelligentResult.finalState, intelligentResult.truth);
+          } catch { return null; }
+        })() : null,
+        interruptibility: intelligentResult.finalState?.interruptibility || null,
       },
     });
   } catch (error) {
@@ -718,6 +842,189 @@ async function handleTts(req, res) {
   }
 }
 
+async function handleWorkspaceThread(req, res) {
+  try {
+    const body = await parseBody(req);
+    const { domain, thread } = body;
+    if (!domain || !thread?.id) return sendJson(res, 400, { ok: false, error: "Missing domain or thread.id" });
+    const { upsertWorkspaceThread } = require("../engine/workspace/workspace-manager");
+    const result = upsertWorkspaceThread(domain, thread);
+    sendJson(res, 200, { ok: true, thread: result });
+  } catch (err) {
+    sendJson(res, 500, { ok: false, error: err.message });
+  }
+}
+
+async function handleWorkspaceLifecycle(req, res) {
+  try {
+    const body = await parseBody(req);
+    const { id, status } = body;
+    if (!id || !status) return sendJson(res, 400, { ok: false, error: "Missing id or status" });
+    const { transitionLifecycle } = require("../engine/workspace/workspace-manager");
+    const result = transitionLifecycle(id, status);
+    sendJson(res, result.ok ? 200 : 400, result);
+  } catch (err) {
+    sendJson(res, 500, { ok: false, error: err.message });
+  }
+}
+
+// ── Skills handlers ───────────────────────────────────────────────────────────
+
+async function handleSkillManage(req, res) {
+  try {
+    const body = await parseBody(req);
+    const { workspaceId, skillId, action } = body;
+    if (!workspaceId || !skillId || !action) {
+      return sendJson(res, 400, { ok: false, error: "Missing workspaceId, skillId, or action" });
+    }
+    const { installSkill, removeSkill } = require("../engine/skills/index");
+    if (action === "install") {
+      return sendJson(res, 200, installSkill(workspaceId, skillId));
+    }
+    if (action === "remove") {
+      return sendJson(res, 200, removeSkill(workspaceId, skillId));
+    }
+    sendJson(res, 400, { ok: false, error: `Unknown action: ${action}. Use 'install' or 'remove'.` });
+  } catch (err) {
+    sendJson(res, 500, { ok: false, error: err.message });
+  }
+}
+
+async function handleSkillAutonomy(req, res) {
+  try {
+    const body = await parseBody(req);
+    const { workspaceId, tier } = body;
+    if (!workspaceId || tier === undefined) {
+      return sendJson(res, 400, { ok: false, error: "Missing workspaceId or tier" });
+    }
+    const { setAutonomyTier } = require("../engine/skills/index");
+    sendJson(res, 200, setAutonomyTier(workspaceId, tier));
+  } catch (err) {
+    sendJson(res, 500, { ok: false, error: err.message });
+  }
+}
+
+async function handleSkillExecute(req, res) {
+  try {
+    const body = await parseBody(req);
+    const { workspaceId, skillId, params = {} } = body;
+    if (!skillId) return sendJson(res, 400, { ok: false, error: "Missing skillId" });
+    const { executeSkill } = require("../engine/skills/index");
+    const result = await executeSkill(skillId, params, {
+      workspaceId: workspaceId || null,
+      channel: "sandbox",
+      bypassTier: true, // sandbox test execution bypasses tier enforcement
+    });
+    sendJson(res, result.ok ? 200 : 400, result);
+  } catch (err) {
+    sendJson(res, 500, { ok: false, error: err.message });
+  }
+}
+
+// ── Mission Engine handlers ───────────────────────────────────────────────────
+
+const missionEngine = require("../engine/missions/mission-engine");
+const missionStore = require("../engine/missions/mission-store");
+const { MISSION_TYPES, LIFECYCLE_STAGES } = require("../engine/missions/mission-types");
+
+async function handleMissionList(req, res) {
+  const missions = missionStore.listMissions();
+  sendJson(res, 200, { missions, types: MISSION_TYPES, stages: LIFECYCLE_STAGES });
+}
+
+async function handleMissionGet(req, res, id) {
+  const mission = missionStore.getMission(id);
+  if (!mission) return sendJson(res, 404, { error: "Mission not found" });
+  sendJson(res, 200, mission);
+}
+
+async function handleMissionCreate(req, res) {
+  const body = await parseBody(req);
+  const { title, domain, type, seedTheory } = body;
+  if (!title || !domain || !type) {
+    return sendJson(res, 400, { error: "title, domain, and type are required" });
+  }
+  const meta = missionEngine.createMission({ title, domain, type, seedTheory: seedTheory || "" });
+  sendJson(res, 200, { ok: true, meta });
+}
+
+async function handleMissionAdvance(req, res, id) {
+  const result = missionEngine.advanceMission(id);
+  sendJson(res, result.ok ? 200 : 422, result);
+}
+
+async function handleMissionDocGet(req, res, id, docName) {
+  const content = missionStore.getDoc(id, docName);
+  if (content === null) return sendJson(res, 404, { error: "Document not found" });
+  sendJson(res, 200, { id, docName, content });
+}
+
+async function handleMissionDocPut(req, res, id, docName) {
+  const body = await parseBody(req);
+  if (!body.content) return sendJson(res, 400, { error: "content is required" });
+  const result = missionEngine.updateDoc(id, docName, body.content);
+  sendJson(res, result.ok ? 200 : 404, result);
+}
+
+async function handleMissionTheory(req, res, id) {
+  const body = await parseBody(req);
+  const { statement, confidence, evidence } = body;
+  if (!statement || confidence == null) {
+    return sendJson(res, 400, { error: "statement and confidence are required" });
+  }
+  const content = missionEngine.updateWorkingTheory(id, { statement, confidence, evidence: evidence || [] });
+  sendJson(res, content ? 200 : 404, { ok: !!content });
+}
+
+async function handleMissionContradiction(req, res, id) {
+  const body = await parseBody(req);
+  const { claim, observed, status } = body;
+  if (!claim || !observed) return sendJson(res, 400, { error: "claim and observed are required" });
+  missionEngine.addContradiction(id, { claim, observed, status: status || "Unresolved" });
+  sendJson(res, 200, { ok: true });
+}
+
+// ── Phase 4: Pending Action Confirm ──────────────────────────────────────────
+// Observe → Synthesize → Recommend → Execute.
+// browser-open and notification-send are Tier 2/3 — Monday recommends, user confirms.
+// This endpoint is the Execute step after user clicks "Open" in the workspace UI.
+
+async function handleActionConfirm(req, res) {
+  try {
+    const body = await parseBody(req);
+    const { skill, params = {} } = body;
+
+    if (!skill) return sendJson(res, 400, { ok: false, error: "skill is required" });
+
+    // Only Tier 2/3 confirm-able actions allowed here — not auto-invocable research skills
+    const CONFIRMABLE = new Set(["browser-open", "notification-send"]);
+    if (!CONFIRMABLE.has(skill)) {
+      return sendJson(res, 400, {
+        ok: false,
+        error: `Skill "${skill}" is not a pending-action skill. Use /skill/execute for direct invocation.`,
+      });
+    }
+
+    const { executeSkill } = require("../engine/skills/executor");
+    const result = await executeSkill(skill, params, {
+      channel: "sandbox",
+      bypassTier: true, // user confirmed — bypass tier check
+    });
+
+    sendJson(res, result.ok ? 200 : 400, result);
+  } catch (err) {
+    sendJson(res, 500, { ok: false, error: err.message });
+  }
+}
+
+async function handleMissionOpportunity(req, res, id) {
+  const body = await parseBody(req);
+  const { title, description, domain } = body;
+  if (!title || !description) return sendJson(res, 400, { error: "title and description are required" });
+  missionEngine.addOpportunity(id, { title, description, domain: domain || "" });
+  sendJson(res, 200, { ok: true });
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   const pathname = url.pathname;
@@ -857,6 +1164,318 @@ const server = http.createServer((req, res) => {
     sendJson(res, 200, detailed ? getLearningInspection() : getLearningSummary());
     return;
   }
+
+  // ── Persistent state endpoints (Task 8) ─────────────────────────────
+  // ── Workspace endpoints ──────────────────────────────────────────────────
+  if (req.method === "GET" && pathname === "/api/monday-sandbox/workspaces") {
+    try {
+      sendJson(res, 200, { ok: true, workspaces: getWorkspaceSummaries() });
+    } catch (err) {
+      sendJson(res, 503, { ok: false, error: err.message, workspaces: [] });
+    }
+    return;
+  }
+
+  if (req.method === "GET" && pathname.startsWith("/api/monday-sandbox/workspace/") && !pathname.endsWith("/skills")) {
+    const id = pathname.replace("/api/monday-sandbox/workspace/", "").trim();
+    try {
+      const ws = workspaceStore.getWorkspace(id);
+      if (!ws) return sendJson(res, 404, { ok: false, error: `Workspace '${id}' not found` });
+      const log = workspaceStore.getLog(id, { limit: 30 });
+      sendJson(res, 200, { ok: true, workspace: { ...ws, log } });
+    } catch (err) {
+      sendJson(res, 500, { ok: false, error: err.message });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/workspace/thread") {
+    handleWorkspaceThread(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/workspace/lifecycle") {
+    handleWorkspaceLifecycle(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/monday-sandbox/triage") {
+    try {
+      const store = require("../engine/persistence/state-store");
+      sendJson(res, 200, { ok: true, triage: store.getTriageState() });
+    } catch (err) {
+      sendJson(res, 503, { ok: false, error: err.message, triage: { significantNow: [], watching: [], background: [] } });
+    }
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/monday-sandbox/heartbeat") {
+    try {
+      const store = require("../engine/persistence/state-store");
+      const { getJobs } = require("../engine/daemon/scheduler");
+      const log = store.getHeartbeatLog({ limit: 20 });
+      sendJson(res, 200, { ok: true, log, jobs: getJobs() });
+    } catch (err) {
+      sendJson(res, 503, { ok: false, error: err.message, log: [], jobs: [] });
+    }
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/monday-sandbox/threads") {
+    try {
+      const store = require("../engine/persistence/state-store");
+      sendJson(res, 200, { ok: true, threads: store.getActiveThreads(), theories: store.getWorkingTheories() });
+    } catch (err) {
+      sendJson(res, 503, { ok: false, error: err.message, threads: [], theories: {} });
+    }
+    return;
+  }
+
+  // ── Skills endpoints ─────────────────────────────────────────────────────────
+
+  if (req.method === "GET" && pathname === "/api/monday-sandbox/skills") {
+    try {
+      const { getAllSkills } = require("../engine/skills/index");
+      sendJson(res, 200, { ok: true, skills: getAllSkills() });
+    } catch (err) {
+      sendJson(res, 500, { ok: false, error: err.message, skills: [] });
+    }
+    return;
+  }
+
+  if (req.method === "GET" && pathname.startsWith("/api/monday-sandbox/workspace/") && pathname.endsWith("/skills")) {
+    const id = pathname.replace("/api/monday-sandbox/workspace/", "").replace("/skills", "").trim();
+    try {
+      const { listSkillsForWorkspace } = require("../engine/skills/index");
+      sendJson(res, 200, { ok: true, workspaceId: id, skills: listSkillsForWorkspace(id) });
+    } catch (err) {
+      sendJson(res, 500, { ok: false, error: err.message, skills: [] });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/skill") {
+    handleSkillManage(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/skill/autonomy") {
+    handleSkillAutonomy(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/skill/execute") {
+    handleSkillExecute(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/action/confirm") {
+    handleActionConfirm(req, res);
+    return;
+  }
+
+  // ── Mission Engine routes ──────────────────────────────────────────────────
+  if (req.method === "GET" && pathname === "/api/monday-sandbox/mission-engine") {
+    handleMissionList(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/mission-engine") {
+    handleMissionCreate(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && pathname.startsWith("/api/monday-sandbox/mission-engine/")) {
+    const parts = pathname.replace("/api/monday-sandbox/mission-engine/", "").split("/");
+    if (parts.length === 1) {
+      handleMissionGet(req, res, parts[0]);
+      return;
+    }
+    if (parts.length === 3 && parts[1] === "doc") {
+      handleMissionDocGet(req, res, parts[0], decodeURIComponent(parts[2]));
+      return;
+    }
+  }
+
+  if (req.method === "PUT" && pathname.startsWith("/api/monday-sandbox/mission-engine/")) {
+    const parts = pathname.replace("/api/monday-sandbox/mission-engine/", "").split("/");
+    if (parts.length === 3 && parts[1] === "doc") {
+      handleMissionDocPut(req, res, parts[0], decodeURIComponent(parts[2]));
+      return;
+    }
+  }
+
+  if (req.method === "POST" && pathname.startsWith("/api/monday-sandbox/mission-engine/") && pathname.endsWith("/advance")) {
+    const id = pathname.replace("/api/monday-sandbox/mission-engine/", "").replace("/advance", "");
+    handleMissionAdvance(req, res, id);
+    return;
+  }
+
+  if (req.method === "POST" && pathname.startsWith("/api/monday-sandbox/mission-engine/") && pathname.endsWith("/working-theory")) {
+    const id = pathname.replace("/api/monday-sandbox/mission-engine/", "").replace("/working-theory", "");
+    handleMissionTheory(req, res, id);
+    return;
+  }
+
+  if (req.method === "POST" && pathname.startsWith("/api/monday-sandbox/mission-engine/") && pathname.endsWith("/contradiction")) {
+    const id = pathname.replace("/api/monday-sandbox/mission-engine/", "").replace("/contradiction", "");
+    handleMissionContradiction(req, res, id);
+    return;
+  }
+
+  if (req.method === "POST" && pathname.startsWith("/api/monday-sandbox/mission-engine/") && pathname.endsWith("/opportunity")) {
+    const id = pathname.replace("/api/monday-sandbox/mission-engine/", "").replace("/opportunity", "");
+    handleMissionOpportunity(req, res, id);
+    return;
+  }
+
+  // ── Obsidian routes ──────────────────────────────────────────────────────────
+
+  if (req.method === "GET" && pathname === "/api/monday-sandbox/obsidian/status") {
+    try {
+      sendJson(res, 200, { ok: true, ...obsidian.getVaultStatus() });
+    } catch (err) {
+      sendJson(res, 500, { ok: false, error: err.message });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/obsidian/init") {
+    try {
+      const result = obsidian.ensureVault();
+      sendJson(res, result.ok ? 200 : 500, result);
+    } catch (err) {
+      sendJson(res, 500, { ok: false, error: err.message });
+    }
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/monday-sandbox/obsidian/recent") {
+    try {
+      const limit = Number(url.searchParams.get("limit") || 10);
+      sendJson(res, 200, { ok: true, notes: obsidian.recentNotes(limit) });
+    } catch (err) {
+      sendJson(res, 500, { ok: false, error: err.message, notes: [] });
+    }
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/monday-sandbox/obsidian/search") {
+    try {
+      const q = url.searchParams.get("q") || "";
+      sendJson(res, 200, { ok: true, results: obsidian.findNotes(q) });
+    } catch (err) {
+      sendJson(res, 500, { ok: false, error: err.message, results: [] });
+    }
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/monday-sandbox/obsidian/note") {
+    try {
+      const notePath = url.searchParams.get("path") || "";
+      const note = obsidian.getNote(notePath);
+      if (!note) return sendJson(res, 404, { ok: false, error: "Note not found" });
+      sendJson(res, 200, { ok: true, note });
+    } catch (err) {
+      sendJson(res, 500, { ok: false, error: err.message });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/obsidian/note") {
+    try {
+      const body = await parseBody(req);
+      const { title, content, domain, type } = body;
+      if (!title || !content) return sendJson(res, 400, { ok: false, error: "title and content required" });
+      const result = obsidian.createNote(title, content, { domain, type });
+      sendJson(res, result.ok ? 200 : 500, result);
+    } catch (err) {
+      sendJson(res, 500, { ok: false, error: err.message });
+    }
+    return;
+  }
+
+  if (req.method === "GET" && pathname.startsWith("/api/monday-sandbox/obsidian/mission/")) {
+    try {
+      const missionId = pathname.replace("/api/monday-sandbox/obsidian/mission/", "").trim();
+      sendJson(res, 200, { ok: true, missionId, docs: obsidian.getMissionDocs(missionId) });
+    } catch (err) {
+      sendJson(res, 500, { ok: false, error: err.message });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/obsidian/mission/init") {
+    try {
+      const body = await parseBody(req);
+      const { missionId, purpose, focus, theory } = body;
+      if (!missionId) return sendJson(res, 400, { ok: false, error: "missionId required" });
+      const result = obsidian.createMissionDocs(missionId, { purpose, focus, theory });
+      sendJson(res, result.ok ? 200 : 500, result);
+    } catch (err) {
+      sendJson(res, 500, { ok: false, error: err.message });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/obsidian/theory") {
+    try {
+      const body = await parseBody(req);
+      const { domain, theory, confidence, evidence = [] } = body;
+      if (!domain || !theory) return sendJson(res, 400, { ok: false, error: "domain and theory required" });
+      const result = obsidian.saveWorkingTheory(domain, theory, confidence, evidence);
+      sendJson(res, result.ok ? 200 : 500, result);
+    } catch (err) {
+      sendJson(res, 500, { ok: false, error: err.message });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/obsidian/decision") {
+    try {
+      const body = await parseBody(req);
+      const { title, reason, domain, context } = body;
+      if (!title || !reason) return sendJson(res, 400, { ok: false, error: "title and reason required" });
+      const result = obsidian.saveDecision(title, reason, { domain, context });
+      sendJson(res, result.ok ? 200 : 500, result);
+    } catch (err) {
+      sendJson(res, 500, { ok: false, error: err.message });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/obsidian/contradiction") {
+    try {
+      const body = await parseBody(req);
+      const { domain, declaredValue, observedPattern } = body;
+      if (!domain || !declaredValue || !observedPattern) {
+        return sendJson(res, 400, { ok: false, error: "domain, declaredValue, and observedPattern required" });
+      }
+      const result = obsidian.saveContradiction(domain, declaredValue, observedPattern);
+      sendJson(res, result.ok ? 200 : 500, result);
+    } catch (err) {
+      sendJson(res, 500, { ok: false, error: err.message });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/obsidian/journal") {
+    try {
+      const body = await parseBody(req);
+      const result = obsidian.writeDailyJournal({
+        significant: body.significant || [],
+        decisions: body.decisions || [],
+        theories: body.theories || [],
+        openQuestions: body.openQuestions || [],
+      });
+      sendJson(res, result.ok ? 200 : 500, result);
+    } catch (err) {
+      sendJson(res, 500, { ok: false, error: err.message });
+    }
+    return;
+  }
+
+  // ── end Obsidian routes ───────────────────────────────────────────────────
 
   res.writeHead(404);
   res.end("Not found");

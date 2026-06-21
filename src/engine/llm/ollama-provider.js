@@ -1,13 +1,14 @@
 const DEFAULT_BASE_URL = process.env.MONDAY_OLLAMA_BASE_URL || "http://127.0.0.1:11434";
 const DEFAULT_MODEL = process.env.MONDAY_OLLAMA_MODEL || "qwen2.5:7b";
 const DEFAULT_TIMEOUT_MS = Number(process.env.MONDAY_OLLAMA_TIMEOUT_MS || 15000);
+const DEFAULT_TEMPERATURE = Number(process.env.MONDAY_OLLAMA_TEMPERATURE || 0.85);
 
 async function chatWithOllama({
   messages,
   model = DEFAULT_MODEL,
   baseUrl = DEFAULT_BASE_URL,
   timeoutMs = DEFAULT_TIMEOUT_MS,
-  temperature = 0.2,
+  temperature = DEFAULT_TEMPERATURE,
 }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);

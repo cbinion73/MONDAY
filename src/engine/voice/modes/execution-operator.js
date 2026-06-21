@@ -1,9 +1,10 @@
 function renderExecutionOperator({ truth }) {
   if (truth.executionThread === "transportation") {
     return [
-      "Understood.",
-      "I'll treat transportation as the next execution thread.",
-      "I'll keep it moving and bring back anything that matters.",
+      "Understood. I'll move on transportation.",
+      "I'd start by confirming the trailer rental — that closes the last open item.",
+      "I think the real question is what you need from me before camp day.",
+      "My read is everything else is ready.",
     ];
   }
 

@@ -6,10 +6,13 @@ const {
   DEFAULT_BASE_URL,
   DEFAULT_TIMEOUT_MS,
 } = require("../llm/ollama-provider");
+const { chatWithLLM, activeProvider } = require("../llm/llm-router");
+const { routeModel } = require("../llm/model-router");
 const {
   buildConversationPrompt,
   buildConversationPayload,
   buildDailyBriefPrompt,
+  extractWorkingTheory,
 } = require("../llm/monday-prompt-builder");
 const {
   normalizeConfidence,
@@ -32,32 +35,44 @@ async function applyMondayIntelligence({
   history = [],
   personalContext = {},
 }) {
+  const priorWorkingTheory = personalContext.priorWorkingTheory || null;
+
+  // Always compute working theory so it persists regardless of Ollama availability.
+  const promptPayload = buildConversationPayload({ result, input, history, personalContext });
+  const workingTheory = extractWorkingTheory(promptPayload, priorWorkingTheory);
+
+  // Route to the right model — computed early so all return paths carry it.
+  const modelDecision = routeModel({
+    domain: result.truth?.domain || result.finalState?.candidateDomain || null,
+    significance: result.finalState?.significance || null,
+    identityProximity: result.finalState?.identityProximity || null,
+    woundRisk: result.finalState?.woundRisk || null,
+    input,
+  });
+
   const recallRequest = detectThreadRecallRequest(input, personalContext);
   if (recallRequest) {
     if (shouldUseDailyOrientation(recallRequest, personalContext)) {
-      return finalizeDailyOrientationResult(result, recallRequest, personalContext);
+      const r = await finalizeDailyOrientationResult(result, recallRequest, personalContext);
+      return { ...r, workingTheory: workingTheory || priorWorkingTheory, modelDecision };
     }
-    return finalizeThreadRecallResult(result, recallRequest);
+    const r = finalizeThreadRecallResult(result, recallRequest);
+    return { ...r, workingTheory: workingTheory || priorWorkingTheory, modelDecision };
   }
 
   if (!intelligenceEnabled()) {
     const attached = attachIntelligence(result, {
         enabled: false,
-        provider: "ollama",
+        provider: activeProvider(),
         used: false,
         reason: "MONDAY_OLLAMA_ENABLED is false.",
       });
-    return personalContext.captureIntent
+    const r = personalContext.captureIntent
       ? finalizeCaptureResult(attached, input)
       : personalizeResult(attached, personalContext);
+    return { ...r, workingTheory, modelDecision };
   }
 
-  const promptPayload = buildConversationPayload({
-    result,
-    input,
-    history,
-    personalContext,
-  });
   const prompt = buildConversationPrompt({
     result,
     input,
@@ -67,7 +82,7 @@ async function applyMondayIntelligence({
   const startedAt = Date.now();
 
   try {
-    const response = await getValidConversationResponse(prompt);
+    const response = await getValidConversationResponse(prompt, modelDecision.model);
 
     const latencyMs = Date.now() - startedAt;
     const parsed = validateConversationResponse(response.json);
@@ -75,7 +90,7 @@ async function applyMondayIntelligence({
     if (!parsed) {
       const attached = attachIntelligence(result, {
           enabled: true,
-          provider: "ollama",
+          provider: activeProvider(),
           model: response.model,
           used: false,
           latencyMs,
@@ -83,9 +98,10 @@ async function applyMondayIntelligence({
           promptDebug: buildPromptDebug({ prompt, promptPayload }),
           rawResponse: response.json || response.raw || null,
         });
-      return personalContext.captureIntent
+      const r = personalContext.captureIntent
         ? finalizeCaptureResult(attached, input)
         : personalizeResult(attached, personalContext);
+      return { ...r, workingTheory, modelDecision };
     }
 
     const adjustedParsed =
@@ -114,7 +130,7 @@ async function applyMondayIntelligence({
       if (rescued) {
         const merged = mergeThreadAwareFallback(result, rescued, {
           enabled: true,
-          provider: "ollama",
+          provider: activeProvider(),
           model: response.model,
           used: false,
           latencyMs,
@@ -125,14 +141,15 @@ async function applyMondayIntelligence({
           suggestedClassification: adjustedParsed?.suggestedClassification || null,
           confidence: adjustedParsed?.confidence || null,
         });
-        return personalContext.captureIntent
+        const r = personalContext.captureIntent
           ? finalizeCaptureResult(merged, input)
           : personalizeResult(merged, personalContext);
+        return { ...r, workingTheory, modelDecision };
       }
 
       const attached = attachIntelligence(result, {
           enabled: true,
-          provider: "ollama",
+          provider: activeProvider(),
           model: response.model,
           used: false,
           latencyMs,
@@ -140,9 +157,10 @@ async function applyMondayIntelligence({
           promptDebug: buildPromptDebug({ prompt, promptPayload }),
           rawResponse: response.json || response.raw || null,
         });
-      return personalContext.captureIntent
+      const r = personalContext.captureIntent
         ? finalizeCaptureResult(attached, input)
         : personalizeResult(attached, personalContext);
+      return { ...r, workingTheory, modelDecision };
     }
 
     const merged = mergeIntelligence(result, adjustedParsed, {
@@ -155,47 +173,49 @@ async function applyMondayIntelligence({
         promptDebug: buildPromptDebug({ prompt, promptPayload }),
         rawResponse: response.json || response.raw || null,
       });
-    return personalContext.captureIntent
+    const r = personalContext.captureIntent
       ? finalizeCaptureResult(merged, input)
       : personalizeResult(merged, personalContext);
+    return { ...r, workingTheory, modelDecision };
   } catch (error) {
     const attached = attachIntelligence(result, {
         enabled: true,
-        provider: "ollama",
+        provider: activeProvider(),
         model: DEFAULT_MODEL,
-        baseUrl: DEFAULT_BASE_URL,
         used: false,
         reason: error.message,
         promptDebug: buildPromptDebug({ prompt, promptPayload }),
         rawResponse: null,
       });
-    return personalContext.captureIntent
+    const r = personalContext.captureIntent
       ? finalizeCaptureResult(attached, input)
       : personalizeResult(attached, personalContext);
+    return { ...r, workingTheory: priorWorkingTheory, modelDecision };
   }
 }
 
-async function getValidConversationResponse(prompt) {
-  const attempts = [
-    {
-      temperature: 0.2,
-      timeoutMs: Math.max(DEFAULT_TIMEOUT_MS, 15000),
-    },
-    {
-      temperature: 0.1,
-      timeoutMs: Math.max(DEFAULT_TIMEOUT_MS + 10000, 30000),
-    },
-  ];
+async function getValidConversationResponse(prompt, model = null) {
+  const provider = activeProvider();
+  const isClaude = provider === "claude";
+
+  // Claude doesn't benefit from temperature retries; one attempt is enough.
+  const attempts = isClaude
+    ? [{ temperature: 1.0 }]
+    : [
+        { temperature: Number(process.env.MONDAY_OLLAMA_TEMPERATURE || 0.85), timeoutMs: Math.max(DEFAULT_TIMEOUT_MS, 15000) },
+        { temperature: 0.5, timeoutMs: Math.max(DEFAULT_TIMEOUT_MS + 10000, 30000) },
+      ];
 
   let lastResponse = null;
   let lastError = null;
 
   for (const attempt of attempts) {
     try {
-      const response = await chatWithOllama({
+      const response = await chatWithLLM({
         messages: prompt,
         temperature: attempt.temperature,
         timeoutMs: attempt.timeoutMs,
+        model: model || undefined,
       });
       lastResponse = response;
 
@@ -211,7 +231,7 @@ async function getValidConversationResponse(prompt) {
     return lastResponse;
   }
 
-  throw lastError || new Error("Ollama conversation refinement failed.");
+  throw lastError || new Error(`${provider} conversation refinement failed.`);
 }
 
 function detectThreadRecallRequest(input, personalContext = {}) {
@@ -778,7 +798,9 @@ function shouldAcceptRefinement({
 
   if (
     genericCoachingPatterns.some((pattern) => pattern.test(reply)) &&
-    (significance === "weight_loss_goal" || significance === "prayer_concern")
+    (significance === "weight_loss_goal" || significance === "prayer_concern") &&
+    !hasTentativeInterpretation(reply) &&
+    !hasThinkingPartnerMove(reply)
   ) {
     return false;
   }
@@ -876,7 +898,9 @@ function shouldAcceptRefinement({
     outcome === "surface_then_advise" &&
     anchors.length > 0 &&
     !hasAnchor &&
-    !reply.includes("?")
+    !reply.includes("?") &&
+    !hasThinkingPartnerMove(reply) &&
+    !interpretiveAdvanceResponse
   ) {
     return false;
   }
@@ -1056,13 +1080,17 @@ function hasTentativeInterpretation(reply) {
     "it sounds like",
     "it seems like",
     "i think",
+    "my guess is",
     "may be",
+    "may not be",
     "might be",
     "could be",
     "part of what",
     "the tension may be",
     "it feels like",
     "it looks like",
+    "i wonder if",
+    "one possibility is",
   ];
 
   return interpretationMarkers.some((marker) => text.includes(marker));

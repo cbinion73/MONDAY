@@ -29,9 +29,16 @@
     "test:usefulness": "node ./tests/usefulness-regression.test.js",
     "test:usefulness-evaluator": "node ./tests/usefulness-evaluator.test.js",
     "test:canonical": "node ./tests/canonical-conversations.test.js",
+    "test:behavioral": "node ./tests/behavioral.test.js",
+    "test:behavioral:ollama": "MONDAY_OLLAMA_ENABLED=true node ./tests/behavioral.test.js",
     "demo:sandbox": "node ./src/engine/demo/sandbox.js",
     "demo:sandbox:all": "node ./src/engine/demo/sandbox.js all",
     "demo:repl": "node ./src/engine/demo/repl.js",
-    "sandbox:web": "node ./src/sandbox/server.js"
+    "sandbox:web": "node ./src/sandbox/server.js",
+    "daemon": "node ./src/engine/daemon/daemon.js",
+    "gateway": "node ./src/engine/gateway/server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1"
   }
 }

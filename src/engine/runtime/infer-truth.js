@@ -2,6 +2,43 @@ function inferTruth(engineState, input) {
   const text = (input || "").toLowerCase();
 
   if (engineState.classificationFallback) {
+    // Detect specific unclassified patterns before falling back to intake questions.
+    if (
+      /\bwho (am|are) i\b/i.test(text) ||
+      /\bdon'?t know who i am\b/i.test(text) ||
+      /\blose (my ?self|myself)\b/i.test(text)
+    ) {
+      return { humanCompanyBoundary: true };
+    }
+    if (
+      /\bcrazy (idea|thought|plan)\b/i.test(text) ||
+      /\bwild (idea|thought|plan)\b/i.test(text) ||
+      /\bhave an idea\b/i.test(text) ||
+      /\bgot an idea\b/i.test(text)
+    ) {
+      return { creativeSpark: true };
+    }
+    if (
+      /\bplace to hide\b/i.test(text) ||
+      /\bwork.{0,15}(gives me|is) (a place|somewhere) to hide\b/i.test(text) ||
+      /\busing work to hide\b/i.test(text)
+    ) {
+      return { domain: "work", concern: "work_tradeoff", pattern: "avoidance_refuge" };
+    }
+    if (
+      /\bstill want to build\b/i.test(text) ||
+      /\bwant to (build things|keep building|create things)\b/i.test(text) ||
+      /\b(still need to|still want to) (build|create|make)\b/i.test(text)
+    ) {
+      return { domain: "retirement", concern: "identity_transition" };
+    }
+    if (
+      /\bfind (me|the best|a)\b.{0,30}\b(option|trailer|vendor|provider|service)\b/i.test(text) ||
+      /\bbook (me|a|the)\b/i.test(text) ||
+      /\bschedule\b.{0,20}\bfor me\b/i.test(text)
+    ) {
+      return { agentDelegation: true };
+    }
     return {
       fallbackQuestion: buildFallbackQuestion(engineState),
     };
@@ -62,6 +99,19 @@ function inferTruth(engineState, input) {
           domain: "faith",
           goal: "prayer_concern",
           pattern: "quiet_avoidance",
+        };
+      }
+      if (
+        text.includes("what god might say") ||
+        text.includes("want to hear what") ||
+        text.includes("afraid of what") ||
+        text.includes("what i might find") ||
+        /\b(isn'?t|not) sure (i want|i'd want) to hear\b/i.test(text)
+      ) {
+        return {
+          domain: "faith",
+          goal: "prayer_concern",
+          pattern: "fear_of_hearing",
         };
       }
       return { domain: "faith", goal: "prayer_concern" };

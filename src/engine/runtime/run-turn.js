@@ -9,8 +9,9 @@ const {
 const {
   applyLearnedRecovery,
 } = require("../learning/closed-loop-learning");
+const { intelligenceEnabled } = require("../intelligence/monday-intelligence");
 
-async function runMondayTurn({ input, context = {} }) {
+async function runMondayTurn({ input, context = {}, councilEnabled = false }) {
   const initialState = resolveMondayEngine(input, context);
   const learnedStateResult = applyLearnedRecovery({
     input,
@@ -37,6 +38,27 @@ async function runMondayTurn({ input, context = {} }) {
     truth,
   });
 
+  // Council: run domain agents when intelligence is available and council is opted in.
+  // Council synthesis is additive — it enriches but does not replace the voice layer.
+  let council = null;
+  if (councilEnabled && intelligenceEnabled()) {
+    try {
+      const { conveneCouncil } = require("../council/convene");
+      const { getRecentCaptures } = require("../personal/personal-store");
+      const store = require("../persistence/state-store");
+      const domains = truth?.domain ? [truth.domain] : [];
+      council = await conveneCouncil({
+        domains,
+        userInput: input,
+        captures: getRecentCaptures(12),
+        threads: store.getActiveThreads(),
+        synthesize: true,
+      });
+    } catch (err) {
+      console.error("[run-turn] council error:", err.message);
+    }
+  }
+
   return {
     input,
     initialState,
@@ -54,6 +76,7 @@ async function runMondayTurn({ input, context = {} }) {
     classificationAssist: assistedState.classificationAssist || null,
     voice,
     workspace,
+    council,
     nextContext: {
       ...context,
       continuity: enforced.engineState.continuity,

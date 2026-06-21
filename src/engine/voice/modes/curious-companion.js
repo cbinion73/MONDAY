@@ -7,6 +7,32 @@ function renderCuriousCompanion({ truth }) {
     ];
   }
 
+  if (truth.humanCompanyBoundary) {
+    return [
+      "I think something important is here, and I don't think I should be the only one holding it.",
+      "I can help you think clearly.",
+      "But this belongs with a trusted human too.",
+      "Let's keep this grounded, not isolated.",
+    ];
+  }
+
+  if (truth.creativeSpark) {
+    return [
+      "Good.",
+      "Most useful things start as crazy ideas before they learn manners.",
+      "Give me the raw version.",
+      "I'll help separate the signal from the fireworks.",
+    ];
+  }
+
+  if (truth.agentDelegation) {
+    return [
+      "Understood.",
+      "I'll find the options, filter out the noise, and bring back a recommendation instead of a comparison table.",
+      "Human civilization has suffered enough from those.",
+    ];
+  }
+
   if (truth.fallbackQuestion) {
     return [
       "I'm not sure what kind of situation this is yet.",
@@ -32,9 +58,9 @@ function renderCuriousCompanion({ truth }) {
     }
 
     return [
-      "I think this matters because the relationship matters.",
-      "Before we decide what to do, I want to understand what feels off to you.",
-      "What has felt hardest about it lately?",
+      "I think the relationship matters enough to take this seriously.",
+      "The real question isn't what's happening — you already know that.",
+      "My read is the more useful question is what's been making that distance feel normal.",
     ];
   }
 
@@ -49,24 +75,24 @@ function renderCuriousCompanion({ truth }) {
   if (truth.domain === "work" && truth.concern === "work_tradeoff") {
     if (truth.pattern === "avoidance_refuge") {
       return [
-        "That makes it sound like work is doing more than giving you something to build.",
-        "If it keeps you from thinking about other things, it may also be acting like a refuge.",
-        "What are the things work is helping you avoid right now?",
+        "I think work is doing more than giving you something to build.",
+        "The real question is what it's protecting you from.",
+        "My read is we're no longer talking about how to work less.",
       ];
     }
 
     if (truth.pattern === "control_refuge") {
       return [
         "That sense of usefulness and control matters.",
-        "If work gives you both of those, I can see why it would be hard to loosen your grip on it.",
-        "What do you think work is protecting you from right now?",
+        "I think the real question is what work gives you that you can't find anywhere else.",
+        "My read is this isn't really about hours.",
       ];
     }
 
     return [
-      "Work seems to be carrying more weight than usual here.",
-      "Before we talk about what to change, I want to understand what work is doing for you right now.",
-      "What feels most true about that tradeoff?",
+      "Work appears to be winning the competition for time right now.",
+      "I think the real question isn't how many hours — it's what those hours are doing for you.",
+      "My read is there's more here than a schedule problem.",
     ];
   }
 
@@ -105,9 +131,9 @@ function renderCuriousCompanion({ truth }) {
 
   if (truth.domain === "retirement" && truth.concern === "identity_transition") {
     return [
-      "That sounds closer to identity than scheduling.",
-      "I don't want to answer it too quickly.",
-      "What feels hardest about imagining life without work?",
+      "I think that changes something.",
+      "The real question isn't whether to retire — it's what you want work to stop being.",
+      "My read is 'I still want to build' and 'I want to retire' aren't the same conversation.",
     ];
   }
 
@@ -130,16 +156,17 @@ function renderCuriousCompanion({ truth }) {
   if (truth.domain === "publishing" && truth.decision === "publishing_decision") {
     if (truth.pattern === "fear_of_emptiness") {
       return [
-        "That sounds like the fear is less about discipline and more about what the book might reveal.",
-        "If writing it feels like a test of whether you still have something to say, I can see why the question would carry weight.",
-        "What do you think the book would mean about you if the words did not come the way you hope?",
+        "That's not a publishing problem.",
+        "That's a vulnerability problem wearing a publishing jacket.",
+        "My read is the fear of having nothing left to say is less about output and more about significance.",
+        "Those are different questions.",
       ];
     }
 
     return [
-      "That sounds worth taking seriously.",
+      "That doesn't sound like a project question yet.",
       "Writing questions are rarely just about output.",
-      "What makes this book feel alive again right now?",
+      "My read is this is less about whether you can write another book and more about whether there's something left that needs to be said.",
     ];
   }
 

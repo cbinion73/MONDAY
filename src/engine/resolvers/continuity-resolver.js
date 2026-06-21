@@ -99,11 +99,17 @@ function resolveContinuity({ input, context = {} }) {
     }
   }
 
+  const retirementCompatibleDomain = !competingDomain ||
+    competingDomain === "retirement" ||
+    competingDomain === "family" ||
+    competingDomain === "work";
+
   if (
     !hints.significanceHint &&
     continuity.activeSignificance === "future_life_transition" &&
     isReflectiveContinuation(text) &&
-    !isExplicitRelationshipShift(text)
+    !isExplicitRelationshipShift(text) &&
+    retirementCompatibleDomain
   ) {
     hints.significanceHint = continuity.activeSignificance;
     threadInheritanceConfidence = Math.max(threadInheritanceConfidence, 0.82);
@@ -195,6 +201,9 @@ function inferThreadKey(significance) {
 }
 
 function inferSignificanceThread(significance, classification) {
+  if (significance === "summer_camp_mission_readiness") {
+    return "summer_camp_mission_readiness";
+  }
   if (significance === "transportation_risk_reduction") {
     return "summer_camp_transportation";
   }
@@ -289,6 +298,7 @@ function detectCompetingDomain(text) {
 function shouldBreakThread(currentThread, competingDomain) {
   const threadDomainMap = {
     book_wound: "publishing",
+    summer_camp_mission_readiness: "summer-camp",
     summer_camp_transportation: "summer-camp",
   };
 
@@ -350,6 +360,16 @@ function isReflectiveContinuation(text) {
     "it makes me ",
     "it feels ",
     "what feels hardest is ",
+    "every time i ",
+    "every time ",
+    "that's because ",
+    "that is because ",
+    "the problem is ",
+    "the thing is ",
+    "the issue is ",
+    "whenever i ",
+    "when i ",
+    "what happens is ",
   ];
 
   return starters.some((starter) => trimmed.startsWith(starter));

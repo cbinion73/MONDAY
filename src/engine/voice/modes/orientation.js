@@ -5,8 +5,8 @@ function renderOrientation({ truth }) {
   ) {
     return [
       "Summer Camp is in good shape.",
-      "Transportation is the only thing I'd still worry about.",
-      "If we close that, I'd consider the mission ready.",
+      "I think the real question is transportation — that's the only thing still open.",
+      "My read is if we close that, the mission is ready.",
     ];
   }
 
@@ -37,16 +37,24 @@ function renderOrientation({ truth }) {
   if (truth.domain === "faith" && truth.goal === "prayer_concern") {
     if (truth.pattern === "quiet_avoidance") {
       return [
-        "That sounds like the quiet itself may be part of what feels difficult.",
-        "If prayer means becoming still enough to notice what is going on in you, I can see why returning to it might feel costly.",
-        "I think the first step may be making a little room for honesty before trying to force consistency.",
+        "My read is this probably isn't about prayer yet.",
+        "I think the real question is what happens when you're still enough to notice what's actually going on.",
+        "That's the harder move.",
+      ];
+    }
+
+    if (truth.pattern === "fear_of_hearing") {
+      return [
+        "That changes the theory.",
+        "I think the real question is no longer about prayer.",
+        "My read is what you're describing is fear of what the silence might reveal.",
       ];
     }
 
     return [
       "Faith is asking for attention here.",
-      "You don't need to solve the whole season tonight.",
-      "If we can name what returning to prayer would need, that's enough to begin.",
+      "My read is that this probably isn't a discipline problem yet.",
+      "Sometimes prayer goes quiet because the soul is avoiding silence, not because faith disappeared.",
     ];
   }
 

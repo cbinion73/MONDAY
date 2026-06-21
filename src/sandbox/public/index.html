@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Monday Sandbox</title>
-    <link rel="stylesheet" href="/sandbox.css?v=8" />
+    <link rel="stylesheet" href="/sandbox.css?v=12" />
   </head>
   <body>
     <div class="shell">
@@ -30,6 +30,11 @@
             </select>
           </label>
           <button id="toggleInspector">Hide Inspector</button>
+          <button id="toggleTriage">Hide Triage</button>
+          <label>
+            <input type="checkbox" id="councilToggle" />
+            Council Mode
+          </label>
         </div>
       </header>
 
@@ -50,7 +55,40 @@
           <div class="status-label">Voice</div>
           <div id="statusVoice" class="status-value">Waiting…</div>
         </div>
+        <div class="status-card presence-card">
+          <div class="status-label">Presence</div>
+          <div class="presence-control">
+            <span class="presence-dot" id="presenceIndicator"></span>
+            <span id="presenceLabel" class="presence-label">Offline</span>
+            <span id="interruptibilityBadge" class="interruptibility-badge" style="display:none"></span>
+          </div>
+          <div id="presenceModeGroup" class="presence-mode-group">
+            <button id="presenceOff" type="button" class="presence-btn presence-active">Off</button>
+            <button id="presenceStandby" type="button" class="presence-btn">Standby</button>
+            <button id="presenceConversation" type="button" class="presence-btn">Conversation</button>
+          </div>
+        </div>
       </section>
+
+      <aside id="triageSidebar" class="triage-sidebar">
+        <div class="triage-header">
+          <h2>Triage</h2>
+          <button id="refreshTriage" type="button" class="triage-refresh" title="Refresh">↻</button>
+        </div>
+        <div class="triage-section">
+          <div class="triage-label">Significant Now</div>
+          <ul id="triageSignificantNow" class="triage-list"></ul>
+        </div>
+        <div class="triage-section">
+          <div class="triage-label">Watching</div>
+          <ul id="triageWatching" class="triage-list"></ul>
+        </div>
+        <div class="triage-section">
+          <div class="triage-label">Background</div>
+          <ul id="triageBackground" class="triage-list triage-list--muted"></ul>
+        </div>
+        <div id="triageEmpty" class="triage-empty">Daemon not running — triage unavailable</div>
+      </aside>
 
       <main class="layout">
         <section class="panel conversation-panel">
@@ -91,7 +129,150 @@
                 <h3>Learning Inspector</h3>
                 <p>What Monday has learned so far.</p>
               </div>
-              <div id="learningSummary" class="learning-empty">No learning state yet.</div>
+              <div class="review-card">
+            <div class="panel-header compact">
+              <h3>Mission Workspaces</h3>
+              <p>Six domain workspaces — memory, threads, working theory.</p>
+            </div>
+            <div class="review-actions">
+              <button id="refreshWorkspaces" type="button">Refresh</button>
+            </div>
+            <div id="workspaceList" class="workspace-list"></div>
+          </div>
+
+          <div class="review-card" id="missionEnginePanel">
+            <div class="panel-header compact">
+              <h3>Mission Engine</h3>
+              <p>Institutional memory — working theory, contradictions, opportunities.</p>
+            </div>
+            <div class="review-actions">
+              <button id="missionEngineRefresh" type="button">Refresh</button>
+            </div>
+            <div id="missionSuggestionBanner" class="mission-suggestion-banner" style="display:none"></div>
+            <div id="missionEngineList" class="mission-list"></div>
+            <div id="missionDetail" class="mission-detail" style="display:none"></div>
+            <div id="missionDocEditor" class="mission-doc-editor" style="display:none">
+              <div class="mission-doc-editor-header">
+                <span class="mission-doc-editor-title"></span>
+                <button id="missionDocSaveBtn" type="button">Save</button>
+                <button id="missionDocCloseBtn" type="button">✕</button>
+                <span class="mission-doc-editor-status"></span>
+              </div>
+              <textarea class="mission-doc-editor-textarea" rows="14"></textarea>
+            </div>
+            <div class="panel-header compact" style="margin-top:12px">
+              <h4 id="missionCreateForm">Create Mission</h4>
+            </div>
+            <div class="review-actions" style="flex-direction:column;gap:6px">
+              <input id="missionCreateTitle" type="text" placeholder="Mission title…" style="width:100%;padding:4px 6px;box-sizing:border-box" />
+              <input id="missionCreateDomain" type="text" placeholder="Domain (e.g. Retirement, Family)…" style="width:100%;padding:4px 6px;box-sizing:border-box" />
+              <select id="missionCreateType" style="width:100%;padding:4px 6px">
+                <option value="personal">Personal</option>
+                <option value="family">Family</option>
+                <option value="faith">Faith</option>
+                <option value="business">Business</option>
+                <option value="product">Product</option>
+                <option value="project">Project (Book/Creative)</option>
+              </select>
+              <textarea id="missionCreateSeed" rows="2" placeholder="Seed theory (optional)…" style="width:100%;padding:4px 6px;box-sizing:border-box;resize:vertical"></textarea>
+              <button id="missionCreateBtn" type="button">Create Mission</button>
+              <div id="missionCreateResult" style="font-size:0.8rem"></div>
+            </div>
+          </div>
+
+          <div class="review-card">
+            <div class="panel-header compact">
+              <h3>Skills Registry</h3>
+              <p>Closed allowlist — install skills per workspace, test execution, autonomy tier.</p>
+            </div>
+            <div class="review-actions">
+              <select id="skillsWorkspaceSelect">
+                <option value="">Select workspace…</option>
+                <option value="family">Family (🛡️ Steve)</option>
+                <option value="work">Work (🎯 Fury)</option>
+                <option value="faith">Faith (🌀 Strange)</option>
+                <option value="publishing">Publishing (✨ Wanda)</option>
+                <option value="retirement">Retirement (🔮 Vision)</option>
+                <option value="health">Health (⚡ Thor)</option>
+              </select>
+              <button id="loadSkillsBtn" type="button">Load Skills</button>
+            </div>
+            <div id="skillsPanel" class="skills-panel"></div>
+            <div class="panel-header compact" style="margin-top:12px">
+              <h4>Test Execute</h4>
+            </div>
+            <div class="review-actions">
+              <select id="skillExecSelect"><option value="">Select skill…</option></select>
+              <button id="skillExecBtn" type="button">Execute</button>
+            </div>
+            <pre id="skillExecResult" class="skill-exec-result" style="display:none"></pre>
+          </div>
+
+          <div id="modelInspector" class="model-inspector" style="display:none">
+            <div class="panel-header compact">
+              <h3>Model Router</h3>
+              <p>Which model was selected this turn and why.</p>
+            </div>
+            <div id="modelInspectorContent" class="model-inspector-content"></div>
+          </div>
+
+          <div class="review-card">
+            <div class="panel-header compact">
+              <h3>Obsidian Vault</h3>
+              <p>Monday's knowledge repository — bookshelf, not brain.</p>
+            </div>
+            <div class="review-actions" style="flex-wrap:wrap;gap:6px">
+              <button id="obsidianRefreshBtn" type="button">Refresh</button>
+              <button id="obsidianInitBtn" type="button">Init Vault</button>
+              <button id="obsidianJournalBtn" type="button">Write Journal</button>
+            </div>
+            <div id="obsidianStatus" class="obsidian-status"></div>
+            <div class="panel-header compact" style="margin-top:10px">
+              <h4>Mission Docs</h4>
+            </div>
+            <div class="review-actions" style="flex-wrap:wrap;gap:6px">
+              <select id="obsidianMissionSelect">
+                <option value="">Select mission…</option>
+                <option value="retirement">Retirement</option>
+                <option value="family">Family</option>
+                <option value="faith">Faith</option>
+                <option value="health">Health</option>
+                <option value="work">Work</option>
+                <option value="publishing">Publishing</option>
+              </select>
+              <button id="obsidianMissionInitBtn" type="button">Init Docs</button>
+              <button id="obsidianMissionViewBtn" type="button">View Docs</button>
+            </div>
+            <div id="obsidianMissionDocs" class="obsidian-mission-docs"></div>
+            <div class="panel-header compact" style="margin-top:10px">
+              <h4>Create Note</h4>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">
+              <input id="obsidianNoteTitle" type="text" placeholder="Note title…" style="width:100%;padding:4px 6px;box-sizing:border-box" />
+              <textarea id="obsidianNoteContent" rows="3" placeholder="Note content…" style="width:100%;padding:4px 6px;box-sizing:border-box;resize:vertical;min-height:60px"></textarea>
+              <button id="obsidianNoteCreateBtn" type="button">Create in Inbox</button>
+            </div>
+            <div class="panel-header compact" style="margin-top:10px">
+              <h4>Recent Notes</h4>
+            </div>
+            <div id="obsidianRecentNotes" class="obsidian-recent-notes"></div>
+            <div id="obsidianNoteViewer" class="obsidian-note-viewer" style="display:none">
+              <div class="obsidian-note-viewer-header">
+                <span id="obsidianNoteViewerTitle"></span>
+                <button id="obsidianNoteViewerClose" type="button">✕</button>
+              </div>
+              <pre id="obsidianNoteViewerContent"></pre>
+            </div>
+          </div>
+
+          <div id="councilReadsPanel" class="council-panel" style="display:none">
+            <div class="panel-header compact">
+              <h3>Council Reads</h3>
+              <p>What each agent brought to Monday before she spoke.</p>
+            </div>
+            <div id="councilReadsList" class="council-reads-list"></div>
+          </div>
+          <div id="learningSummary" class="learning-empty">No learning state yet.</div>
               <div id="learningDecision" class="learning-empty">No turn-level learning decision yet.</div>
               <div id="learningExamples" class="learning-list"></div>
               <div id="learningRecoveries" class="learning-list"></div>
@@ -140,6 +321,6 @@
       </main>
     </div>
 
-    <script src="/sandbox.js?v=10" type="module"></script>
+    <script src="/sandbox.js?v=20" type="module"></script>
   </body>
 </html>

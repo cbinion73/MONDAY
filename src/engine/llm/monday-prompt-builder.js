@@ -74,6 +74,7 @@ function buildConversationPrompt({ result, input, history, personalContext = {} 
     "Do not default to observe, question.",
     "A question is a last resort after thinking has been exhausted, not the opening move.",
     "Use conversationHypothesis as the working theory of what may actually be happening.",
+    "If priorWorkingTheory is present in the payload, treat it as Monday's established read going into this turn. Either advance it, complicate it, or replace it with something better. Do not ignore it and do not repeat it unchanged without adding something new.",
     "Maintain a working theory at all times: what is actually being discussed, what matters most, what tensions exist, what contradictions exist, what is changing, and what theory best explains the conversation.",
     "Every new message must update the working theory.",
     "Do not respond to individual statements in isolation. Respond to the evolving theory.",
@@ -124,13 +125,57 @@ function buildConversationPrompt({ result, input, history, personalContext = {} 
     '{"reply":"string","followUp":"string or null","suggestedDomain":"string or null","suggestedClassification":"string or null","confidence":"low|medium|high"}',
   ].join(" ");
 
+  const turnConstraints = [];
+
+  // ── Skill evidence (JARVIS loop) — injected BEFORE hypothesis ──────────────
+  // Skill results are evidence, not answers. Surface the pattern, not the JSON.
+  if (userPayload.skillContext) {
+    const sc = userPayload.skillContext;
+    const lines = ["LIVE DATA GATHERED THIS TURN:"];
+    for (const skill of sc.skills || []) {
+      lines.push(`[${skill.skillId}] I checked this because ${skill.reason}. (confidence: ${skill.confidence})`);
+      for (const obs of skill.observations || []) lines.push(`  — ${obs}`);
+      for (const pat of skill.patterns || []) lines.push(`  Pattern: ${pat}`);
+    }
+    if (sc.theoryEvidence) {
+      lines.push("", "EVIDENCE UPDATE:", sc.theoryEvidence);
+    }
+    lines.push(
+      "",
+      "INSTRUCTION: Answer using this live data as evidence. Do not answer from memory when real data is available.",
+      "The skill result is evidence, not the answer — surface the pattern or insight the data reveals.",
+      "Briefly mention that you checked the relevant source (e.g. 'I pulled your calendar...' or 'Looking at your email...').",
+      "Keep that mention natural and brief — one clause, not a headline.",
+    );
+    turnConstraints.push(lines.join("\n"));
+  }
+
+  if (userPayload.conversationHypothesis) {
+    turnConstraints.push(
+      `WORKING HYPOTHESIS THIS TURN: ${userPayload.conversationHypothesis}`,
+      `Your reply must either lead with this hypothesis, advance it, or explicitly replace it with a better one.`,
+      `Do NOT open with coaching phrases like "let's focus on", "small sustainable changes", or "you can do this".`,
+    );
+  }
+  if (userPayload.recommendationMode?.stage === "recommend") {
+    turnConstraints.push(
+      `RECOMMENDATION REQUIRED: This turn calls for a direct next move, not just exploration.`,
+      `Shape: hypothesis → concrete recommendation → optional question.`,
+    );
+  }
+
+  const userContent = turnConstraints.length > 0
+    ? `${turnConstraints.join("\n\n")}\n\nCONTEXT:\n${JSON.stringify(userPayload, null, 2)}`
+    : JSON.stringify(userPayload, null, 2);
+
   return [
     { role: "system", content: system },
-    { role: "user", content: JSON.stringify(userPayload, null, 2) },
+    { role: "user", content: userContent },
   ];
 }
 
 function buildConversationPayload({ result, input, history, personalContext = {} }) {
+  const priorWorkingTheory = personalContext.priorWorkingTheory || null;
   const trimmedHistory = (history || []).slice(-6).map((entry) => ({
     user: entry.user,
     monday: entry.monday,
@@ -163,6 +208,7 @@ function buildConversationPayload({ result, input, history, personalContext = {}
     history: trimmedHistory,
     input,
     progressionContext,
+    priorWorkingTheory,
   });
   const conversationHypothesis = buildConversationHypothesis({
     result,
@@ -170,6 +216,7 @@ function buildConversationPayload({ result, input, history, personalContext = {}
     history: trimmedHistory,
     conversationSynthesis,
     progressionContext,
+    priorWorkingTheory,
   });
   const theoryRevision = buildTheoryRevision({
     result,
@@ -177,6 +224,7 @@ function buildConversationPayload({ result, input, history, personalContext = {}
     history: trimmedHistory,
     conversationHypothesis,
     conversationSynthesis,
+    priorWorkingTheory,
   });
   const recommendationMode = buildRecommendationMode({
     result,
@@ -230,6 +278,8 @@ function buildConversationPayload({ result, input, history, personalContext = {}
     relevantThread: personalContext.relevantThread || null,
     missionThreads: personalContext.missionThreads || [],
     recentCaptures: personalContext.recentCaptures || [],
+    priorWorkingTheory: priorWorkingTheory || null,
+    skillContext: buildSkillContext(personalContext.skillResults || [], personalContext.theoryEvidence || null),
   };
 }
 
@@ -274,6 +324,7 @@ function buildConversationSynthesis({
   history,
   input,
   progressionContext,
+  priorWorkingTheory,
 }) {
   const significance = result.finalState?.significance;
   const text = String(input || "").toLowerCase();
@@ -344,6 +395,88 @@ function buildConversationSynthesis({
     );
   }
 
+  if (
+    significance === "weight_loss_goal" ||
+    significance === "energy_decline" ||
+    significance === "exercise_commitment"
+  ) {
+    synthesis.push(
+      "Health appears to be asking for a sustainable shift rather than another restart or an all-or-nothing reset."
+    );
+    if (
+      allUserText.includes("everything") ||
+      allUserText.includes("restart") ||
+      allUserText.includes("all at once") ||
+      allUserText.includes("change everything")
+    ) {
+      synthesis.push(
+        "The pattern of trying to change everything at once may be the real obstacle more than motivation or knowledge."
+      );
+    }
+  }
+
+  if (
+    significance === "prayer_concern" ||
+    significance === "spiritual_drift" ||
+    significance === "calling_question"
+  ) {
+    synthesis.push(
+      "The faith thread appears to involve more than habit or schedule."
+    );
+    if (
+      allUserText.includes("quiet") ||
+      allUserText.includes("still") ||
+      allUserText.includes("slow down") ||
+      allUserText.includes("silence") ||
+      allUserText.includes("avoid")
+    ) {
+      synthesis.push(
+        "Prayer may be difficult less because of distance from God and more because of what quiet requires noticing."
+      );
+    }
+  }
+
+  if (
+    significance === "declared_family_value" ||
+    significance === "family_time_tension"
+  ) {
+    synthesis.push(
+      "Family is stated as the priority, but the thread may be asking whether attention is actually following that declaration."
+    );
+    if (
+      allUserText.includes("work") ||
+      allUserText.includes("time") ||
+      allUserText.includes("hours") ||
+      allUserText.includes("busy")
+    ) {
+      synthesis.push(
+        "The gap between what is said to matter most and where time actually goes may be the real question here."
+      );
+    }
+  }
+
+  if (
+    significance === "book_project_quiet_significance" ||
+    significance === "wounded_book_significance" ||
+    significance === "creative_drift"
+  ) {
+    synthesis.push(
+      "The book thread still appears to carry significance even if it has gone quiet or become painful to approach."
+    );
+    if (
+      allUserText.includes("shame") ||
+      allUserText.includes("ashamed") ||
+      allUserText.includes("hurt") ||
+      allUserText.includes("tired") ||
+      allUserText.includes("failed") ||
+      allUserText.includes("gave up")
+    ) {
+      synthesis.push(
+        "What may have begun as a creative question appears to have become a question about identity and whether the wound still marks what matters."
+      );
+    }
+  }
+
   if (progressionContext?.newInformation && significance === "future_life_transition") {
     synthesis.push(`Latest shift: ${progressionContext.newInformation}`);
   }
@@ -357,6 +490,7 @@ function buildConversationHypothesis({
   history,
   conversationSynthesis,
   progressionContext,
+  priorWorkingTheory,
 }) {
   const significance = result.finalState?.significance;
   const allUserText = [
@@ -388,6 +522,57 @@ function buildConversationHypothesis({
     return "My guess is work may be doing more than producing output. It may be providing identity, control, usefulness, and distance from something harder to face.";
   }
 
+  if (
+    significance === "weight_loss_goal" ||
+    significance === "energy_decline" ||
+    significance === "exercise_commitment"
+  ) {
+    if (
+      allUserText.includes("everything") ||
+      allUserText.includes("restart") ||
+      allUserText.includes("all at once") ||
+      allUserText.includes("change everything")
+    ) {
+      return "My guess is the real obstacle may not be motivation but scope. Trying to change everything at once tends to produce restarts more than it produces results.";
+    }
+    return "This sounds less like a willpower problem and more like a question of what a sustainable approach would actually look like in this season of life.";
+  }
+
+  if (
+    significance === "prayer_concern" ||
+    significance === "spiritual_drift" ||
+    significance === "calling_question"
+  ) {
+    if (
+      allUserText.includes("quiet") ||
+      allUserText.includes("still") ||
+      allUserText.includes("silence") ||
+      allUserText.includes("avoid")
+    ) {
+      return "My guess is prayer has become difficult less because of doubt and more because of what quiet would require facing.";
+    }
+    return "This sounds less like a discipline failure and more like a question about what an honest return would actually require right now.";
+  }
+
+  if (
+    significance === "declared_family_value" ||
+    significance === "family_time_tension"
+  ) {
+    return "My guess is this is less about whether family matters and more about whether your attention is actually tracking with that value.";
+  }
+
+  if (significance === "wounded_book_significance" || significance === "book_project_quiet_significance") {
+    return "If the book still hurts to think about, it may still matter. Things we have truly let go tend to go quiet without the sting.";
+  }
+
+  if (significance === "burnout_risk") {
+    return "This sounds less like a pace problem and more like a question of whether the work still feels like it is going somewhere that matters.";
+  }
+
+  if (significance === "career_decision") {
+    return "My guess is this is less about the specific option in front of you and more about what kind of work you still want to be doing.";
+  }
+
   if (conversationSynthesis?.length) {
     const first = conversationSynthesis[0];
     return `One possibility is: ${first.charAt(0).toLowerCase()}${first.slice(1)}`;
@@ -395,6 +580,10 @@ function buildConversationHypothesis({
 
   if (progressionContext?.newInformation) {
     return `It sounds like the latest shift may be this: ${progressionContext.newInformation}`;
+  }
+
+  if (priorWorkingTheory?.statement) {
+    return priorWorkingTheory.statement;
   }
 
   return null;
@@ -406,6 +595,7 @@ function buildTheoryRevision({
   history,
   conversationHypothesis,
   conversationSynthesis,
+  priorWorkingTheory,
 }) {
   const significance = result.finalState?.significance;
   const allUserText = [
@@ -502,6 +692,22 @@ function buildTheoryRevision({
     };
   }
 
+  if (priorWorkingTheory?.statement && conversationHypothesis) {
+    return {
+      status: "reinforce",
+      reason: "Latest input continues the established thread without substantially changing the theory.",
+      revisedTheory: conversationHypothesis,
+    };
+  }
+
+  if (priorWorkingTheory?.statement && !conversationHypothesis) {
+    return {
+      status: "steady",
+      reason: "No new hypothesis generated; carrying prior working theory forward.",
+      revisedTheory: priorWorkingTheory.statement,
+    };
+  }
+
   return {
     status: "steady",
     reason: "No strong theory revision signal detected.",
@@ -562,7 +768,20 @@ function buildRecommendationMode({ result, conversationHypothesis, theoryRevisio
     significance === "future_life_transition" ||
     significance === "work_tradeoff" ||
     significance === "publishing_decision" ||
-    significance === "relationship_concern"
+    significance === "relationship_concern" ||
+    significance === "weight_loss_goal" ||
+    significance === "energy_decline" ||
+    significance === "exercise_commitment" ||
+    significance === "prayer_concern" ||
+    significance === "spiritual_drift" ||
+    significance === "calling_question" ||
+    significance === "declared_family_value" ||
+    significance === "family_time_tension" ||
+    significance === "burnout_risk" ||
+    significance === "career_decision" ||
+    significance === "wounded_book_significance" ||
+    significance === "book_project_quiet_significance" ||
+    significance === "creative_drift"
   ) {
     return {
       stage: "recommend",
@@ -796,6 +1015,24 @@ function buildTurnRequirement({
   return requirement.join(" ");
 }
 
+// ── Skill context builder ─────────────────────────────────────────────────────
+
+function buildSkillContext(skillResults, theoryEvidence) {
+  if (!skillResults || skillResults.length === 0) return null;
+  return {
+    skills: skillResults.map((s) => ({
+      skillId: s.skillId,
+      reason: s.reason || "",
+      confidence: s.confidence || 0,
+      observations: s.observations || [],
+      patterns: s.patterns || [],
+      summary: s.summary || "",
+    })),
+    theoryEvidence: theoryEvidence || null,
+    skillIds: skillResults.map((s) => s.skillId),
+  };
+}
+
 function buildDailyBriefPrompt({
   missions = [],
   captures = [],
@@ -831,8 +1068,28 @@ function buildDailyBriefPrompt({
   ];
 }
 
+function extractWorkingTheory(payload, priorWorkingTheory) {
+  if (!payload) return priorWorkingTheory || null;
+
+  const statement =
+    payload.theoryRevision?.revisedTheory ||
+    payload.conversationHypothesis ||
+    priorWorkingTheory?.statement ||
+    null;
+
+  if (!statement) return null;
+
+  return {
+    statement,
+    status: payload.theoryRevision?.status || "steady",
+    significance: payload.engineState?.significance || null,
+    turnCount: (priorWorkingTheory?.turnCount || 0) + 1,
+  };
+}
+
 module.exports = {
   buildConversationPrompt,
   buildConversationPayload,
   buildDailyBriefPrompt,
+  extractWorkingTheory,
 };
