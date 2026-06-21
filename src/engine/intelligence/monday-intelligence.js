@@ -20,6 +20,7 @@ const {
   validateDailyBriefResponse,
 } = require("../llm/response-validator");
 const { extractCaptureText } = require("../personal/personal-store");
+const { enrichPersonalContext } = require("../memory/personal-context");
 
 const DAILY_BRIEF_CACHE_TTL_MS = Number(
   process.env.MONDAY_DAILY_BRIEF_CACHE_TTL_MS || 18 * 60 * 60 * 1000
@@ -35,6 +36,12 @@ async function applyMondayIntelligence({
   history = [],
   personalContext = {},
 }) {
+  // Enrich with vault memory recall before building the prompt.
+  // Graceful — returns original personalContext if vault is unavailable or times out.
+  personalContext = await enrichPersonalContext(input, personalContext, {
+    domain: result.truth?.domain || result.finalState?.candidateDomain || null,
+  });
+
   const priorWorkingTheory = personalContext.priorWorkingTheory || null;
 
   // Always compute working theory so it persists regardless of Ollama availability.
