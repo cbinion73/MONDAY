@@ -37,6 +37,29 @@ function validateConversationResponse(payload) {
       payload.confidence === "high"
         ? payload.confidence
         : "medium",
+    capturedDecision: _validateDecision(payload.capturedDecision),
+    detectedContradiction: _validateContradiction(payload.detectedContradiction),
+  };
+}
+
+function _validateDecision(d) {
+  if (!d || typeof d !== "object") return null;
+  if (typeof d.title !== "string" || !d.title.trim()) return null;
+  return {
+    title: d.title.trim(),
+    domain: typeof d.domain === "string" ? d.domain.trim() : null,
+    reason: typeof d.reason === "string" ? d.reason.trim() : null,
+  };
+}
+
+function _validateContradiction(c) {
+  if (!c || typeof c !== "object") return null;
+  if (typeof c.declaredValue !== "string" || !c.declaredValue.trim()) return null;
+  if (typeof c.observedPattern !== "string" || !c.observedPattern.trim()) return null;
+  return {
+    declaredValue: c.declaredValue.trim(),
+    observedPattern: c.observedPattern.trim(),
+    domain: typeof c.domain === "string" ? c.domain.trim() : null,
   };
 }
 

@@ -47,10 +47,6 @@ function readBody(req) {
   });
 }
 
-function matchRoute(method, pathname, expectedMethod, expectedPath) {
-  return req.method === expectedMethod && pathname === expectedPath;
-}
-
 // ── Route Handlers ────────────────────────────────────────────────────────────
 
 async function handleGenericMessage(req, res, rawBody) {
@@ -155,6 +151,21 @@ async function handleSlack(req, res, rawBody) {
   }
 }
 
+async function handleCosts(req, res) {
+  const auth = req.headers["authorization"] || "";
+  const token = auth.replace(/^Bearer\s+/i, "").trim();
+  if (GATEWAY_SECRET && token !== GATEWAY_SECRET) {
+    return sendJson(res, 401, { error: "unauthorized" });
+  }
+  const { getCostSummary, getRecentCalls } = require("../db/cost-tracker");
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  if (url.searchParams.get("recent")) {
+    const limit = Math.min(Number(url.searchParams.get("limit") || 20), 200);
+    return sendJson(res, 200, { calls: getRecentCalls({ limit }) });
+  }
+  sendJson(res, 200, getCostSummary());
+}
+
 async function handleHealth(req, res) {
   const { getJobs } = require("../daemon/scheduler");
   sendJson(res, 200, {
@@ -226,6 +237,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "POST" && pathname === "/gateway/reset") {
       return handleReset(req, res, rawBody);
+    }
+    if (req.method === "GET" && pathname === "/gateway/costs") {
+      return handleCosts(req, res);
     }
 
     res.writeHead(404);

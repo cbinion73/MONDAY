@@ -136,11 +136,11 @@ async function runResearchWorker({ query, context = null }) {
     for (let i = 0; i < MAX_HOPS; i++) {
       const prompt = buildReActPrompt(query, context, completedHops);
       const response = await runWithTimeout(
-        chatWithLLM({ messages: prompt, temperature: 0.4 }),
+        chatWithLLM({ messages: prompt, temperature: 0.4, tier: "background" }),
         WORKER_TIMEOUT_MS
       );
 
-      const text = typeof response === "string" ? response : response?.reply || "";
+      const text = typeof response === "string" ? response : response?.content || "";
       const { hop, synthesis } = parseReActResponse(text);
 
       if (hop) completedHops.push(hop);

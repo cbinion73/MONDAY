@@ -12,6 +12,9 @@
 //   - Skips enrichment when memoryRecall is already populated (caller-provided).
 
 const retrieval = require("./retrieval");
+const { getWorkingTheories } = require("../db/state-store");
+const { getDecisions } = require("../db/knowledge-store");
+const { nextSurfacingItem } = require("../db/surfacing-store");
 
 const DEFAULT_LIMIT        = 5;
 const RETRIEVAL_TIMEOUT_MS = 3000;
@@ -27,6 +30,16 @@ const RETRIEVAL_TIMEOUT_MS = 3000;
  * @returns {Promise<object>}       personalContext (possibly with memoryRecall added)
  */
 async function enrichPersonalContext(query, personalContext = {}, { domain = null, limit = DEFAULT_LIMIT } = {}) {
+  // Always load working theories, recent decisions, and any queued surfacing item.
+  if (!personalContext.workingTheories) {
+    personalContext = {
+      ...personalContext,
+      workingTheories:  _loadWorkingTheories(),
+      recentDecisions:  _loadRecentDecisions(),
+      surfacingItem:    _loadSurfacingItem(),
+    };
+  }
+
   if (!query || !query.trim()) return personalContext;
   if (personalContext.captureIntent) return personalContext;
   if (personalContext.memoryRecall && personalContext.memoryRecall.length > 0) return personalContext;
@@ -65,6 +78,37 @@ function _formatResult(r) {
   const excerpt = String(r.snippet || "").trim().slice(0, 200);
   const table  = r.domain || "vault";
   return { table, title, excerpt };
+}
+
+// ── Working theory loader ─────────────────────────────────────────────────────
+
+function _loadWorkingTheories() {
+  try {
+    return getWorkingTheories();
+  } catch {
+    return {};
+  }
+}
+
+function _loadSurfacingItem() {
+  try {
+    return nextSurfacingItem(); // returns null if queue is empty
+  } catch {
+    return null;
+  }
+}
+
+function _loadRecentDecisions() {
+  try {
+    return getDecisions({ limit: 10 }).map(d => ({
+      title:     d.title,
+      domain:    d.domain,
+      reason:    d.reason,
+      decidedAt: d.decidedAt,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 // ── Domain inference ──────────────────────────────────────────────────────────

@@ -5,6 +5,8 @@
 
 const { chatWithLLM } = require("../llm/llm-router");
 const { checkRipeness } = require("./agent-contracts");
+const { writeDeliverable } = require("../db/deliverable-store");
+const { runDeliverableReview } = require("./review-worker");
 
 const SYNTHESIS_SYSTEM_PROMPT = `You are a synthesis worker inside Monday, a personal AI for Chris Binion.
 
@@ -138,8 +140,8 @@ async function runSynthesisWorker({ threads = [], theories = {}, captures = [], 
   const prompt = buildSynthesisPrompt({ threads, theories, captures, triggerLoop });
 
   try {
-    const response = await chatWithLLM({ messages: prompt, temperature: 0.5 });
-    const text = typeof response === "string" ? response : response?.reply || "";
+    const response = await chatWithLLM({ messages: prompt, temperature: 0.5, tier: "background" });
+    const text = typeof response === "string" ? response : response?.content || "";
     const parsed = parseSynthesisResponse(text);
 
     if (!parsed) return buildFallbackSynthesis(threads, theories);
@@ -150,18 +152,63 @@ async function runSynthesisWorker({ threads = [], theories = {}, captures = [], 
       return passes;
     });
 
-    const shouldSurface = parsed.shouldSurface && gatedObservations.length > 0;
-
-    return {
+    const result = {
       observations: parsed.observations || [],
       theoryRevisions: parsed.theoryRevisions || [],
-      shouldSurface,
-      surfacePayload: shouldSurface ? parsed.surfacePayload : null,
+      shouldSurface: parsed.shouldSurface && gatedObservations.length > 0,
+      surfacePayload: parsed.shouldSurface && gatedObservations.length > 0 ? parsed.surfacePayload : null,
     };
+
+    // Write the deliverable — permanent record in Obsidian/deliverables folder
+    // Monday's review layer decides what (if anything) reaches Chris
+    const deliverableContent = buildDeliverableMarkdown(parsed, gatedObservations, triggerLoop);
+    const { filePath } = writeDeliverable({
+      source:     "synthesis",
+      domain:     null, // cross-domain
+      title:      `Synthesis — ${triggerLoop} loop`,
+      content:    deliverableContent,
+      confidence: gatedObservations.length > 0 ? 0.75 : 0.4,
+    });
+
+    // Review layer runs after the write — it decides surfacing, not the worker
+    runDeliverableReview({ filePath, source: "synthesis" }).catch(err =>
+      console.error("[synthesis-worker] review error:", err.message)
+    );
+
+    return result;
   } catch (err) {
     console.error("[synthesis-worker] error:", err.message);
     return buildFallbackSynthesis(threads, theories);
   }
+}
+
+function buildDeliverableMarkdown(parsed, gatedObservations, triggerLoop) {
+  const sections = [];
+
+  if ((parsed.observations || []).length > 0) {
+    sections.push("## Observations\n");
+    for (const obs of parsed.observations) {
+      const gated = gatedObservations.find(g => g.domain === obs.domain && g.observation === obs.observation);
+      sections.push(`### ${obs.domain} (${obs.confidence}, ${obs.occurrences || 1} occurrence(s)${gated ? "" : " — below ripeness threshold"})\n`);
+      sections.push(obs.observation + "\n");
+    }
+  }
+
+  if ((parsed.theoryRevisions || []).length > 0) {
+    sections.push("## Theory Revisions\n");
+    for (const rev of parsed.theoryRevisions) {
+      sections.push(`### ${rev.domain}\n`);
+      sections.push(`**Was:** ${rev.oldTheory}\n\n**Now:** ${rev.newTheory}\n\n**Reason:** ${rev.reason}\n`);
+    }
+  }
+
+  if (parsed.surfacePayload) {
+    sections.push(`## Surface Candidate\n\n${parsed.surfacePayload}\n`);
+  }
+
+  sections.push(`## Metadata\n\n- Trigger loop: ${triggerLoop}\n- Gated observations: ${gatedObservations.length}/${(parsed.observations || []).length}\n`);
+
+  return sections.join("\n");
 }
 
 module.exports = { runSynthesisWorker };

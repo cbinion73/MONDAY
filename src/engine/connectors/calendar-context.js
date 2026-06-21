@@ -123,11 +123,32 @@ function getCalendarSummary(options = {}) {
   };
 }
 
+// Merge events from one source into the store without clobbering other sources.
+// Removes all existing events tagged source === options.source, then adds the new ones.
+function mergeCalendarEvents(events = [], options = {}) {
+  const source = options.source || "manual";
+  const store = readCalendarStore();
+
+  const kept = store.events.filter((e) => e.source !== source);
+  const incoming = (events || [])
+    .map((e) => normalizeEvent({ ...e, source }))
+    .filter((e) => e.startAt);
+
+  const merged = [...kept, ...incoming].sort(
+    (a, b) => Date.parse(a.startAt) - Date.parse(b.startAt)
+  );
+
+  const sources = [...new Set(merged.map((e) => e.source))];
+  writeCalendarStore({ source: sources.length === 1 ? sources[0] : "multi", events: merged });
+  return { source, added: incoming.length, total: merged.length };
+}
+
 module.exports = {
   clearCalendarEvents,
   getCalendarSummary,
   getUpcomingEvents,
   importCalendarEvents,
+  mergeCalendarEvents,
   readCalendarStore,
   getDataDir,
 };

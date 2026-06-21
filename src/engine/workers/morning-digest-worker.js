@@ -22,6 +22,7 @@ const {
 } = require("../connectors/financial-context");
 const { runMemoryWorker } = require("./memory-worker");
 const store = require("../persistence/state-store");
+const { enqueueSurfacing, pruneExpired } = require("../db/surfacing-store");
 
 // Significance filter: only pass through items that genuinely deserve attention.
 // Mirrors Monday doctrine: significance over urgency.
@@ -125,6 +126,24 @@ async function runMorningDigest() {
       briefSource: brief.source,
       triageItemCount: mergedTriage.significantNow.length + mergedTriage.watching.length,
     });
+
+    // Queue the morning brief as a proactive surfacing item for the first conversation turn.
+    pruneExpired();
+    if (brief.brief) {
+      const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+      const payload = `Good morning, boss. It's ${today}. ${brief.brief}${
+        mergedTriage.significantNow.length > 0
+          ? " Here's what needs attention: " + mergedTriage.significantNow.map(i => i.label).join("; ") + "."
+          : ""
+      }`;
+      enqueueSurfacing({
+        source:     "morning-digest",
+        payload,
+        confidence: 0.8,
+        priority:   1, // highest priority — morning brief always goes first
+        ttlHours:   12,
+      });
+    }
 
     // Deliver via iMessage if configured
     if (process.env.MONDAY_IMESSAGE_PHONE) {

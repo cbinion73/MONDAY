@@ -39,8 +39,8 @@ Return JSON only.`,
   ];
 
   try {
-    const response = await chatWithLLM({ messages: prompt, temperature: 0.3 });
-    const text = typeof response === "string" ? response : response?.reply || "";
+    const response = await chatWithLLM({ messages: prompt, temperature: 0.3, tier: "background" });
+    const text = typeof response === "string" ? response : response?.content || "";
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("No JSON in plan response");
     return JSON.parse(jsonMatch[0]);
@@ -131,8 +131,8 @@ Write Monday's response. Direct, short, no coaching language. Lead with the usef
   ];
 
   try {
-    const response = await chatWithLLM({ messages: prompt, temperature: 0.7 });
-    return typeof response === "string" ? response : response?.reply || "";
+    const response = await chatWithLLM({ messages: prompt, temperature: 0.7, tier: "background" });
+    return typeof response === "string" ? response : response?.content || "";
   } catch {
     // Fallback: use best research finding
     const researchResult = Object.values(taskResults).find((r) => r.recommendation);

@@ -6,11 +6,13 @@ const {
   DEFAULT_BASE_URL,
   DEFAULT_TIMEOUT_MS,
 } = require("../llm/ollama-provider");
-const { chatWithLLM, activeProvider } = require("../llm/llm-router");
+const { chatWithLLM, chatWithBuffer, BUFFER_MODE, activeProvider } = require("../llm/llm-router");
+const { classifyIntent } = require("../llm/intent-classifier");
 const { routeModel } = require("../llm/model-router");
 const {
   buildConversationPrompt,
   buildConversationPayload,
+  buildLeanPrompt,
   buildDailyBriefPrompt,
   extractWorkingTheory,
 } = require("../llm/monday-prompt-builder");
@@ -21,6 +23,9 @@ const {
 } = require("../llm/response-validator");
 const { extractCaptureText } = require("../personal/personal-store");
 const { enrichPersonalContext } = require("../memory/personal-context");
+const { setWorkingTheory, getWorkingTheory } = require("../db/state-store");
+const { addDecision, addContradiction } = require("../db/knowledge-store");
+const { enqueueSurfacing, markSurfaced } = require("../db/surfacing-store");
 
 const DAILY_BRIEF_CACHE_TTL_MS = Number(
   process.env.MONDAY_DAILY_BRIEF_CACHE_TTL_MS || 18 * 60 * 60 * 1000
@@ -48,12 +53,21 @@ async function applyMondayIntelligence({
   const promptPayload = buildConversationPayload({ result, input, history, personalContext });
   const workingTheory = extractWorkingTheory(promptPayload, priorWorkingTheory);
 
+  // If engine couldn't classify, ask nano what type of message this is.
+  // The intent type then feeds into routeModel so the right tier is selected.
+  let intentClassification = null;
+  if (result.finalState?.classificationFallback) {
+    intentClassification = await classifyIntent(input);
+  }
+
   // Route to the right model — computed early so all return paths carry it.
   const modelDecision = routeModel({
     domain: result.truth?.domain || result.finalState?.candidateDomain || null,
     significance: result.finalState?.significance || null,
     identityProximity: result.finalState?.identityProximity || null,
     woundRisk: result.finalState?.woundRisk || null,
+    classificationFallback: result.finalState?.classificationFallback || false,
+    intentType: intentClassification?.type || null,
     input,
   });
 
@@ -85,11 +99,15 @@ async function applyMondayIntelligence({
     input,
     history,
     personalContext,
+    tier: modelDecision.tier,
   });
+  const leanMessages = BUFFER_MODE && modelDecision.tier === "conversation"
+    ? buildLeanPrompt({ result, input, history, personalContext })
+    : null;
   const startedAt = Date.now();
 
   try {
-    const response = await getValidConversationResponse(prompt, modelDecision.model);
+    const response = await getValidConversationResponse(prompt, modelDecision.model, modelDecision.tier, leanMessages);
 
     const latencyMs = Date.now() - startedAt;
     const parsed = validateConversationResponse(response.json);
@@ -180,6 +198,18 @@ async function applyMondayIntelligence({
         promptDebug: buildPromptDebug({ prompt, promptPayload }),
         rawResponse: response.json || response.raw || null,
       });
+
+    // 2a + 2d — Persist working theory and update confidence after successful LLM turn.
+    persistWorkingTheory({ workingTheory, result, parsed: adjustedParsed });
+
+    // 2c — Write decision or contradiction captured by the LLM this turn.
+    persistDecisionAndContradiction(adjustedParsed, result);
+
+    // 3c — Mark surfacing item as delivered now that Monday has responded.
+    if (personalContext.surfacingItem?.id) {
+      try { markSurfaced(personalContext.surfacingItem.id); } catch { /* non-fatal */ }
+    }
+
     const r = personalContext.captureIntent
       ? finalizeCaptureResult(merged, input)
       : personalizeResult(merged, personalContext);
@@ -201,13 +231,143 @@ async function applyMondayIntelligence({
   }
 }
 
-async function getValidConversationResponse(prompt, model = null) {
+// ── Theory + Memory Persistence ───────────────────────────────────────────────
+
+const VALID_DOMAINS = new Set(["Health", "Publishing", "Retirement", "Family", "Faith", "Work"]);
+
+const SIGNIFICANCE_TO_DOMAIN = {
+  retirement_strategy:    "Retirement",
+  future_life_transition: "Retirement",
+  future_life_tradeoff:   "Retirement",
+  work_identity:          "Work",
+  faith_tension:          "Faith",
+  calling:                "Faith",
+  legacy:                 "Faith",
+  family_time_tension:    "Family",
+  publishing_strategy:    "Publishing",
+  creative_strategy:      "Publishing",
+};
+
+function resolveTheoryDomain(result, parsed) {
+  const normalize = (s) => {
+    if (!s) return null;
+    const t = s.trim();
+    const titled = t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
+    return VALID_DOMAINS.has(titled) ? titled : (VALID_DOMAINS.has(t) ? t : null);
+  };
+
+  // suggestedDomain from LLM is most specific
+  const suggested = normalize(parsed?.suggestedDomain);
+  if (suggested) return suggested;
+
+  // candidateDomain from engine
+  const candidate = normalize(result.finalState?.candidateDomain);
+  if (candidate) return candidate;
+
+  // significance-based fallback
+  const significance = result.finalState?.significance;
+  return SIGNIFICANCE_TO_DOMAIN[significance] || null;
+}
+
+// Patterns that indicate a generic/boilerplate hypothesis — not worth persisting.
+const THEORY_JUNK_PATTERNS = [
+  /^it sounds like the latest shift may be this:/i,
+  /^treat this as an ongoing meaning thread/i,
+  /^advancing the meaning of the current thread/i,
+  /^the latest shift may be/i,
+];
+
+function isTheorySubstantive(text) {
+  if (!text || text.trim().length < 40) return false;
+  return !THEORY_JUNK_PATTERNS.some(p => p.test(text.trim()));
+}
+
+function persistWorkingTheory({ workingTheory, result, parsed }) {
+  if (!workingTheory?.statement) return;
+  if (!isTheorySubstantive(workingTheory.statement)) return;
+
+  const domain = resolveTheoryDomain(result, parsed);
+  if (!domain) return; // don't persist cross-domain or unclassified theories
+
+  try {
+    const existing = getWorkingTheory(domain);
+    const existingConf = existing?.confidence ?? 0.5;
+
+    // Blend new evidence into confidence — slow drift, not a jump.
+    const llmConf = parsed?.confidence === "high" ? 0.82
+      : parsed?.confidence === "low" ? 0.4
+      : 0.63;
+    const blended = Math.min(0.95, Math.max(0.3, existingConf * 0.7 + llmConf * 0.3));
+
+    // Only update if theory text actually changed or confidence moved meaningfully.
+    const textChanged = !existing || existing.text !== workingTheory.statement;
+    const confChanged = Math.abs(blended - existingConf) >= 0.02;
+
+    if (textChanged || confChanged) {
+      setWorkingTheory(domain, workingTheory.statement, blended);
+    }
+  } catch {
+    // Never let persistence failure break a turn.
+  }
+}
+
+function persistDecisionAndContradiction(parsed, result) {
+  if (!parsed) return;
+  const domain = resolveTheoryDomain(result, parsed);
+
+  if (parsed.capturedDecision) {
+    try {
+      addDecision({
+        title:   parsed.capturedDecision.title,
+        domain:  parsed.capturedDecision.domain || domain,
+        reason:  parsed.capturedDecision.reason,
+        decidedAt: new Date().toISOString(),
+      });
+    } catch { /* non-fatal */ }
+  }
+
+  if (parsed.detectedContradiction) {
+    try {
+      const c = parsed.detectedContradiction;
+      const contradictionDomain = c.domain || domain;
+      addContradiction({
+        declaredValue:   c.declaredValue,
+        observedPattern: c.observedPattern,
+        domain:          contradictionDomain,
+        detectedAt:      new Date().toISOString(),
+      });
+
+      // Contradiction weakens confidence in the domain theory.
+      if (contradictionDomain) {
+        const existing = getWorkingTheory(contradictionDomain);
+        if (existing) {
+          const weakened = Math.max(0.3, (existing.confidence ?? 0.5) - 0.1);
+          if (weakened < (existing.confidence ?? 0.5)) {
+            setWorkingTheory(contradictionDomain, existing.text, weakened);
+          }
+        }
+      }
+
+      // Queue for proactive surfacing at next conversation turn.
+      enqueueSurfacing({
+        source:   "contradiction",
+        domain:   contradictionDomain,
+        payload:  `Boss, I noticed something. You've said "${c.declaredValue}" — but the pattern I'm seeing is "${c.observedPattern}". That's worth looking at. Want to work through it?`,
+        confidence: 0.7,
+        priority: 2,
+        ttlHours: 24,
+      });
+    } catch { /* non-fatal */ }
+  }
+}
+
+async function getValidConversationResponse(prompt, model = null, tier = null, leanMessages = null) {
   const provider = activeProvider();
   const isClaude = provider === "claude";
 
-  // Claude doesn't benefit from temperature retries; one attempt is enough.
-  const attempts = isClaude
-    ? [{ temperature: 1.0 }]
+  // Claude and OpenAI don't benefit from temperature retries — one attempt is enough.
+  const attempts = (isClaude || provider === "openai")
+    ? [{ temperature: 0.7 }]
     : [
         { temperature: Number(process.env.MONDAY_OLLAMA_TEMPERATURE || 0.85), timeoutMs: Math.max(DEFAULT_TIMEOUT_MS, 15000) },
         { temperature: 0.5, timeoutMs: Math.max(DEFAULT_TIMEOUT_MS + 10000, 30000) },
@@ -218,12 +378,16 @@ async function getValidConversationResponse(prompt, model = null) {
 
   for (const attempt of attempts) {
     try {
-      const response = await chatWithLLM({
-        messages: prompt,
-        temperature: attempt.temperature,
-        timeoutMs: attempt.timeoutMs,
-        model: model || undefined,
-      });
+      const response = BUFFER_MODE && tier === "conversation"
+        ? await chatWithBuffer({ messages: prompt, leanMessages, purpose: "conversation" })
+        : await chatWithLLM({
+            messages: prompt,
+            temperature: attempt.temperature,
+            timeoutMs: attempt.timeoutMs,
+            model: model || undefined,
+            tier: tier || undefined,
+            purpose: "conversation",
+          });
       lastResponse = response;
 
       if (validateConversationResponse(response.json)) {
@@ -1138,7 +1302,7 @@ function mergeIntelligence(result, parsed, metadata) {
     },
     voice: {
       ...result.voice,
-      baseText: result.voice.text,
+      baseText: result.voice?.text || null,
       lines,
       text,
       responseSource: "ollama-refined",
@@ -1179,7 +1343,7 @@ function mergeThreadAwareFallback(result, parsed, metadata) {
     },
     voice: {
       ...result.voice,
-      baseText: result.voice.text,
+      baseText: result.voice?.text || null,
       lines,
       text,
       responseSource: "thread-aware-fallback",
@@ -1196,8 +1360,8 @@ function attachIntelligence(result, metadata) {
   return {
     ...result,
     voice: {
-      ...result.voice,
-      baseText: result.voice.text,
+      ...(result.voice || {}),
+      baseText: result.voice?.text || null,
       responseSource: "deterministic",
     },
     intelligence: metadata,

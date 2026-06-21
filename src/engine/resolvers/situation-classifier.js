@@ -315,11 +315,11 @@ function classifySituation({ input, significance, context = {} }) {
 
   return {
     situationClassification: "unclassified",
-    ripenessState: "medium",
-    interruptibility: "conditional",
+    ripenessState: "low",
+    interruptibility: "allowed",
     humanCompanyRequired: "false",
-    woundRisk: "medium",
-    shamePresent: "possible",
+    woundRisk: "low",
+    shamePresent: "false",
     identityProximity: "low",
     explanation: ["Fell back to generic classification."],
     classificationFallback: true,

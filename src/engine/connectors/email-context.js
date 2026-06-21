@@ -117,10 +117,29 @@ function getEmailSummary({ limit = 10, unreadOnly = false, missionId = null } = 
   };
 }
 
+// Merge threads from one source without clobbering other sources.
+function mergeEmailThreads(threads = [], options = {}) {
+  const source = options.source || "manual";
+  const store = readEmailStore();
+
+  const kept = store.threads.filter((t) => t.source !== source);
+  const incoming = (threads || [])
+    .map((t) => normalizeThread({ ...t, source }));
+
+  const merged = [...kept, ...incoming].sort(
+    (a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)
+  );
+
+  const sources = [...new Set(merged.map((t) => t.source))];
+  writeEmailStore({ source: sources.length === 1 ? sources[0] : "multi", threads: merged });
+  return { source, added: incoming.length, total: merged.length };
+}
+
 module.exports = {
   clearEmailThreads,
   getEmailSummary,
   importEmailThreads,
+  mergeEmailThreads,
   readEmailStore,
   getDataDir,
 };

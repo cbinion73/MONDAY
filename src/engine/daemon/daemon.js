@@ -28,11 +28,38 @@ function registerJobs() {
   // 15-minute: lightweight triage refresh
   schedule("triage-refresh", { minuteInterval: 15 }, runContinuousCheck);
 
-  // Hourly: full monitor_operative (thread watch, synthesis, ripeness check)
+  // Hourly: full monitor_operative (thread watch, ripeness check, queue writes)
   schedule("monitor-operative", { minuteInterval: 60 }, runMonitorOperative);
 
-  // 7am daily: morning digest
-  schedule("morning-digest", { hour: 7 }, runMorningDigest);
+  // Every 6 hours: deep synthesis (cross-domain pattern detection + theory revision)
+  schedule("synthesis", { minuteInterval: 360 }, async () => {
+    const { runSynthesisWorker } = require("../workers/synthesis-worker");
+    const { getActiveThreads, getWorkingTheories } = require("../db/state-store");
+    const { getRecentCaptures } = require("../personal/personal-store");
+    const { pruneExpired } = require("../db/surfacing-store");
+
+    pruneExpired();
+    await runSynthesisWorker({
+      threads:     getActiveThreads(),
+      theories:    getWorkingTheories(),
+      captures:    getRecentCaptures(30),
+      triggerLoop: "6-hour",
+    });
+    // Synthesis worker writes deliverable + triggers review layer internally.
+    // Review worker decides what (if anything) reaches Chris via surfacing queue.
+  });
+
+  // 6:45am daily: morning digest
+  schedule("morning-digest", { hour: 6, minute: 45 }, runMorningDigest);
+
+  // Every 2 hours: review any deliverables workers wrote but didn't review yet
+  schedule("review-deliverables", { minuteInterval: 120 }, async () => {
+    const { reviewPendingDeliverables } = require("../workers/review-worker");
+    const result = await reviewPendingDeliverables({ limit: 5 });
+    if (result.reviewed > 0) {
+      console.log(`[daemon] reviewed ${result.reviewed} deliverable(s), surfaced ${result.surfaced}`);
+    }
+  });
 }
 
 function printStatus() {

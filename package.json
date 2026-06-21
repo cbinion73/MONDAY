@@ -37,8 +37,8 @@
     "demo:sandbox:all": "node ./src/engine/demo/sandbox.js all",
     "demo:repl": "node ./src/engine/demo/repl.js",
     "sandbox:web": "node ./src/sandbox/server.js",
-    "daemon": "node ./src/engine/daemon/daemon.js",
-    "gateway": "node ./src/engine/gateway/server.js"
+    "daemon": "node --env-file=.env ./src/engine/daemon/daemon.js",
+    "gateway": "node --env-file=.env ./src/engine/gateway/server.js"
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.30.0",

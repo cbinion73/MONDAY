@@ -1,4 +1,13 @@
-function buildConversationPrompt({ result, input, history, personalContext = {} }) {
+// Conciseness instruction matched to the token budget and depth contract for each tier.
+const TIER_CONCISENESS = {
+  utility:      "This is a simple update or mundane statement. Acknowledge it briefly — 1-2 sentences max. Do not probe for meaning, do not ask what it signifies, do not look for what's underneath. Just respond naturally as a sharp colleague would.",
+  conversation: "Keep replies concise: 2-4 sentences. Lead with the read, not a preamble.",
+  thinking:     "Depth over brevity. Go as far as the situation genuinely requires. Every sentence must earn its place — do not pad, but do not cut a real insight short either.",
+  executive:    "This warrants thoroughness. Be complete and structured. Write for a reader who needs the full picture.",
+};
+const DEFAULT_CONCISENESS = TIER_CONCISENESS.conversation;
+
+function buildConversationPrompt({ result, input, history, personalContext = {}, tier = null }) {
   const userPayload = buildConversationPayload({
     result,
     input,
@@ -13,7 +22,7 @@ function buildConversationPrompt({ result, input, history, personalContext = {} 
     "You must not determine significance, classification, posture, or bypass human-company boundaries.",
     "Use the deterministic reply as the floor, not the ceiling.",
     "Do not mention JSON, engine state, or internal architecture.",
-    "Keep replies concise: 2-4 sentences.",
+    TIER_CONCISENESS[tier] || DEFAULT_CONCISENESS,
     "You are Monday.",
     "Monday is a peer, not a subordinate and not a tool.",
     "Monday sets the agenda when the agenda is unclear and pushes back when an idea is weak.",
@@ -58,7 +67,7 @@ function buildConversationPrompt({ result, input, history, personalContext = {} 
     "Use brisk cadence. Short declaratives beat a hedged paragraph.",
     "Structure only when it genuinely earns its place. Prose by default.",
     "Calm at all amplitudes. Good news and bad news arrive at the same steady tempo.",
-    "If the conversation is unclassified, help the user clarify significance without pretending certainty.",
+    "If the conversation is unclassified AND the message is a simple update, logistical statement, or routine task (going somewhere, doing chores, testing something), acknowledge it briefly and move on — do not probe for hidden meaning. Not every statement is a significance question.",
     "If captureIntent is true, acknowledge that Monday will carry it and connect it to the most plausible life thread without sounding like a note-taking app.",
     "If the user is likely answering Monday's previous question, first reflect what they just revealed before asking anything else.",
     "When the user is answering a previous question, do not simply restate the same question in different words.",
@@ -140,7 +149,10 @@ function buildConversationPrompt({ result, input, history, personalContext = {} 
     "Evening wind-down tone is warmer and lighter. Celebrate wins, flag one thing, report overnight agent work, close clean. 'We call it a night.'",
     "Faith is embedded in priorities and action, not vocabulary. Don't force Scripture. When faith deepens the insight naturally, use it with depth — not as decoration.",
     "Return only valid JSON with this shape:",
-    '{"reply":"string","followUp":"string or null","suggestedDomain":"string or null","suggestedClassification":"string or null","confidence":"low|medium|high"}',
+    '{"reply":"string","followUp":"string or null","suggestedDomain":"string or null","suggestedClassification":"string or null","confidence":"low|medium|high","capturedDecision":{"title":"string","domain":"string","reason":"string or null"} or null,"detectedContradiction":{"declaredValue":"string","observedPattern":"string","domain":"string"} or null}',
+    "IMPORTANT: reply must NOT end with a question. Put the single closing question in followUp only. followUp is appended automatically — if you also end reply with a question, it will appear twice.",
+    "Set capturedDecision only when Chris has explicitly made a clear, concrete decision this turn (e.g. 'I've decided to...', 'I'm going to...', 'We'll go with...'). Otherwise null.",
+    "Set detectedContradiction only when there is a clear, specific gap between a stated value and an observed behavior pattern in this conversation. Otherwise null.",
   ].join(" ");
 
   const turnConstraints = [];
@@ -164,6 +176,46 @@ function buildConversationPrompt({ result, input, history, personalContext = {} 
       "The skill result is evidence, not the answer — surface the pattern or insight the data reveals.",
       "Briefly mention that you checked the relevant source (e.g. 'I pulled your calendar...' or 'Looking at your email...').",
       "Keep that mention natural and brief — one clause, not a headline.",
+    );
+    turnConstraints.push(lines.join("\n"));
+  }
+
+  // ── Proactive surfacing — Monday leads with this if present ─────────────
+  if (userPayload.surfacingItem) {
+    const s = userPayload.surfacingItem;
+    turnConstraints.push(
+      `PROACTIVE FINDING (surface this NOW — do not wait for Chris to ask):`,
+      `Monday has a pending observation from background analysis: "${s.payload}"`,
+      `Lead your reply with this finding. Adapt the language to Monday's voice and the conversational context, but the substance must be present and must come first.`,
+      `After delivering it, invite a response or offer to dig deeper.`,
+    );
+  }
+
+  // ── Working theories — Monday's persistent read across domains ───────────
+  if (userPayload.workingTheories && userPayload.workingTheories.length > 0) {
+    const lines = ["ESTABLISHED WORKING THEORIES (Monday's persistent read of Chris — built across prior conversations):"];
+    for (const t of userPayload.workingTheories) {
+      const pct = Math.round(t.confidence * 100);
+      lines.push(`${t.domain}: ${t.text} [confidence: ${pct}%]`);
+    }
+    lines.push(
+      "",
+      "These are not hypotheses — they are Monday's current best read. Advance, complicate, or replace them based on what this turn reveals.",
+      "Reference them by domain when relevant. Never ignore them.",
+    );
+    turnConstraints.push(lines.join("\n"));
+  }
+
+  // ── Recent decisions — commitments Chris has made ────────────────────────
+  if (userPayload.recentDecisions && userPayload.recentDecisions.length > 0) {
+    const lines = ["RECENT DECISIONS (commitments Chris has explicitly made):"];
+    for (const d of userPayload.recentDecisions) {
+      const when = d.decidedAt ? new Date(d.decidedAt).toLocaleDateString() : "recently";
+      lines.push(`[${d.domain || "general"}] ${d.title} (${when})${d.reason ? " — " + d.reason : ""}`);
+    }
+    lines.push(
+      "",
+      "If this turn reveals behavior that contradicts a prior decision, set detectedContradiction in your response.",
     );
     turnConstraints.push(lines.join("\n"));
   }
@@ -282,9 +334,9 @@ function buildConversationPayload({ result, input, history, personalContext = {}
       candidateClassification: result.finalState.candidateClassification,
     },
     deterministicTruth: result.truth,
-    deterministicReply: result.voice.text,
-    workspaceMode: result.workspace.workspaceMode,
-    supportIntent: result.workspace.supportIntent,
+    deterministicReply: result.voice?.text || null,
+    workspaceMode: result.workspace?.workspaceMode || null,
+    supportIntent: result.workspace?.supportIntent || null,
     conversationMomentum: {
       priorMondayQuestion,
       likelyAnsweringPriorQuestion,
@@ -308,6 +360,9 @@ function buildConversationPayload({ result, input, history, personalContext = {}
     missionThreads: personalContext.missionThreads || [],
     recentCaptures: personalContext.recentCaptures || [],
     priorWorkingTheory: priorWorkingTheory || null,
+    workingTheories: _formatWorkingTheories(personalContext.workingTheories),
+    recentDecisions: _formatRecentDecisions(personalContext.recentDecisions),
+    surfacingItem: personalContext.surfacingItem || null,
     skillContext: buildSkillContext(personalContext.skillResults || [], personalContext.theoryEvidence || null),
     memoryRecall: (personalContext.memoryRecall && personalContext.memoryRecall.length > 0)
       ? personalContext.memoryRecall
@@ -1100,6 +1155,19 @@ function buildDailyBriefPrompt({
   ];
 }
 
+function _formatRecentDecisions(decisions) {
+  if (!Array.isArray(decisions) || decisions.length === 0) return null;
+  return decisions.slice(0, 5); // cap at 5 most recent
+}
+
+function _formatWorkingTheories(theories) {
+  if (!theories || typeof theories !== "object") return null;
+  const entries = Object.values(theories)
+    .filter(t => t && t.text && t.domain)
+    .map(t => ({ domain: t.domain, text: t.text, confidence: t.confidence || 0.5 }));
+  return entries.length > 0 ? entries : null;
+}
+
 function extractWorkingTheory(payload, priorWorkingTheory) {
   if (!payload) return priorWorkingTheory || null;
 
@@ -1119,9 +1187,43 @@ function extractWorkingTheory(payload, priorWorkingTheory) {
   };
 }
 
+// ── Lean prompt for buffer analysis pass ─────────────────────────────────────
+// Strips verbose fields not needed for fact extraction.
+// Cuts input tokens by ~40-50% vs the full payload.
+function buildLeanPrompt({ result, input, history, personalContext = {} }) {
+  const priorWorkingTheory = personalContext.priorWorkingTheory || null;
+  const recentHistory = (history || []).slice(-2).map(e => ({
+    user: e.user,
+    monday: e.monday,
+  }));
+
+  const lean = {
+    userInput: input,
+    recentHistory,
+    engineState: {
+      significance: result.finalState?.significance || null,
+      domain: result.truth?.domain || result.finalState?.candidateDomain || null,
+      woundRisk: result.finalState?.woundRisk || null,
+      identityProximity: result.finalState?.identityProximity || null,
+      classificationFallback: result.finalState?.classificationFallback || false,
+    },
+    deterministicReply: result.voice?.text || null,
+    priorWorkingTheory: priorWorkingTheory?.statement || priorWorkingTheory || null,
+    calendar: personalContext.calendar || null,
+    skillContext: personalContext.skillResults?.length
+      ? personalContext.skillResults.map(s => ({ skillId: s.skillId, observations: s.observations }))
+      : null,
+  };
+
+  return [
+    { role: "user", content: JSON.stringify(lean) },
+  ];
+}
+
 module.exports = {
   buildConversationPrompt,
   buildConversationPayload,
+  buildLeanPrompt,
   buildDailyBriefPrompt,
   extractWorkingTheory,
 };

@@ -3,7 +3,11 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const MISSIONS_DIR = path.resolve(__dirname, "../../../data/missions");
+const MISSIONS_DIR = process.env.MONDAY_MISSIONS_DIR
+  ? path.resolve(process.env.MONDAY_MISSIONS_DIR)
+  : fs.existsSync("/Volumes/Monday/Monday")
+    ? "/Volumes/Monday/Monday/missions"
+    : path.resolve(__dirname, "../../../data/missions");
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });

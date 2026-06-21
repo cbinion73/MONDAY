@@ -9,7 +9,8 @@ let tickTimer = null;
  * Register a recurring job.
  * @param {string} name - display name for logs
  * @param {object} opts
- *   opts.hour          - fire once daily at this 24h hour (0-23)
+ *   opts.hour           - fire once daily at this 24h hour (0-23)
+ *   opts.minute         - combined with opts.hour: fire at HH:MM daily (default 0)
  *   opts.minuteInterval - fire every N minutes
  * @param {function} fn - async function to execute
  */
@@ -21,7 +22,10 @@ function shouldFire(job, now) {
   const { opts, lastRun } = job;
 
   if (opts.hour !== undefined) {
-    if (now.getHours() !== opts.hour || now.getMinutes() > 5) return false;
+    const targetMinute = opts.minute ?? 0;
+    const withinWindow = now.getHours() === opts.hour &&
+      Math.abs(now.getMinutes() - targetMinute) <= 5;
+    if (!withinWindow) return false;
     if (!lastRun) return true;
     const hoursSince = (now - lastRun) / (1000 * 60 * 60);
     return hoursSince >= 22; // prevent double-fire within same day

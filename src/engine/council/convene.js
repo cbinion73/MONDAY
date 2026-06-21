@@ -81,10 +81,10 @@ async function runAgent(agent, context) {
 
   try {
     const response = await Promise.race([
-      chatWithLLM({ messages: prompt, temperature: 0.4 }),
+      chatWithLLM({ messages: prompt, temperature: 0.4, tier: "background" }),
       timeoutPromise,
     ]);
-    const text = typeof response === "string" ? response : response?.reply || "";
+    const text = typeof response === "string" ? response : response?.content || "";
     const parsed = parseAgentResponse(text, agent);
 
     // Persist the agent's theory to both state-store and workspace
@@ -203,8 +203,8 @@ async function conveneCouncil({ domains = [], userInput = "", captures = [], thr
   if (synthesize && reads.some((r) => r.ok && r.read)) {
     try {
       const synthPrompt = buildSynthesisPrompt(reads, userInput);
-      const response = await chatWithLLM({ messages: synthPrompt, temperature: 0.7 });
-      synthesis = typeof response === "string" ? response : response?.reply || null;
+      const response = await chatWithLLM({ messages: synthPrompt, temperature: 0.7, tier: "background" });
+      synthesis = typeof response === "string" ? response : response?.content || null;
     } catch (err) {
       console.error("[council] synthesis error:", err.message);
     }

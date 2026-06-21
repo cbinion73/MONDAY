@@ -9,13 +9,16 @@
 function updateTheoryFromEvidence(priorTheory, skillResults) {
   if (!skillResults || skillResults.length === 0) return null;
 
+  // workingTheory may be stored as an object { statement, status, ... } — normalize to string
+  const priorTheoryStr = priorTheory?.statement || (typeof priorTheory === "string" ? priorTheory : null);
+
   const allObservations = skillResults.flatMap((s) => s.observations || []);
   const allPatterns = skillResults.flatMap((s) => s.patterns || []);
 
   const sections = [];
 
-  if (priorTheory && typeof priorTheory === "string") {
-    sections.push(`Prior understanding: ${priorTheory}`);
+  if (priorTheoryStr) {
+    sections.push(`Prior understanding: ${priorTheoryStr}`);
   }
 
   if (allObservations.length > 0) {
@@ -37,7 +40,8 @@ function updateTheoryFromEvidence(priorTheory, skillResults) {
 function buildSynthesis(priorTheory, skillResults, allPatterns) {
   if (allPatterns.length === 0 && skillResults.length === 0) return null;
 
-  const theory = (priorTheory || "").toLowerCase();
+  const priorTheoryStr = priorTheory?.statement || (typeof priorTheory === "string" ? priorTheory : "");
+  const theory = priorTheoryStr.toLowerCase();
 
   // Pattern-theory confirmation and tension detection
   const workDominant = allPatterns.some((p) => p.includes("work") && p.includes("dominate"));

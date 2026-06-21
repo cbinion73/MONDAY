@@ -400,6 +400,48 @@ const MIGRATIONS = [
       ALTER TABLE notes ADD COLUMN entity_extracted_at TEXT;
     `,
   },
+
+  // ── 004: Surfacing queue — proactive findings Monday surfaces at turn start ─
+  {
+    version: 4,
+    sql: `
+      CREATE TABLE IF NOT EXISTS surfacing_queue (
+        id          TEXT PRIMARY KEY,
+        source      TEXT NOT NULL,
+        domain      TEXT,
+        payload     TEXT NOT NULL,
+        confidence  REAL DEFAULT 0.5,
+        priority    INTEGER DEFAULT 5,
+        surfaced    INTEGER DEFAULT 0,
+        surfaced_at TEXT,
+        created_at  TEXT NOT NULL,
+        expires_at  TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_surfacing_unsurfaced ON surfacing_queue(surfaced, priority, created_at);
+    `,
+  },
+
+  // ── 005: LLM cost log — per-call cloud model usage and spend ────────────────
+  {
+    version: 5,
+    sql: `
+      CREATE TABLE IF NOT EXISTS llm_cost_log (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        model           TEXT NOT NULL,
+        tier            TEXT,
+        purpose         TEXT,
+        input_tokens    INTEGER DEFAULT 0,
+        output_tokens   INTEGER DEFAULT 0,
+        input_cost_usd  REAL DEFAULT 0,
+        output_cost_usd REAL DEFAULT 0,
+        total_cost_usd  REAL DEFAULT 0,
+        created_at      TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_cost_log_created ON llm_cost_log(created_at);
+      CREATE INDEX IF NOT EXISTS idx_cost_log_model   ON llm_cost_log(model);
+      CREATE INDEX IF NOT EXISTS idx_cost_log_tier    ON llm_cost_log(tier);
+    `,
+  },
 ];
 
 module.exports = { getDb, resolveDbPath };

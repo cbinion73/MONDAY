@@ -7,6 +7,9 @@ const store = require("../persistence/state-store");
 const { runSynthesisWorker } = require("./synthesis-worker");
 const { runMemoryWorker } = require("./memory-worker");
 const { getRecentCaptures } = require("../personal/personal-store");
+const { pruneExpired } = require("../db/surfacing-store");
+const { writeDeliverable } = require("../db/deliverable-store");
+const { runDeliverableReview } = require("./review-worker");
 
 const MIN_HOURS_BETWEEN_SURFACES = 18;
 const QUIET_DOMAIN_DAYS = 14; // days of silence before a domain is flagged
@@ -98,6 +101,27 @@ async function runMonitorOperative() {
 
     const shouldSurface = canSurface && synthesisResult?.shouldSurface;
     const surfacePayload = shouldSurface ? synthesisResult?.surfacePayload : null;
+
+    // Synthesis worker now writes its own deliverable and triggers the review layer.
+    // Monitor only needs to prune expired surfacing entries.
+    pruneExpired();
+
+    // Write a monitor-level deliverable for quiet domain notices (separate from synthesis)
+    if (quietDomains.length > 0) {
+      const quietContent = quietDomains.map(q =>
+        `- **${q.domain}**: ${q.daysSilent} days without activity`
+      ).join("\n");
+      const { filePath } = writeDeliverable({
+        source:     "monitor",
+        domain:     null,
+        title:      "Quiet Domains Notice",
+        content:    `## Domains Going Quiet\n\n${quietContent}\n\n_These domains have been silent longer than the ${QUIET_DOMAIN_DAYS}-day threshold._`,
+        confidence: 0.5,
+      });
+      runDeliverableReview({ filePath, source: "monitor" }).catch(err =>
+        console.error("[monitor-operative] review error:", err.message)
+      );
+    }
 
     // Add quiet domain notices to triage watching list
     if (quietDomains.length > 0) {
