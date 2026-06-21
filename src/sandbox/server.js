@@ -1625,6 +1625,23 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ── Vault Context search (Vault Context UI panel) ────────────────────────
+  // GET /api/monday-sandbox/vault/search?q=&channels=semantic,keyword,graph&limit=8
+  if (req.method === "GET" && pathname === "/api/monday-sandbox/vault/search") {
+    const q        = url.searchParams.get("q") || "";
+    const domain   = url.searchParams.get("domain") || null;
+    const limit    = Number(url.searchParams.get("limit") || 8);
+    const chParam  = url.searchParams.get("channels") || "";
+    const channels = chParam ? chParam.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
+    if (!q) { sendJson(res, 400, { ok: false, error: "q is required" }); return; }
+    obsidian.retrieveContext(q, { domain: domain || undefined, limit, channels }).then((result) => {
+      sendJson(res, 200, result);
+    }).catch((err) => {
+      sendJson(res, 500, { ok: false, error: err.message });
+    });
+    return;
+  }
+
   // ── Memory Curator routes ─────────────────────────────────────────────────
 
   // GET  /curator/queue?limit=50    — pending candidates sorted by confidence
