@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Monday Sandbox</title>
-    <link rel="stylesheet" href="/sandbox.css?v=12" />
+    <link rel="stylesheet" href="/sandbox.css?v=13" />
   </head>
   <body>
     <div class="shell">
@@ -265,6 +265,41 @@
             </div>
           </div>
 
+          <div class="review-card" id="curatorPanel">
+            <div class="panel-header compact">
+              <h3>Memory Curator</h3>
+              <p>Review queue — approve candidates to write to the vault.</p>
+            </div>
+            <div class="review-actions" style="flex-wrap:wrap;gap:6px">
+              <button id="curatorRefreshBtn" type="button">Refresh</button>
+              <button id="curatorQueueEntitiesBtn" type="button">Queue from Entities</button>
+              <button id="curatorWriteApprovedBtn" type="button">Write Approved</button>
+            </div>
+            <div id="curatorStats" class="curator-stats"></div>
+            <div id="curatorQueue" class="curator-queue"></div>
+          </div>
+
+          <div class="review-card" id="vaultCtxPanel">
+            <div class="panel-header compact">
+              <h3>Vault Context</h3>
+              <p>Live hybrid retrieval — semantic, keyword, and graph channels.</p>
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:6px">
+              <input id="vaultCtxInput" type="text" placeholder="Search vault…" style="flex:1;padding:4px 6px;box-sizing:border-box" />
+              <button id="vaultCtxSearchBtn" type="button">Search</button>
+            </div>
+            <div style="display:flex;gap:10px;margin-bottom:6px;font-size:0.75rem">
+              <label><input type="checkbox" id="vaultCtxSemantic" checked /> Semantic</label>
+              <label><input type="checkbox" id="vaultCtxKeyword" checked /> Keyword</label>
+              <label><input type="checkbox" id="vaultCtxGraph" checked /> Graph</label>
+            </div>
+            <div id="vaultCtxResults" class="vault-ctx-results"></div>
+            <div id="vaultCtxRecall" class="vault-ctx-recall" style="display:none">
+              <div class="panel-header compact" style="margin-top:10px"><h4>Last Turn Memory Recall</h4></div>
+              <div id="vaultCtxRecallList"></div>
+            </div>
+          </div>
+
           <div id="councilReadsPanel" class="council-panel" style="display:none">
             <div class="panel-header compact">
               <h3>Council Reads</h3>
@@ -321,6 +356,6 @@
       </main>
     </div>
 
-    <script src="/sandbox.js?v=20" type="module"></script>
+    <script src="/sandbox.js?v=21" type="module"></script>
   </body>
 </html>

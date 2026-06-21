@@ -100,6 +100,21 @@ const elements = {
   obsidianNoteViewerTitle: document.getElementById("obsidianNoteViewerTitle"),
   obsidianNoteViewerClose: document.getElementById("obsidianNoteViewerClose"),
   obsidianNoteViewerContent: document.getElementById("obsidianNoteViewerContent"),
+  curatorPanel: document.getElementById("curatorPanel"),
+  curatorStats: document.getElementById("curatorStats"),
+  curatorQueue: document.getElementById("curatorQueue"),
+  curatorRefreshBtn: document.getElementById("curatorRefreshBtn"),
+  curatorQueueEntitiesBtn: document.getElementById("curatorQueueEntitiesBtn"),
+  curatorWriteApprovedBtn: document.getElementById("curatorWriteApprovedBtn"),
+  vaultCtxPanel: document.getElementById("vaultCtxPanel"),
+  vaultCtxInput: document.getElementById("vaultCtxInput"),
+  vaultCtxSearchBtn: document.getElementById("vaultCtxSearchBtn"),
+  vaultCtxSemantic: document.getElementById("vaultCtxSemantic"),
+  vaultCtxKeyword: document.getElementById("vaultCtxKeyword"),
+  vaultCtxGraph: document.getElementById("vaultCtxGraph"),
+  vaultCtxResults: document.getElementById("vaultCtxResults"),
+  vaultCtxRecall: document.getElementById("vaultCtxRecall"),
+  vaultCtxRecallList: document.getElementById("vaultCtxRecallList"),
 };
 
 const FAILURE_TAGS = [
@@ -1087,6 +1102,7 @@ async function sendMessage(input, voiceOpts = null) {
     renderEngineState(payload.result);
     renderCouncilReads(payload.result.council);
     renderModelDecision(payload.result.modelDecision);
+    renderMemoryRecall(payload.result?.intelligence?.memoryRecall || null);
     if (payload.result.missionSuggestion?.suggested) {
       renderMissionSuggestion(payload.result.missionSuggestion);
     }
@@ -2415,6 +2431,191 @@ loadTriage();
 loadWorkspaces();
 loadMissionEngine();
 loadObsidianStatus();
+
+// ── Memory Curator UI ────────────────────────────────────────────────────────
+
+async function loadCuratorQueue() {
+  if (!elements.curatorQueue) return;
+  elements.curatorQueue.innerHTML = '<div class="review-empty">Loading…</div>';
+  try {
+    const [qRes, sRes] = await Promise.all([
+      fetch(`${API_BASE}/api/monday-sandbox/curator/queue?limit=50`),
+      fetch(`${API_BASE}/api/monday-sandbox/curator/stats`),
+    ]);
+    const qData = await qRes.json();
+    const sData = await sRes.json();
+    renderCuratorStats(sData);
+    renderCuratorQueue(qData.candidates || []);
+  } catch (err) {
+    if (elements.curatorQueue) elements.curatorQueue.innerHTML = `<div class="review-empty">Error: ${err.message}</div>`;
+  }
+}
+
+function renderCuratorStats(stats) {
+  if (!elements.curatorStats) return;
+  const { pending = 0, approved = 0, rejected = 0 } = stats;
+  elements.curatorStats.innerHTML = `
+    <span class="curator-stat">Pending: <strong>${pending}</strong></span>
+    <span class="curator-stat">Approved: <strong>${approved}</strong></span>
+    <span class="curator-stat">Rejected: <strong>${rejected}</strong></span>
+  `;
+}
+
+function renderCuratorQueue(candidates) {
+  if (!elements.curatorQueue) return;
+  if (!candidates.length) {
+    elements.curatorQueue.innerHTML = '<div class="review-empty">Queue is empty. Run "Queue from Entities" to populate.</div>';
+    return;
+  }
+  elements.curatorQueue.innerHTML = candidates.map((c) => {
+    const conf = Math.round((c.confidence || 0) * 100);
+    const confClass = conf >= 75 ? "conf-high" : conf >= 50 ? "conf-mid" : "conf-low";
+    return `
+      <div class="curator-item" data-id="${escapeHtml(c.id)}">
+        <div class="curator-item-header">
+          <span class="curator-item-type">${escapeHtml(c.type || "note")}</span>
+          <span class="curator-item-domain">${escapeHtml(c.domain || "—")}</span>
+          <span class="curator-conf ${confClass}">${conf}%</span>
+        </div>
+        <div class="curator-item-content">${escapeHtml((c.content || "").slice(0, 180))}${(c.content || "").length > 180 ? "…" : ""}</div>
+        ${c.reason ? `<div class="curator-item-reason">${escapeHtml(c.reason)}</div>` : ""}
+        <div class="curator-item-actions">
+          <button class="curator-approve-btn" data-id="${escapeHtml(c.id)}">✓ Approve</button>
+          <button class="curator-reject-btn" data-id="${escapeHtml(c.id)}">✗ Reject</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  elements.curatorQueue.querySelectorAll(".curator-approve-btn").forEach((btn) => {
+    btn.addEventListener("click", () => curatorApprove(btn.dataset.id));
+  });
+  elements.curatorQueue.querySelectorAll(".curator-reject-btn").forEach((btn) => {
+    btn.addEventListener("click", () => curatorReject(btn.dataset.id));
+  });
+}
+
+async function curatorApprove(id) {
+  try {
+    await fetch(`${API_BASE}/api/monday-sandbox/curator/${encodeURIComponent(id)}/approve`, { method: "PATCH" });
+    loadCuratorQueue();
+  } catch (err) {
+    console.warn("[curator] approve error:", err.message);
+  }
+}
+
+async function curatorReject(id) {
+  try {
+    await fetch(`${API_BASE}/api/monday-sandbox/curator/${encodeURIComponent(id)}/reject`, { method: "PATCH" });
+    loadCuratorQueue();
+  } catch (err) {
+    console.warn("[curator] reject error:", err.message);
+  }
+}
+
+async function curatorQueueFromEntities() {
+  try {
+    await fetch(`${API_BASE}/api/monday-sandbox/curator/queue/from-entities`, { method: "POST" });
+    loadCuratorQueue();
+  } catch (err) {
+    console.warn("[curator] queue-entities error:", err.message);
+  }
+}
+
+async function curatorWriteApproved() {
+  try {
+    const res = await fetch(`${API_BASE}/api/monday-sandbox/write-back/approved`, { method: "POST" });
+    const data = await res.json();
+    if (data.ok) {
+      addMessage(`Wrote ${data.written} approved candidates to vault. ${data.skipped} skipped.`, "monday");
+    } else {
+      addMessage(`Write-back failed: ${data.error || "unknown error"}`, "monday");
+    }
+    loadCuratorQueue();
+  } catch (err) {
+    console.warn("[curator] write-approved error:", err.message);
+  }
+}
+
+// ── Vault Context UI ──────────────────────────────────────────────────────────
+
+async function searchVaultCtx() {
+  const query = elements.vaultCtxInput?.value?.trim();
+  if (!query) return;
+
+  const channels = [];
+  if (elements.vaultCtxSemantic?.checked) channels.push("semantic");
+  if (elements.vaultCtxKeyword?.checked)  channels.push("keyword");
+  if (elements.vaultCtxGraph?.checked)    channels.push("graph");
+
+  if (elements.vaultCtxResults) elements.vaultCtxResults.innerHTML = '<div class="review-empty">Searching…</div>';
+
+  try {
+    const qs = new URLSearchParams({ q: query, channels: channels.join(","), limit: "8" });
+    const res = await fetch(`${API_BASE}/api/monday-sandbox/vault/search?${qs}`);
+    const data = await res.json();
+    renderVaultCtxResults(data);
+  } catch (err) {
+    if (elements.vaultCtxResults) elements.vaultCtxResults.innerHTML = `<div class="review-empty">Error: ${err.message}</div>`;
+  }
+}
+
+function renderVaultCtxResults(data) {
+  if (!elements.vaultCtxResults) return;
+  const results = data.results || [];
+  if (!results.length) {
+    elements.vaultCtxResults.innerHTML = '<div class="review-empty">No results found.</div>';
+    return;
+  }
+  elements.vaultCtxResults.innerHTML = results.map((r) => {
+    const score = r.score != null ? `<span class="vault-ctx-score">${(r.score * 100).toFixed(0)}%</span>` : "";
+    const channel = r.channel ? `<span class="vault-ctx-channel">${escapeHtml(r.channel)}</span>` : "";
+    return `
+      <div class="vault-ctx-result">
+        <div class="vault-ctx-result-header">
+          <strong>${escapeHtml(r.title || r.notePath || "—")}</strong>
+          ${channel}${score}
+        </div>
+        <div class="vault-ctx-excerpt">${escapeHtml((r.excerpt || r.body || "").slice(0, 200))}</div>
+        ${r.domain ? `<div class="vault-ctx-domain">${escapeHtml(r.domain)}</div>` : ""}
+      </div>
+    `;
+  }).join("");
+}
+
+function renderMemoryRecall(recall) {
+  if (!elements.vaultCtxRecall || !elements.vaultCtxRecallList) return;
+  if (!recall || !recall.length) {
+    elements.vaultCtxRecall.style.display = "none";
+    return;
+  }
+  elements.vaultCtxRecall.style.display = "block";
+  elements.vaultCtxRecallList.innerHTML = recall.map((r) => `
+    <div class="vault-ctx-result">
+      <div class="vault-ctx-result-header">
+        <strong>${escapeHtml(r.title || r.table || "memory")}</strong>
+        ${r.score != null ? `<span class="vault-ctx-score">${(r.score * 100).toFixed(0)}%</span>` : ""}
+      </div>
+      <div class="vault-ctx-excerpt">${escapeHtml((r.excerpt || "").slice(0, 160))}</div>
+    </div>
+  `).join("");
+}
+
+// Wire curator panel buttons
+if (elements.curatorRefreshBtn) elements.curatorRefreshBtn.addEventListener("click", loadCuratorQueue);
+if (elements.curatorQueueEntitiesBtn) elements.curatorQueueEntitiesBtn.addEventListener("click", curatorQueueFromEntities);
+if (elements.curatorWriteApprovedBtn) elements.curatorWriteApprovedBtn.addEventListener("click", curatorWriteApproved);
+
+// Wire vault context panel
+if (elements.vaultCtxSearchBtn) elements.vaultCtxSearchBtn.addEventListener("click", searchVaultCtx);
+if (elements.vaultCtxInput) {
+  elements.vaultCtxInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") searchVaultCtx();
+  });
+}
+
+// Load curator queue on startup
+loadCuratorQueue();
 
 // ── Obsidian Vault UI wiring ──────────────────────────────────────────────────
 
