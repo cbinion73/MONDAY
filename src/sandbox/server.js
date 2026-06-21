@@ -1580,6 +1580,22 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // GET /api/monday-sandbox/obsidian/context?q=&domain=&limit=&channels=semantic,keyword,graph
+  if (req.method === "GET" && pathname === "/api/monday-sandbox/obsidian/context") {
+    const q        = url.searchParams.get("q") || "";
+    const domain   = url.searchParams.get("domain") || null;
+    const limit    = Number(url.searchParams.get("limit") || 10);
+    const chParam  = url.searchParams.get("channels") || "";
+    const channels = chParam ? chParam.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
+    if (!q) { sendJson(res, 400, { ok: false, error: "q is required" }); return; }
+    obsidian.retrieveContext(q, { domain: domain || undefined, limit, channels }).then((result) => {
+      sendJson(res, 200, result);
+    }).catch((err) => {
+      sendJson(res, 500, { ok: false, error: err.message });
+    });
+    return;
+  }
+
   // ── end Obsidian routes ───────────────────────────────────────────────────
 
   res.writeHead(404);

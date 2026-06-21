@@ -14,6 +14,7 @@ const { initMissionFolder, missionExists, missionName } = require("./mission-doc
 const { exportWorkingTheory, exportDecision, exportContradiction, exportOpportunity } = require("./theory-exporter");
 const vaultIndexer  = require("./vault-indexer");
 const vaultEmbedder = require("../memory/vault-embedder");
+const { retrievePersonalContext } = require("../memory/retrieval");
 
 // Significance levels that warrant an Obsidian write
 const WRITE_SIGNIFICANCE = new Set([
@@ -222,6 +223,12 @@ function searchVault(query, opts) {
   return vaultEmbedder.searchVault(query, opts);
 }
 
+// ── Hybrid Retrieval (public pass-through) ────────────────────────────────────
+
+function retrieveContext(query, opts) {
+  return retrievePersonalContext(query, opts);
+}
+
 module.exports = {
   ensureVault,
   handleCapture,
@@ -247,4 +254,6 @@ module.exports = {
   // Vault embedder
   embedVault,
   searchVault,
+  // Hybrid retrieval
+  retrieveContext,
 };
