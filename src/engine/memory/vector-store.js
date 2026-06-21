@@ -32,9 +32,10 @@ async function getDb() {
 // first row is written; subsequent writes must match.
 
 const TABLE_NAMES = {
-  notes:    "notes",    // Obsidian notes + mission docs
-  captures: "captures", // personal captures (voice + text)
-  turns:    "turns",    // conversation turns
+  notes:        "notes",        // Obsidian notes + mission docs (whole-note, legacy)
+  captures:     "captures",     // personal captures (voice + text)
+  turns:        "turns",        // conversation turns
+  vault_chunks: "vault_chunks", // heading-level chunks of vault notes with citations
 };
 
 const _tables = {};

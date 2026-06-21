@@ -12,7 +12,8 @@ const { createInboxNote, createDomainNote, appendToJournal, writeJournalDay, wri
 const { searchNotes, getRecentNotes, getMissionNotes, readNote } = require("./note-reader");
 const { initMissionFolder, missionExists, missionName } = require("./mission-doc-writer");
 const { exportWorkingTheory, exportDecision, exportContradiction, exportOpportunity } = require("./theory-exporter");
-const vaultIndexer = require("./vault-indexer");
+const vaultIndexer  = require("./vault-indexer");
+const vaultEmbedder = require("../memory/vault-embedder");
 
 // Significance levels that warrant an Obsidian write
 const WRITE_SIGNIFICANCE = new Set([
@@ -211,6 +212,16 @@ function getIndexingStatus() {
   return vaultIndexer.getIndexingStatus();
 }
 
+// ── Vault Embedder (public pass-through) ──────────────────────────────────────
+
+function embedVault() {
+  return vaultEmbedder.embedChangedNotes();
+}
+
+function searchVault(query, opts) {
+  return vaultEmbedder.searchVault(query, opts);
+}
+
 module.exports = {
   ensureVault,
   handleCapture,
@@ -233,4 +244,7 @@ module.exports = {
   syncVault,
   reindexVault,
   getIndexingStatus,
+  // Vault embedder
+  embedVault,
+  searchVault,
 };

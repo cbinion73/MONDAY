@@ -1557,6 +1557,29 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/obsidian/embed/sync") {
+    obsidian.embedVault().then((result) => {
+      console.log("[obsidian] embed sync complete:", result);
+    }).catch((err) => {
+      console.warn("[obsidian] embed sync error:", err.message);
+    });
+    sendJson(res, 202, { ok: true, status: "embed sync started" });
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/monday-sandbox/obsidian/search") {
+    const q      = url.searchParams.get("q") || "";
+    const domain = url.searchParams.get("domain") || null;
+    const limit  = Number(url.searchParams.get("limit") || 8);
+    if (!q) { sendJson(res, 400, { ok: false, error: "q is required" }); return; }
+    obsidian.searchVault(q, { domain: domain || undefined, limit }).then((result) => {
+      sendJson(res, 200, result);
+    }).catch((err) => {
+      sendJson(res, 500, { ok: false, error: err.message });
+    });
+    return;
+  }
+
   // ── end Obsidian routes ───────────────────────────────────────────────────
 
   res.writeHead(404);
@@ -1576,14 +1599,20 @@ server.listen(PORT, () => {
     console.warn("[obsidian] Vault init skipped:", err.message);
   }
 
-  // Incremental vault sync on startup — picks up any changes since last run
-  obsidian.syncVault().then((result) => {
-    if (result.ok) {
-      console.log(`[obsidian] vault sync: ${result.indexed} indexed, ${result.skipped} skipped, ${result.deleted} deleted`);
-    } else if (!result.skipped) {
-      console.warn("[obsidian] vault sync:", result.error || result.reason);
+  // Incremental vault sync on startup, then embed changed notes
+  obsidian.syncVault().then((syncResult) => {
+    if (syncResult.ok) {
+      console.log(`[obsidian] vault sync: ${syncResult.indexed} indexed, ${syncResult.skipped} skipped, ${syncResult.deleted} deleted`);
+    } else if (!syncResult.skipped) {
+      console.warn("[obsidian] vault sync:", syncResult.error || syncResult.reason);
     }
-  }).catch((err) => console.warn("[obsidian] vault sync error:", err.message));
+    // Embed any notes whose chunks are missing or stale (fire-and-forget)
+    return obsidian.embedVault();
+  }).then((embedResult) => {
+    if (embedResult?.embedded > 0 || embedResult?.deleted > 0) {
+      console.log(`[obsidian] embed: ${embedResult.embedded} chunks written, ${embedResult.deleted} stale removed`);
+    }
+  }).catch((err) => console.warn("[obsidian] embed error:", err.message));
 
   // Bootstrap vector memory (fire-and-forget — safe if drive not mounted)
   memory.bootstrap().catch((err) => {
