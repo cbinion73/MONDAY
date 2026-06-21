@@ -1679,6 +1679,51 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ── Write-Back routes ─────────────────────────────────────────────────────
+
+  // POST /write-back/approved           — write all approved candidates to vault
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/write-back/approved") {
+    obsidian.writeBackApproved().then((result) => {
+      if (result.ok) console.log(`[write-back] ${result.written} written, ${result.skipped} skipped`);
+      sendJson(res, 200, result);
+    }).catch((err) => sendJson(res, 500, { ok: false, error: err.message }));
+    return;
+  }
+
+  // POST /write-back/candidate/:id      — write one approved candidate
+  const writeBackMatch = pathname.match(/^\/api\/monday-sandbox\/write-back\/candidate\/([^/]+)$/);
+  if (req.method === "POST" && writeBackMatch) {
+    const id = decodeURIComponent(writeBackMatch[1]);
+    obsidian.writeBackCandidate(id).then((result) => {
+      sendJson(res, 200, result);
+    }).catch((err) => sendJson(res, 500, { ok: false, error: err.message }));
+    return;
+  }
+
+  // POST /write-back/append             — append a timestamped section to a note
+  // body: { relPath, content, source?, confidence?, reason? }
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/write-back/append") {
+    parseBody(req).then((body) => {
+      if (!body.relPath || !body.content) {
+        sendJson(res, 400, { ok: false, error: "relPath and content required" }); return;
+      }
+      sendJson(res, 200, obsidian.appendWithTimestamp(body.relPath, body.content, body));
+    }).catch((err) => sendJson(res, 500, { ok: false, error: err.message }));
+    return;
+  }
+
+  // POST /write-back/frontmatter        — merge fields into a note's frontmatter
+  // body: { relPath, updates: { key: value, … } }
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/write-back/frontmatter") {
+    parseBody(req).then((body) => {
+      if (!body.relPath || !body.updates) {
+        sendJson(res, 400, { ok: false, error: "relPath and updates required" }); return;
+      }
+      sendJson(res, 200, obsidian.mergeFrontmatter(body.relPath, body.updates));
+    }).catch((err) => sendJson(res, 500, { ok: false, error: err.message }));
+    return;
+  }
+
   // ── end Obsidian routes ───────────────────────────────────────────────────
 
   res.writeHead(404);

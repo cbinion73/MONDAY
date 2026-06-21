@@ -17,6 +17,7 @@ const vaultEmbedder = require("../memory/vault-embedder");
 const { retrievePersonalContext } = require("../memory/retrieval");
 const graphExtractor  = require("../memory/graph-extractor");
 const memoryCurator   = require("../memory/memory-curator");
+const vaultWriter     = require("./vault-writer");
 
 // Significance levels that warrant an Obsidian write
 const WRITE_SIGNIFICANCE = new Set([
@@ -255,6 +256,13 @@ function getCuratorStats()                        { return memoryCurator.getRevi
 function approveCuratorCandidate(id, reason)      { return memoryCurator.approveCandidateById(id, reason); }
 function rejectCuratorCandidate(id, reason)       { return memoryCurator.rejectCandidateById(id, reason); }
 
+// ── Vault Write-Back (public pass-through) ────────────────────────────────────
+
+function writeBackApproved(opts)                  { return vaultWriter.writeBackApproved(opts); }
+function writeBackCandidate(candidateId)          { return vaultWriter.writeBackCandidate(candidateId); }
+function appendWithTimestamp(relPath, content, opts) { return vaultWriter.appendWithTimestamp(relPath, content, opts); }
+function mergeFrontmatter(relPath, updates)       { return vaultWriter.mergeFrontmatter(relPath, updates); }
+
 module.exports = {
   ensureVault,
   handleCapture,
@@ -294,4 +302,9 @@ module.exports = {
   getCuratorStats,
   approveCuratorCandidate,
   rejectCuratorCandidate,
+  // Vault write-back
+  writeBackApproved,
+  writeBackCandidate,
+  appendWithTimestamp,
+  mergeFrontmatter,
 };
