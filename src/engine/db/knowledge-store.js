@@ -98,6 +98,22 @@ function getNoteCount() {
   return getDb().prepare("SELECT COUNT(*) as n FROM notes").get().n;
 }
 
+// Returns notes that have never had entity extraction run, or whose mtime
+// is newer than the last extraction (content may have changed).
+function getNotesNeedingEntityExtraction() {
+  return getDb().prepare(`
+    SELECT * FROM notes
+    WHERE entity_extracted_at IS NULL OR mtime > entity_extracted_at
+    ORDER BY mtime DESC
+  `).all().map(deserializeNote);
+}
+
+function markNoteEntityExtracted(notePath) {
+  getDb().prepare(
+    "UPDATE notes SET entity_extracted_at = ? WHERE path = ?"
+  ).run(new Date().toISOString(), notePath);
+}
+
 function deserializeNote(row) {
   return {
     path:        row.path,
@@ -798,6 +814,8 @@ module.exports = {
   getNotesByDomain,
   getAllNotes,
   getNotesNeedingIndex,
+  getNotesNeedingEntityExtraction,
+  markNoteEntityExtracted,
   deleteNote,
   getNoteCount,
 

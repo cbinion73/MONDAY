@@ -392,6 +392,14 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_life_events_significance ON life_events(significance);
     `,
   },
+
+  // ── 003: Entity extraction tracking ────────────────────────────────────────
+  {
+    version: 3,
+    sql: `
+      ALTER TABLE notes ADD COLUMN entity_extracted_at TEXT;
+    `,
+  },
 ];
 
 module.exports = { getDb, resolveDbPath };

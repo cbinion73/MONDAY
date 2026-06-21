@@ -15,6 +15,7 @@ const { exportWorkingTheory, exportDecision, exportContradiction, exportOpportun
 const vaultIndexer  = require("./vault-indexer");
 const vaultEmbedder = require("../memory/vault-embedder");
 const { retrievePersonalContext } = require("../memory/retrieval");
+const graphExtractor = require("../memory/graph-extractor");
 
 // Significance levels that warrant an Obsidian write
 const WRITE_SIGNIFICANCE = new Set([
@@ -229,6 +230,20 @@ function retrieveContext(query, opts) {
   return retrievePersonalContext(query, opts);
 }
 
+// ── Knowledge Graph Extraction (public pass-through) ──────────────────────────
+
+function extractGraphEntities(opts) {
+  return graphExtractor.extractAllEntities(opts);
+}
+
+function extractNoteEntities(notePath) {
+  return graphExtractor.extractNote(notePath);
+}
+
+function getExtractionStatus() {
+  return graphExtractor.getExtractionStatus();
+}
+
 module.exports = {
   ensureVault,
   handleCapture,
@@ -256,4 +271,8 @@ module.exports = {
   searchVault,
   // Hybrid retrieval
   retrieveContext,
+  // Knowledge graph extraction
+  extractGraphEntities,
+  extractNoteEntities,
+  getExtractionStatus,
 };

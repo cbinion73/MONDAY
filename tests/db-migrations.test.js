@@ -40,7 +40,7 @@ store = freshStore();
 test("schema_migrations table is populated", () => {
   const { getDb } = require("../src/engine/db/connection");
   const rows = getDb().prepare("SELECT version FROM schema_migrations ORDER BY version").all();
-  assert.deepEqual(rows.map((r) => r.version), [1, 2]);
+  assert.deepEqual(rows.map((r) => r.version), [1, 2, 3]);
 });
 
 test("all 20 user tables exist", () => {
@@ -63,7 +63,7 @@ test("migrations are idempotent (running twice is safe)", () => {
   // getDb() already ran them; calling getDb() again should not throw or re-insert
   const db = getDb();
   const count = db.prepare("SELECT COUNT(*) as n FROM schema_migrations").get().n;
-  assert.equal(count, 2);
+  assert.equal(count, 3);
 });
 
 // ── Notes ─────────────────────────────────────────────────────────────────────

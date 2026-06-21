@@ -1580,6 +1580,35 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // GET  /api/monday-sandbox/obsidian/graph/status
+  if (req.method === "GET" && pathname === "/api/monday-sandbox/obsidian/graph/status") {
+    sendJson(res, 200, { ok: true, ...obsidian.getExtractionStatus() });
+    return;
+  }
+
+  // POST /api/monday-sandbox/obsidian/graph/extract  — extract all changed notes
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/obsidian/graph/extract") {
+    obsidian.extractGraphEntities().then((result) => {
+      console.log("[obsidian] graph extract:", result);
+      sendJson(res, 200, result);
+    }).catch((err) => {
+      sendJson(res, 500, { ok: false, error: err.message });
+    });
+    return;
+  }
+
+  // POST /api/monday-sandbox/obsidian/graph/extract/:notePath — single note
+  if (req.method === "POST" && pathname.startsWith("/api/monday-sandbox/obsidian/graph/extract/")) {
+    const notePath = decodeURIComponent(pathname.replace("/api/monday-sandbox/obsidian/graph/extract/", ""));
+    if (!notePath) { sendJson(res, 400, { ok: false, error: "notePath required" }); return; }
+    obsidian.extractNoteEntities(notePath).then((result) => {
+      sendJson(res, 200, result);
+    }).catch((err) => {
+      sendJson(res, 500, { ok: false, error: err.message });
+    });
+    return;
+  }
+
   // GET /api/monday-sandbox/obsidian/context?q=&domain=&limit=&channels=semantic,keyword,graph
   if (req.method === "GET" && pathname === "/api/monday-sandbox/obsidian/context") {
     const q        = url.searchParams.get("q") || "";
@@ -1622,13 +1651,18 @@ server.listen(PORT, () => {
     } else if (!syncResult.skipped) {
       console.warn("[obsidian] vault sync:", syncResult.error || syncResult.reason);
     }
-    // Embed any notes whose chunks are missing or stale (fire-and-forget)
+    // Embed any notes whose chunks are missing or stale, then extract graph entities
     return obsidian.embedVault();
   }).then((embedResult) => {
     if (embedResult?.embedded > 0 || embedResult?.deleted > 0) {
       console.log(`[obsidian] embed: ${embedResult.embedded} chunks written, ${embedResult.deleted} stale removed`);
     }
-  }).catch((err) => console.warn("[obsidian] embed error:", err.message));
+    return obsidian.extractGraphEntities();
+  }).then((graphResult) => {
+    if (graphResult?.processed > 0) {
+      console.log(`[obsidian] graph: ${graphResult.processed} notes, ${graphResult.entitiesWritten} entities, ${graphResult.relationsWritten} relations`);
+    }
+  }).catch((err) => console.warn("[obsidian] graph extract error:", err.message));
 
   // Bootstrap vector memory (fire-and-forget — safe if drive not mounted)
   memory.bootstrap().catch((err) => {
