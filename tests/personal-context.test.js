@@ -91,30 +91,36 @@ async function main() {
 
 console.log("\nenrichPersonalContext — skip conditions");
 
-await testAsync("returns unchanged personalContext when query is empty string", async () => {
+await testAsync("returns personalContext without memoryRecall when query is empty string", async () => {
   mockRetrieval();
   const { enrichPersonalContext } = loadSubject();
   const pc = { captureIntent: false };
   const result = await enrichPersonalContext("", pc);
-  assert.equal(result, pc, "should return same reference");
   assert.equal(result.memoryRecall, undefined);
+  assert.equal(result.captureIntent, false);
+  // Always enriched with working theories even on early return
+  assert.ok("workingTheories" in result);
+  assert.ok("recentDecisions" in result);
+  assert.ok("surfacingItem" in result);
 });
 
-await testAsync("returns unchanged personalContext when query is whitespace only", async () => {
+await testAsync("returns personalContext without memoryRecall when query is whitespace only", async () => {
   mockRetrieval();
   const { enrichPersonalContext } = loadSubject();
   const pc = {};
   const result = await enrichPersonalContext("   ", pc);
-  assert.equal(result, pc);
+  assert.equal(result.memoryRecall, undefined);
+  assert.ok("workingTheories" in result);
 });
 
-await testAsync("skips enrichment when captureIntent is true", async () => {
+await testAsync("skips memoryRecall enrichment when captureIntent is true", async () => {
   mockRetrieval();
   const { enrichPersonalContext } = loadSubject();
   const pc = { captureIntent: true };
   const result = await enrichPersonalContext("I want to retire", pc);
-  assert.equal(result, pc, "should return same reference");
+  assert.equal(result.captureIntent, true);
   assert.equal(result.memoryRecall, undefined);
+  assert.ok("workingTheories" in result);
 });
 
 await testAsync("skips enrichment when memoryRecall is already populated", async () => {
@@ -123,8 +129,8 @@ await testAsync("skips enrichment when memoryRecall is already populated", async
   const existingRecall = [{ table: "vault", title: "Prior note", excerpt: "Already here" }];
   const pc = { memoryRecall: existingRecall };
   const result = await enrichPersonalContext("retirement", pc);
-  assert.equal(result, pc);
-  assert.strictEqual(result.memoryRecall, existingRecall);
+  assert.deepEqual(result.memoryRecall, existingRecall);
+  assert.ok("workingTheories" in result);
 });
 
 // ── enrichPersonalContext — success path ──────────────────────────────────────
@@ -282,38 +288,43 @@ await testAsync("uses explicit domain opt over inferred", async () => {
 
 console.log("\nenrichPersonalContext — graceful failure");
 
-await testAsync("returns unchanged personalContext when retrieval throws", async () => {
+await testAsync("returns personalContext without memoryRecall when retrieval throws", async () => {
   mockRetrievalError();
   const { enrichPersonalContext } = loadSubject();
   const pc = { priorWorkingTheory: { statement: "test" } };
   const result = await enrichPersonalContext("retirement", pc);
-  assert.equal(result, pc, "should return original reference on error");
   assert.equal(result.memoryRecall, undefined);
+  assert.deepEqual(result.priorWorkingTheory, pc.priorWorkingTheory);
+  assert.ok("workingTheories" in result);
 });
 
-await testAsync("returns unchanged personalContext when retrieval returns ok:false", async () => {
+await testAsync("returns personalContext without memoryRecall when retrieval returns ok:false", async () => {
   mockRetrieval([], false); // ok: false
   const { enrichPersonalContext } = loadSubject();
   const pc = {};
   const result = await enrichPersonalContext("retirement", pc);
-  assert.equal(result, pc);
+  assert.equal(result.memoryRecall, undefined);
+  assert.ok("workingTheories" in result);
 });
 
-await testAsync("returns unchanged personalContext when retrieval returns empty results", async () => {
+await testAsync("returns personalContext without memoryRecall when retrieval returns empty results", async () => {
   mockRetrieval([], true); // ok: true, results: []
   const { enrichPersonalContext } = loadSubject();
   const pc = { someField: 42 };
   const result = await enrichPersonalContext("retirement", pc);
-  assert.equal(result, pc);
+  assert.equal(result.memoryRecall, undefined);
+  assert.equal(result.someField, 42);
+  assert.ok("workingTheories" in result);
 });
 
-await testAsync("returns unchanged personalContext on timeout", async () => {
+await testAsync("returns personalContext without memoryRecall on timeout", async () => {
   mockRetrievalTimeout(5000); // much longer than 3s timeout
   const { enrichPersonalContext } = loadSubject();
   const pc = { priorWorkingTheory: null };
   const result = await enrichPersonalContext("retirement", pc);
-  assert.equal(result, pc, "should return original reference on timeout");
   assert.equal(result.memoryRecall, undefined);
+  assert.equal(result.priorWorkingTheory, null);
+  assert.ok("workingTheories" in result);
 });
 
 } // end main

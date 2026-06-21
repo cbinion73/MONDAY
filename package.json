@@ -38,7 +38,10 @@
     "demo:repl": "node ./src/engine/demo/repl.js",
     "sandbox:web": "node ./src/sandbox/server.js",
     "daemon": "node --env-file=.env ./src/engine/daemon/daemon.js",
-    "gateway": "node --env-file=.env ./src/engine/gateway/server.js"
+    "gateway": "node --env-file=.env ./src/engine/gateway/server.js",
+    "sync": "node --env-file=.env -e \"require('./src/engine/connectors/cozi-sync').syncCozi().then(r=>console.log('cozi:',r));process.env.GOOGLE_REFRESH_TOKEN&&require('./src/engine/connectors/gmail-sync').syncGmail().then(r=>console.log('gmail:',r));process.env.GOOGLE_REFRESH_TOKEN&&require('./src/engine/connectors/google-calendar-sync').syncGoogleCalendar().then(r=>console.log('gcal:',r));process.env.MICROSOFT_REFRESH_TOKEN&&require('./src/engine/connectors/outlook-sync').syncOutlook().then(r=>console.log('outlook:',r));process.env.MICROSOFT_REFRESH_TOKEN&&require('./src/engine/connectors/outlook-calendar-sync').syncOutlookCalendar().then(r=>console.log('outlook-cal:',r))\"",
+    "setup:google": "node --env-file=.env scripts/setup-google-oauth.js",
+    "setup:microsoft": "node --env-file=.env scripts/setup-microsoft-oauth.js"
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.30.0",

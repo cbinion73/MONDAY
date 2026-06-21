@@ -14,6 +14,32 @@ const { runMonitorOperative } = require("../workers/monitor-operative");
 const gateway = require("../gateway/server");
 const { initFromMissions } = require("../workspace/workspace-manager");
 
+// Connector sync helpers — lazy-require so missing credentials don't block startup
+async function syncConnectors() {
+  const results = await Promise.allSettled([
+    // Cozi: no auth — always runs
+    require("../connectors/cozi-sync").syncCozi(),
+
+    // Google: only if credentials are configured
+    ...(process.env.GOOGLE_REFRESH_TOKEN ? [
+      require("../connectors/gmail-sync").syncGmail(),
+      require("../connectors/google-calendar-sync").syncGoogleCalendar(),
+    ] : []),
+
+    // Microsoft: only if credentials are configured
+    ...(process.env.MICROSOFT_REFRESH_TOKEN ? [
+      require("../connectors/outlook-sync").syncOutlook(),
+      require("../connectors/outlook-calendar-sync").syncOutlookCalendar(),
+    ] : []),
+  ]);
+
+  for (const r of results) {
+    if (r.status === "rejected") {
+      console.error("[daemon] connector sync error:", r.reason?.message || r.reason);
+    }
+  }
+}
+
 // Lightweight 15-min check: only re-classify triage from current state.
 // No LLM calls. No surfacing. Just keeps triage fresh.
 async function runContinuousCheck() {
@@ -48,6 +74,9 @@ function registerJobs() {
     // Synthesis worker writes deliverable + triggers review layer internally.
     // Review worker decides what (if anything) reaches Chris via surfacing queue.
   });
+
+  // Every 30 minutes: sync connectors (Cozi + Google + Outlook mail + calendar)
+  schedule("connector-sync", { minuteInterval: 30 }, syncConnectors);
 
   // 6:45am daily: morning digest
   schedule("morning-digest", { hour: 6, minute: 45 }, runMorningDigest);
