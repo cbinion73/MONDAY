@@ -2,7 +2,9 @@
 const fs = require("fs");
 const path = require("path");
 
-const DATA_DIR = path.resolve(__dirname, "../../../data/connectors");
+const DATA_DIR = process.env.MONDAY_CONNECTORS_DATA_DIR
+  ? path.resolve(process.env.MONDAY_CONNECTORS_DATA_DIR)
+  : path.resolve(__dirname, "../../../data/connectors");
 
 function readFile(name) {
   try {

@@ -39,6 +39,7 @@
     "gateway": "node ./src/engine/gateway/server.js"
   },
   "dependencies": {
+    "@lancedb/lancedb": "^0.30.0",
     "better-sqlite3": "^12.11.1"
   }
 }

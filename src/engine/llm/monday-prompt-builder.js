@@ -150,6 +150,17 @@ function buildConversationPrompt({ result, input, history, personalContext = {} 
     turnConstraints.push(lines.join("\n"));
   }
 
+  // ── Vector memory recall — relevant past context ──────────────────────────
+  if (userPayload.memoryRecall && userPayload.memoryRecall.length > 0) {
+    const lines = ["RELEVANT MEMORY (semantic recall):"];
+    for (const m of userPayload.memoryRecall) {
+      const label = m.title ? `[${m.table}] ${m.title}` : `[${m.table}]`;
+      lines.push(`${label}: ${m.excerpt}`);
+    }
+    lines.push("", "Use this context if it's directly relevant. Don't cite it by memory table name — just draw on it naturally.");
+    turnConstraints.push(lines.join("\n"));
+  }
+
   if (userPayload.conversationHypothesis) {
     turnConstraints.push(
       `WORKING HYPOTHESIS THIS TURN: ${userPayload.conversationHypothesis}`,
@@ -280,6 +291,9 @@ function buildConversationPayload({ result, input, history, personalContext = {}
     recentCaptures: personalContext.recentCaptures || [],
     priorWorkingTheory: priorWorkingTheory || null,
     skillContext: buildSkillContext(personalContext.skillResults || [], personalContext.theoryEvidence || null),
+    memoryRecall: (personalContext.memoryRecall && personalContext.memoryRecall.length > 0)
+      ? personalContext.memoryRecall
+      : null,
   };
 }
 

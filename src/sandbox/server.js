@@ -39,6 +39,7 @@ const {
   importFinancialAccounts,
 } = require("../engine/connectors/financial-context");
 const { generateDailyBrief } = require("../engine/intelligence/monday-intelligence");
+const { syncAppleCalendar } = require("../engine/connectors/apple-calendar-sync");
 const {
   evaluateCanonicalConversations,
 } = require("../engine/evals/canonical-conversations");
@@ -56,6 +57,7 @@ const {
 } = require("../engine/workspace/workspace-manager");
 const workspaceStore = require("../engine/workspace/workspace-store");
 const obsidian = require("../engine/obsidian/obsidian-service");
+const memory = require("../engine/memory/memory-index");
 
 loadSandboxEnv(path.resolve(__dirname, "../.."));
 process.env.MONDAY_CLOSED_LOOP_LEARNING ??= "true";
@@ -354,10 +356,23 @@ async function handleMessage(req, res) {
       ? updateTheoryFromEvidence(enrichedPersonalContext.priorWorkingTheory, skillInvocation.skills)
       : null;
 
+    // ── Vector recall ─────────────────────────────────────────────────────────
+    // Pull semantically relevant past context (notes, captures, turns) before LLM call.
+    let memoryRecall = [];
+    try {
+      memoryRecall = await memory.recall(body.input, {
+        domain: turnDomain ? turnDomain.toLowerCase() : null,
+        limit: 4,
+      });
+    } catch (err) {
+      console.warn("[memory] recall error:", err.message);
+    }
+
     const finalPersonalContext = {
       ...enrichedPersonalContext,
       skillResults: skillInvocation.skills,
       theoryEvidence,
+      memoryRecall: memoryRecall.length > 0 ? memoryRecall : null,
     };
     // ── end JARVIS loop ───────────────────────────────────────────────────────
 
@@ -389,6 +404,11 @@ async function handleMessage(req, res) {
 
     // Log exchange to domain workspace
     const turnDomainFinal = intelligentResult.finalState?.domain || intelligentResult.truth?.domain || null;
+
+    // Index this turn into vector memory (fire-and-forget)
+    memory.indexTurn({ role: "user", text: body.input, session: sessionInfo.id }).catch(() => {});
+    memory.indexTurn({ role: "monday", text: intelligentResult.voice.text, session: sessionInfo.id }).catch(() => {});
+
     processAfterTurn({
       domain: turnDomainFinal,
       userText: body.input,
@@ -438,6 +458,15 @@ async function handleMessage(req, res) {
             context: mergedContext,
           })
         : null;
+
+    // Index capture into vector memory (fire-and-forget)
+    if (capture) {
+      memory.indexCapture({
+        text: body.input,
+        domain: intelligentResult.finalState?.candidateDomain?.toLowerCase() || "",
+        source: "text",
+      }).catch(() => {});
+    }
 
     // ── Obsidian writes ───────────────────────────────────────────────────────
     // Capture → Inbox. Significant turns → theory export. Never blocks the reply.
@@ -1169,6 +1198,13 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/apple-calendar/sync") {
+    syncAppleCalendar()
+      .then((r) => sendJson(res, r.ok ? 200 : 500, r))
+      .catch((err) => sendJson(res, 500, { ok: false, error: err.message }));
+    return;
+  }
+
   if (
     (req.method === "GET" || req.method === "POST") &&
     pathname === "/api/monday-sandbox/documents"
@@ -1507,4 +1543,15 @@ server.listen(PORT, () => {
   } catch (err) {
     console.warn("[obsidian] Vault init skipped:", err.message);
   }
+
+  // Bootstrap vector memory (fire-and-forget — safe if drive not mounted)
+  memory.bootstrap().catch((err) => {
+    console.warn("[memory] bootstrap failed:", err.message);
+  });
+
+  // Sync Apple Calendar on startup (fire-and-forget — requires Calendar permission)
+  syncAppleCalendar().then((r) => {
+    if (r.ok) console.log(`[calendar] Apple sync: ${r.count} events`);
+    else console.warn("[calendar] Apple sync skipped:", r.error);
+  }).catch((err) => console.warn("[calendar] Apple sync error:", err.message));
 });

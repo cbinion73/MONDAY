@@ -92,16 +92,72 @@ async function dispatch(event) {
     }),
   };
 
+  // ── JARVIS loop: skill invocation ──────────────────────────────────────────
+  // Intent detection → trust gate → parallel execution → normalization → theory update.
+  // Runs between engine resolution and LLM call so Monday answers from live data.
+  const { invokeSkillsForTurn } = require("../skills/skill-invoker");
+  const { updateTheoryFromEvidence } = require("../skills/theory-from-evidence");
+
+  const turnDomain = result.truth?.domain || result.finalState?.domain || null;
+  const turnWorkspaceId = turnDomain ? turnDomain.toLowerCase() : null;
+
+  let skillInvocation = { used: false, skills: [], failed: [] };
+  try {
+    skillInvocation = await invokeSkillsForTurn(text, {
+      workspaceId: turnWorkspaceId,
+      domain: turnDomain,
+      channel,
+    });
+  } catch (err) {
+    console.warn("[gateway:router] skill invocation error:", err.message);
+  }
+
+  const theoryEvidence = skillInvocation.used
+    ? updateTheoryFromEvidence(personalContext.priorWorkingTheory, skillInvocation.skills)
+    : null;
+
+  const finalPersonalContext = {
+    ...enrichedPersonalContext,
+    skillResults: skillInvocation.skills,
+    theoryEvidence,
+  };
+  // ── end JARVIS loop ────────────────────────────────────────────────────────
+
   // Apply intelligence layer (Ollama/Claude refinement)
   const intelligentResult = await applyMondayIntelligence({
     result,
     input: text,
     history: session.messages,
-    personalContext: enrichedPersonalContext,
+    personalContext: finalPersonalContext,
   });
 
   const reply = intelligentResult.voice.text;
   const domain = result.finalState?.domain || intelligentResult.truth?.domain || null;
+
+  // ── Mission detection ──────────────────────────────────────────────────────
+  if (domain) {
+    try {
+      const { detectMissionOpportunity } = require("../missions/mission-engine");
+      const workspaceStore = require("../workspace/workspace-store");
+      const wsLog = workspaceStore.getLog(domain.toLowerCase(), { limit: 40 });
+      const suggestion = detectMissionOpportunity(domain, wsLog);
+      if (suggestion.suggested) {
+        console.log(`[gateway:router] mission suggestion: ${domain} — ${suggestion.reason}`);
+      }
+    } catch (err) {
+      console.warn("[gateway:router] mission detection error:", err.message);
+    }
+  }
+
+  // ── Voice memory ───────────────────────────────────────────────────────────
+  if (channel === "imessage" || channel === "voice") {
+    try {
+      const { logVoiceTurn } = require("../voice/voice-memory");
+      logVoiceTurn(text, intelligentResult.finalState, intelligentResult.truth);
+    } catch (err) {
+      console.warn("[gateway:router] voice memory error:", err.message);
+    }
+  }
 
   // Append to domain workspace log and sync working theory
   processAfterTurn({
@@ -109,6 +165,7 @@ async function dispatch(event) {
     userText: text,
     mondayReply: reply,
     workingTheory: intelligentResult.workingTheory || null,
+    skillsUsed: skillInvocation.skills.map((s) => s.skillId),
     channel,
   });
 
