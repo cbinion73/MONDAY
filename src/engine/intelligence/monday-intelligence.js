@@ -726,36 +726,19 @@ function shouldAcceptRefinement({
 
   const significance = result.finalState?.significance;
   const deterministic = String(result.voice?.text || "").trim();
-  const activeRole = result.finalState?.activeRole;
-  const outcome = result.finalState?.recommendedOutcome;
-  const lastMondayMessage = history.at(-1)?.monday || "";
-  const userInput = String(input || "").trim();
-  const inputLower = userInput.toLowerCase();
-  const replyLower = reply.toLowerCase();
   const theoryRevision = promptPayload?.theoryRevision || null;
-  const retirementFollowUpDeepeningResponse = isRetirementFollowUpDeepeningResponse({
-    significance,
-    activeRole,
-    lastMondayMessage,
-    userInput,
-    inputLower,
-    replyLower,
-  });
-  const interpretiveAdvanceResponse = isInterpretiveAdvanceResponse({
-    activeRole,
-    lastMondayMessage,
-    userInput,
-    reply,
-    replyLower,
-  });
   const recommendationRequired = shouldRequireRecommendation({
     significance,
-    userInput,
+    userInput: String(input || "").trim(),
     history,
   });
 
   if (!deterministic) return true;
 
+  // Too short to be a real reply
+  if (reply.length < Math.max(36, deterministic.length * 0.45)) return false;
+
+  // Generic wellness/coaching speak — Monday should never sound like a wellness app
   const genericCoachingPatterns = [
     /\bsmall,\s*sustainable changes\b/i,
     /\blead to\b.+\bweight loss\b/i,
@@ -763,123 +746,22 @@ function shouldAcceptRefinement({
     /\byou can do this\b/i,
     /\bone step at a time\b/i,
   ];
-  const intakeQuestionPatterns = [
-    /\bcan you share more\b/i,
-    /\bcan you tell me more\b/i,
-    /\bcould you share more\b/i,
-    /\bcould you tell me more\b/i,
-    /\bhelp me understand\b/i,
-    /\btell me more about\b/i,
-  ];
+  if (genericCoachingPatterns.some((p) => p.test(reply)) && !hasThinkingPartnerMove(reply)) {
+    return false;
+  }
 
-  const deterministicAnchors = {
-    weight_loss_goal: ["first sustainable change", "perfect plan first"],
-    prayer_concern: ["returning to prayer", "whole season tonight"],
-    relationship_concern: ["relationship matters", "feels off to you"],
-    family_time_tension: ["family and attention", "kind of tension"],
-    declared_family_value: ["family matters most", "actually being lived"],
-    future_life_transition: [
-      "money or timing",
-      "identity, freedom",
-      "what work has been carrying",
-      "what you want work to stop holding",
-    ],
-    work_tradeoff: [
-      "carrying more weight than usual",
-      "what work is doing for you right now",
-      "what feels most true about that tradeoff",
-    ],
-    publishing_decision: [
-      "sounds worth taking seriously",
-      "writing questions are rarely just about output",
-      "what makes this book feel alive again right now",
-    ],
-  };
+  // Over-hedged — stacking weak qualifiers with no actual view
+  if (isOverHedgedReply(reply)) return false;
 
+  // Publishing gloss — cheerleader mode is wrong for a thinking-partner turn
   if (
-    genericCoachingPatterns.some((pattern) => pattern.test(reply)) &&
-    (significance === "weight_loss_goal" || significance === "prayer_concern") &&
-    !hasTentativeInterpretation(reply) &&
-    !hasThinkingPartnerMove(reply)
+    significance === "publishing_decision" &&
+    /\bthat'?s a great idea\b|\bwriting can be a powerful way\b|\bexciting project\b|\bshare insights\b/i.test(reply)
   ) {
     return false;
   }
 
-  if (
-    (activeRole === "companion" || activeRole === "witness") &&
-    !result.finalState?.classificationFallback &&
-    intakeQuestionPatterns.some((pattern) => pattern.test(reply)) &&
-    !hasTentativeInterpretation(reply)
-  ) {
-    return false;
-  }
-
-  if (
-    (activeRole === "companion" || activeRole === "witness") &&
-    !result.finalState?.classificationFallback &&
-    isQuestionHeavyReply(reply) &&
-    !hasThinkingPartnerMove(reply)
-  ) {
-    return false;
-  }
-
-  if (
-    (activeRole === "companion" || activeRole === "witness") &&
-    !result.finalState?.classificationFallback &&
-    extractLastQuestion(reply) &&
-    !hasNonObviousContribution(reply)
-  ) {
-    return false;
-  }
-
-  if (
-    !result.finalState?.classificationFallback &&
-    extractLastQuestion(reply) &&
-    !hasInsightContribution(reply)
-  ) {
-    return false;
-  }
-
-  if (
-    !result.finalState?.classificationFallback &&
-    isOverHedgedReply(reply)
-  ) {
-    return false;
-  }
-
-  if (
-    significance === "future_life_transition" &&
-    activeRole === "companion" &&
-    userInput &&
-    !userInput.includes("?") &&
-    extractLastQuestion(lastMondayMessage) &&
-    extractLastQuestion(reply) &&
-    !replyLower.includes("that changes the theory") &&
-    !replyLower.includes("my guess") &&
-    !replyLower.includes("the real question") &&
-    !replyLower.includes("the real issue") &&
-    !replyLower.includes("i would")
-  ) {
-    return false;
-  }
-
-  if (
-    theoryRevision &&
-    (theoryRevision.status === "revise" || theoryRevision.status === "replace")
-  ) {
-    if (intakeQuestionPatterns.some((pattern) => pattern.test(reply))) {
-      return false;
-    }
-
-    if (!reflectsTheoryRevision(replyLower, theoryRevision)) {
-      return false;
-    }
-  }
-
-  if (recommendationRequired && !hasRecommendationMove(reply)) {
-    return false;
-  }
-
+  // Cross-domain contamination — don't inject work/career into a prayer conversation
   if (
     significance === "prayer_concern" &&
     /\bwork\b|\bcareer\b|\bjob\b/i.test(reply) &&
@@ -888,133 +770,17 @@ function shouldAcceptRefinement({
     return false;
   }
 
-  const anchors = deterministicAnchors[significance] || [];
-  const hasAnchor = anchors.some((anchor) =>
-    reply.toLowerCase().includes(anchor.toLowerCase())
-  );
-
+  // Theory revision active — the reply must engage with what changed, not ask an intake question
   if (
-    activeRole === "steward" &&
-    outcome === "surface_then_advise" &&
-    anchors.length > 0 &&
-    !hasAnchor &&
-    !reply.includes("?") &&
-    !hasThinkingPartnerMove(reply) &&
-    !interpretiveAdvanceResponse
+    theoryRevision &&
+    (theoryRevision.status === "revise" || theoryRevision.status === "replace") &&
+    !reflectsTheoryRevision(reply.toLowerCase(), theoryRevision)
   ) {
     return false;
   }
 
-  if (
-    significance === "prayer_concern" &&
-    (!reply.toLowerCase().includes("faith") || !reply.toLowerCase().includes("returning to prayer"))
-  ) {
-    return false;
-  }
-
-  if (
-    activeRole === "companion" &&
-    anchors.length > 0 &&
-    !hasAnchor &&
-    reply.length < deterministic.length * 1.2 &&
-    !retirementFollowUpDeepeningResponse &&
-    !interpretiveAdvanceResponse
-  ) {
-    return false;
-  }
-
-  if (
-    significance === "future_life_transition" &&
-    /\bdoesn'?t it\b/i.test(reply)
-  ) {
-    return false;
-  }
-
-  if (
-    significance === "future_life_transition" &&
-    !reply.toLowerCase().includes("what work has been carrying") &&
-    !reply.toLowerCase().includes("what you want work to stop holding") &&
-    !reply.toLowerCase().includes("that changes the theory") &&
-    !reply.toLowerCase().includes("the real question") &&
-    !reply.toLowerCase().includes("the real issue")
-  ) {
-    if (!retirementFollowUpDeepeningResponse && !interpretiveAdvanceResponse) {
-      return false;
-    }
-  }
-
-  if (
-    significance === "work_tradeoff" &&
-    /\bsignificant area right now\b/i.test(reply)
-  ) {
-    return false;
-  }
-
-  if (
-    significance === "publishing_decision" &&
-    /\bthat'?s a great idea\b|\bwriting can be a powerful way\b|\bexciting project\b|\bshare insights\b/i.test(reply)
-  ) {
-    return false;
-  }
-
-  if (reply.length < Math.max(36, deterministic.length * 0.45)) {
-    return false;
-  }
-
-  if (
-    activeRole === "companion" &&
-    extractLastQuestion(lastMondayMessage) &&
-    userInput &&
-    !userInput.includes("?")
-  ) {
-    const inputTokens = tokenizeForContinuity(userInput);
-    const reflectedInput = inputTokens.some((token) => replyLower.includes(token));
-    const repeatedQuestion =
-      /can you share more|what feels most|what has felt hardest|tell me more/i.test(reply) &&
-      !reflectedInput;
-
-    if (
-      significance === "future_life_transition" &&
-      !repeatedQuestion
-    ) {
-      const semanticReflection =
-        (inputLower.includes("money") &&
-          (replyLower.includes("money") || replyLower.includes("financial"))) ||
-        (inputLower.includes("family") && replyLower.includes("family")) ||
-        (inputLower.includes("work") && replyLower.includes("work")) ||
-        (inputLower.includes("identity") && replyLower.includes("identity")) ||
-        (inputLower.includes("purpose") && replyLower.includes("purpose"));
-      const deepeningSignals = [
-        "money",
-        "identity",
-        "purpose",
-        "family",
-        "work",
-        "life",
-        "after work",
-        "financial",
-      ];
-      const mentionsDeepeningSignal = deepeningSignals.some((signal) =>
-        replyLower.includes(signal)
-      );
-
-      if (
-        (reflectedInput || semanticReflection) &&
-        mentionsDeepeningSignal &&
-        !replyLower.includes("what feels most significant about retirement")
-      ) {
-        return true;
-      }
-    }
-
-    if (interpretiveAdvanceResponse) {
-      return true;
-    }
-
-    if (!reflectedInput || repeatedQuestion) {
-      return false;
-    }
-  }
+  // Recommendation required — if the engine says it's time to move, the reply must move
+  if (recommendationRequired && !hasRecommendationMove(reply)) return false;
 
   return true;
 }
