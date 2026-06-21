@@ -15,7 +15,8 @@ const { exportWorkingTheory, exportDecision, exportContradiction, exportOpportun
 const vaultIndexer  = require("./vault-indexer");
 const vaultEmbedder = require("../memory/vault-embedder");
 const { retrievePersonalContext } = require("../memory/retrieval");
-const graphExtractor = require("../memory/graph-extractor");
+const graphExtractor  = require("../memory/graph-extractor");
+const memoryCurator   = require("../memory/memory-curator");
 
 // Significance levels that warrant an Obsidian write
 const WRITE_SIGNIFICANCE = new Set([
@@ -244,6 +245,16 @@ function getExtractionStatus() {
   return graphExtractor.getExtractionStatus();
 }
 
+// ── Memory Curator (public pass-through) ──────────────────────────────────────
+
+function queueMemoryCandidate(candidate)          { return memoryCurator.queueCandidate(candidate); }
+function queueFromConversation(content, opts)     { return memoryCurator.queueFromConversation(content, opts); }
+function queueEntitiesForReview(opts)             { return memoryCurator.queueFromEntities(opts); }
+function getCuratorQueue(limit)                   { return memoryCurator.getPendingQueue(limit); }
+function getCuratorStats()                        { return memoryCurator.getReviewStats(); }
+function approveCuratorCandidate(id, reason)      { return memoryCurator.approveCandidateById(id, reason); }
+function rejectCuratorCandidate(id, reason)       { return memoryCurator.rejectCandidateById(id, reason); }
+
 module.exports = {
   ensureVault,
   handleCapture,
@@ -275,4 +286,12 @@ module.exports = {
   extractGraphEntities,
   extractNoteEntities,
   getExtractionStatus,
+  // Memory curator
+  queueMemoryCandidate,
+  queueFromConversation,
+  queueEntitiesForReview,
+  getCuratorQueue,
+  getCuratorStats,
+  approveCuratorCandidate,
+  rejectCuratorCandidate,
 };

@@ -1625,6 +1625,60 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ── Memory Curator routes ─────────────────────────────────────────────────
+
+  // GET  /curator/queue?limit=50    — pending candidates sorted by confidence
+  if (req.method === "GET" && pathname === "/api/monday-sandbox/curator/queue") {
+    const limit = Number(url.searchParams.get("limit") || 50);
+    sendJson(res, 200, { ok: true, candidates: obsidian.getCuratorQueue(limit) });
+    return;
+  }
+
+  // GET  /curator/stats             — counts by status
+  if (req.method === "GET" && pathname === "/api/monday-sandbox/curator/stats") {
+    sendJson(res, 200, { ok: true, ...obsidian.getCuratorStats() });
+    return;
+  }
+
+  // POST /curator/queue             — manually queue a candidate
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/curator/queue") {
+    parseBody(req).then((body) => {
+      if (!body.content) { sendJson(res, 400, { ok: false, error: "content required" }); return; }
+      sendJson(res, 200, obsidian.queueMemoryCandidate(body));
+    }).catch((err) => sendJson(res, 500, { ok: false, error: err.message }));
+    return;
+  }
+
+  // POST /curator/queue/from-entities?domain=&types=Decision,Belief&limit=100
+  if (req.method === "POST" && pathname === "/api/monday-sandbox/curator/queue/from-entities") {
+    const domain  = url.searchParams.get("domain") || null;
+    const typesP  = url.searchParams.get("types")  || "";
+    const types   = typesP ? typesP.split(",").map((t) => t.trim()) : null;
+    const limit   = Number(url.searchParams.get("limit") || 200);
+    sendJson(res, 200, obsidian.queueEntitiesForReview({ domain: domain || undefined, types, limit }));
+    return;
+  }
+
+  // PATCH /curator/:id/approve      — approve a candidate
+  const approveMatch = pathname.match(/^\/api\/monday-sandbox\/curator\/([^/]+)\/approve$/);
+  if (req.method === "PATCH" && approveMatch) {
+    const id = decodeURIComponent(approveMatch[1]);
+    parseBody(req).then((body) => {
+      sendJson(res, 200, obsidian.approveCuratorCandidate(id, body.reason || ""));
+    }).catch((err) => sendJson(res, 500, { ok: false, error: err.message }));
+    return;
+  }
+
+  // PATCH /curator/:id/reject       — reject a candidate
+  const rejectMatch = pathname.match(/^\/api\/monday-sandbox\/curator\/([^/]+)\/reject$/);
+  if (req.method === "PATCH" && rejectMatch) {
+    const id = decodeURIComponent(rejectMatch[1]);
+    parseBody(req).then((body) => {
+      sendJson(res, 200, obsidian.rejectCuratorCandidate(id, body.reason || ""));
+    }).catch((err) => sendJson(res, 500, { ok: false, error: err.message }));
+    return;
+  }
+
   // ── end Obsidian routes ───────────────────────────────────────────────────
 
   res.writeHead(404);

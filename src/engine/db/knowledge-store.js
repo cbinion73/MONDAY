@@ -336,6 +336,30 @@ function getCandidatesByStatus(status) {
   `).all(status).map(deserializeCandidate);
 }
 
+// Returns the first pending/approved candidate whose source_ref matches,
+// or null. Used to prevent re-queuing the same entity.
+function getCandidateBySourceRef(sourceRef) {
+  const row = getDb().prepare(`
+    SELECT * FROM memory_candidates
+    WHERE source_ref = ? AND status IN ('pending', 'approved')
+    ORDER BY created_at DESC LIMIT 1
+  `).get(sourceRef);
+  return row ? deserializeCandidate(row) : null;
+}
+
+// Returns counts of candidates grouped by status.
+function getReviewStats() {
+  const rows = getDb().prepare(
+    "SELECT status, COUNT(*) as n FROM memory_candidates GROUP BY status"
+  ).all();
+  const stats = { pending: 0, approved: 0, rejected: 0, written: 0, total: 0 };
+  for (const r of rows) {
+    if (r.status in stats) stats[r.status] = r.n;
+    stats.total += r.n;
+  }
+  return stats;
+}
+
 function approveCandidate(id, reason) {
   const ts = now();
   const db = getDb();
@@ -847,6 +871,8 @@ module.exports = {
   addMemoryCandidate,
   getPendingCandidates,
   getCandidatesByStatus,
+  getCandidateBySourceRef,
+  getReviewStats,
   approveCandidate,
   rejectCandidate,
   markCandidateWritten,
