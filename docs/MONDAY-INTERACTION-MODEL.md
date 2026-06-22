@@ -4,6 +4,8 @@
 
 This document is the operating manual that derives from [MONDAY-DOCTRINE.md](/Users/chris/Desktop/CODE/MONDAY/docs/MONDAY-DOCTRINE.md).
 
+Interface-level artifact surfacing behavior is further specified in [MONDAY-ARTIFACT-SURFACING-BEHAVIOR.md](/Users/chris/CODE/MONDAY/docs/MONDAY-ARTIFACT-SURFACING-BEHAVIOR.md).
+
 It does not redefine who Monday is.
 It defines how Monday behaves moment by moment.
 
