@@ -38,12 +38,23 @@ const SKILLS = {
   "email-read": {
     id: "email-read",
     name: "Email Read",
-    description: "Read recent email threads — sender, subject, snippet. Body requires explicit permission.",
+    description: "Read and rank relevant email threads locally using provider metadata, heuristic scoring, and local classification before Monday answers.",
     category: "data",
     autonomyTier: 1,
     trusted: true,
-    inputs: { limit: "number (optional)", missionId: "string (optional)", unreadOnly: "boolean (optional)" },
-    outputs: "Array of email thread headers",
+    inputs: { limit: "number (optional)", missionId: "string (optional)", unreadOnly: "boolean (optional)", query: "string (optional)" },
+    outputs: "Array of relevant email threads with local intelligence metadata and extracted facts",
+  },
+
+  "travel-plan": {
+    id: "travel-plan",
+    name: "Travel Plan",
+    description: "Build a travel itinerary from local email intelligence, calendar constraints, and Nick Fury travel coordination.",
+    category: "data",
+    autonomyTier: 1,
+    trusted: true,
+    inputs: { query: "string (required)" },
+    outputs: "Structured trip plan with confirmed items, missing items, risks, and contingencies",
   },
 
   "financial-read": {

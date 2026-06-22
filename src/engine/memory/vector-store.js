@@ -36,6 +36,7 @@ const TABLE_NAMES = {
   captures:     "captures",     // personal captures (voice + text)
   turns:        "turns",        // conversation turns
   vault_chunks: "vault_chunks", // heading-level chunks of vault notes with citations
+  correspondence: "correspondence", // preserved correspondence memory
 };
 
 const _tables = {};

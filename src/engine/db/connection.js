@@ -442,6 +442,82 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_cost_log_tier    ON llm_cost_log(tier);
     `,
   },
+
+  // ── 006: Email intelligence cache + structured facts ───────────────────────
+  {
+    version: 6,
+    sql: `
+      CREATE TABLE IF NOT EXISTS email_threads (
+        thread_id                  TEXT PRIMARY KEY,
+        source                     TEXT NOT NULL,
+        subject                    TEXT,
+        from_address               TEXT,
+        provider_category          TEXT,
+        provider_labels            TEXT DEFAULT '[]',
+        folder                     TEXT,
+        received_at                TEXT,
+        unread                     INTEGER DEFAULT 0,
+        starred                    INTEGER DEFAULT 0,
+        has_attachments            INTEGER DEFAULT 0,
+        relationship_score         REAL DEFAULT 0,
+        junk_score                 REAL DEFAULT 0,
+        significance_score         REAL DEFAULT 0,
+        domain                     TEXT,
+        thread_type                TEXT,
+        actionability              REAL DEFAULT 0,
+        entities                   TEXT DEFAULT '[]',
+        structured_facts           TEXT DEFAULT '[]',
+        local_classification       TEXT DEFAULT '{}',
+        classification_confidence  REAL DEFAULT 0,
+        user_participated          INTEGER DEFAULT 0,
+        message_count              INTEGER DEFAULT 0,
+        body_hash                  TEXT,
+        updated_at                 TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_email_threads_source        ON email_threads(source);
+      CREATE INDEX IF NOT EXISTS idx_email_threads_category      ON email_threads(provider_category);
+      CREATE INDEX IF NOT EXISTS idx_email_threads_domain        ON email_threads(domain);
+      CREATE INDEX IF NOT EXISTS idx_email_threads_type          ON email_threads(thread_type);
+      CREATE INDEX IF NOT EXISTS idx_email_threads_significance  ON email_threads(significance_score);
+      CREATE INDEX IF NOT EXISTS idx_email_threads_junk          ON email_threads(junk_score);
+      CREATE INDEX IF NOT EXISTS idx_email_threads_received      ON email_threads(received_at);
+
+      CREATE TABLE IF NOT EXISTS email_thread_facts (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        thread_id   TEXT NOT NULL,
+        fact_type   TEXT NOT NULL,
+        fact_key    TEXT,
+        fact_value  TEXT NOT NULL,
+        confidence  REAL DEFAULT 0.8,
+        created_at  TEXT NOT NULL,
+        FOREIGN KEY (thread_id) REFERENCES email_threads(thread_id) ON DELETE CASCADE
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_email_thread_facts_unique
+        ON email_thread_facts(thread_id, fact_type, IFNULL(fact_key, ''), fact_value);
+      CREATE INDEX IF NOT EXISTS idx_email_thread_facts_thread ON email_thread_facts(thread_id);
+      CREATE INDEX IF NOT EXISTS idx_email_thread_facts_type   ON email_thread_facts(fact_type);
+    `,
+  },
+
+  // ── 007: Katy correspondence preservation ledger ─────────────────────────
+  {
+    version: 7,
+    sql: `
+      CREATE TABLE IF NOT EXISTS email_memory_records (
+        thread_id           TEXT PRIMARY KEY,
+        body_hash           TEXT,
+        preserve_state      TEXT DEFAULT 'preserved',
+        preserve_reason     TEXT,
+        preserve_score      REAL DEFAULT 0,
+        vector_doc_id       TEXT,
+        summary             TEXT,
+        last_preserved_at   TEXT NOT NULL,
+        FOREIGN KEY (thread_id) REFERENCES email_threads(thread_id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_email_memory_state      ON email_memory_records(preserve_state);
+      CREATE INDEX IF NOT EXISTS idx_email_memory_preserved  ON email_memory_records(last_preserved_at);
+    `,
+  },
 ];
 
 module.exports = { getDb, resolveDbPath };

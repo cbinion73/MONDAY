@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Monday Travel Itinerary Mockup</title>
+    <style>
+      :root {
+        --bg: #f6f7fa;
+        --panel: rgba(255, 255, 255, 0.9);
+        --text: #1f2329;
+        --muted: #77808b;
+        --gold: #c59b62;
+        --gold-deep: #976f3b;
+        --line: rgba(197, 155, 98, 0.14);
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        font-family: "Avenir Next", "Segoe UI", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(197, 155, 98, 0.08), transparent 28%),
+          linear-gradient(180deg, #fbfbfc 0%, var(--bg) 100%);
+      }
+
+      body {
+        padding: clamp(18px, 2.2vw, 32px);
+      }
+
+      .document {
+        max-width: 1260px;
+        margin: 0 auto;
+        display: grid;
+        gap: 18px;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid rgba(255, 255, 255, 0.76);
+        border-radius: 30px;
+        padding: clamp(20px, 2.4vw, 30px);
+        backdrop-filter: blur(16px) saturate(1.05);
+        box-shadow:
+          0 22px 48px rgba(83, 95, 110, 0.08),
+          inset 0 1px 0 rgba(255, 255, 255, 0.78);
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 18px;
+        align-items: stretch;
+      }
+
+      .eyebrow {
+        color: var(--gold-deep);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+      }
+
+      h1, h2, h3, p { margin: 0; }
+
+      .hero-copy {
+        display: grid;
+        gap: 16px;
+        align-content: start;
+      }
+
+      .hero-copy h1 {
+        font-size: clamp(40px, 5vw, 70px);
+        line-height: 0.94;
+        letter-spacing: -0.05em;
+      }
+
+      .hero-copy p {
+        color: var(--muted);
+        font-size: clamp(17px, 1.7vw, 20px);
+        line-height: 1.6;
+      }
+
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .chip {
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: rgba(197, 155, 98, 0.11);
+        color: var(--gold-deep);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .map-panel {
+        display: grid;
+        gap: 14px;
+      }
+
+      .route-summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .route-stat {
+        padding: 14px 16px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.74);
+        border: 1px solid rgba(197, 155, 98, 0.1);
+      }
+
+      .route-stat span {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 4px;
+      }
+
+      .route-stat strong {
+        color: var(--gold-deep);
+        font-size: clamp(18px, 2vw, 28px);
+      }
+
+      .map-card {
+        position: relative;
+        min-height: 360px;
+        border-radius: 26px;
+        overflow: hidden;
+        border: 1px solid rgba(197, 155, 98, 0.12);
+        background:
+          linear-gradient(180deg, rgba(229, 236, 246, 0.94), rgba(248, 249, 251, 0.94));
+      }
+
+      .map-grid {
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(rgba(255, 255, 255, 0.64) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.58) 1px, transparent 1px);
+        background-size: 100% 16%, 10% 100%;
+        opacity: 0.55;
+      }
+
+      .route-label {
+        position: absolute;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.84);
+        border: 1px solid rgba(197, 155, 98, 0.14);
+        color: var(--gold-deep);
+        font-size: 12px;
+        font-weight: 700;
+        backdrop-filter: blur(8px);
+      }
+
+      .route-label.start { left: 10%; top: 70%; }
+      .route-label.end { right: 9%; top: 18%; }
+
+      .day-section {
+        display: grid;
+        gap: 14px;
+      }
+
+      .day-heading {
+        display: grid;
+        gap: 6px;
+      }
+
+      .day-name {
+        font-size: clamp(18px, 2vw, 24px);
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--gold-deep);
+      }
+
+      .day-theme {
+        font-size: clamp(34px, 4vw, 54px);
+        line-height: 0.96;
+        letter-spacing: -0.05em;
+        font-weight: 700;
+        color: var(--text);
+        text-wrap: balance;
+      }
+
+      .day-heading.day-heading-feature .day-theme {
+        color: var(--gold-deep);
+        text-shadow: 0 12px 32px rgba(197, 155, 98, 0.18);
+      }
+
+      .day-section h2 {
+        font-size: clamp(28px, 3.2vw, 42px);
+        letter-spacing: -0.04em;
+      }
+
+      .day-section > p {
+        color: var(--muted);
+        line-height: 1.6;
+        font-size: 17px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        border-spacing: 0;
+        overflow: hidden;
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.72);
+      }
+
+      thead th {
+        text-align: left;
+        padding: 16px 18px;
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--gold-deep);
+        background: rgba(197, 155, 98, 0.08);
+        border-bottom: 1px solid var(--line);
+      }
+
+      tbody td {
+        padding: 16px 18px;
+        vertical-align: top;
+        border-bottom: 1px solid rgba(197, 155, 98, 0.08);
+        font-size: 15px;
+        line-height: 1.45;
+      }
+
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .site-link {
+        color: #365d90;
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      .thumb {
+        width: 92px;
+        height: 72px;
+        border-radius: 16px;
+        object-fit: cover;
+        display: block;
+      }
+
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .visit-card {
+        display: grid;
+        grid-template-columns: 140px 1fr;
+        gap: 16px;
+        align-items: start;
+        padding: 16px;
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(197, 155, 98, 0.1);
+      }
+
+      .visit-card img {
+        width: 100%;
+        height: 110px;
+        object-fit: cover;
+        border-radius: 18px;
+      }
+
+      .visit-card h3 {
+        font-size: 22px;
+        letter-spacing: -0.03em;
+        margin-bottom: 8px;
+      }
+
+      .visit-card p {
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.55;
+        margin-bottom: 10px;
+      }
+
+      .visit-card a {
+        color: #365d90;
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      .travel-bullets {
+        display: grid;
+        gap: 8px;
+        color: var(--muted);
+      }
+
+      .travel-bullets div::before {
+        content: "•";
+        color: var(--gold-deep);
+        margin-right: 8px;
+      }
+
+      @media (max-width: 980px) {
+        .hero,
+        .cards {
+          grid-template-columns: 1fr;
+        }
+
+        .visit-card {
+          grid-template-columns: 1fr;
+        }
+
+        .route-summary {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="document">
+      <section class="hero">
+        <article class="panel hero-copy">
+          <div class="eyebrow">Nick Fury Itinerary</div>
+          <h1>America 250 Trip Plan</h1>
+          <p>
+            I read your calendar for the available dates, pulled your ticket reservations
+            from email, checked national park and historic-site options, and built a
+            trip plan around the strongest route and your favorite kinds of stops.
+          </p>
+          <div class="chip-row">
+            <div class="chip">Alexandria, KY → Philadelphia, PA</div>
+            <div class="chip">Historic sites + parks</div>
+            <div class="chip">July 2026 travel week</div>
+          </div>
+          <div class="travel-bullets">
+            <div>Sunday is a travel day.</div>
+            <div>The toll-road route is the best tradeoff for time and energy.</div>
+            <div>Monday centers on Philadelphia's core revolutionary landmarks.</div>
+          </div>
+        </article>
+
+        <article class="panel map-panel">
+          <div class="day-heading day-heading-feature">
+            <div class="day-name">Sunday</div>
+            <div class="day-theme">Travel Day</div>
+          </div>
+          <div class="route-summary">
+            <div class="route-stat">
+              <span>Distance</span>
+              <strong>585 mi</strong>
+            </div>
+            <div class="route-stat">
+              <span>Toll Route</span>
+              <strong>9h 24m</strong>
+            </div>
+            <div class="route-stat">
+              <span>Alternative</span>
+              <strong>10h 37m</strong>
+            </div>
+          </div>
+          <div class="map-card">
+            <div class="map-grid"></div>
+            <svg viewBox="0 0 1000 600" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M126 450 C 220 438, 280 374, 358 326 S 506 222, 602 178 S 760 116, 884 92" fill="none" stroke="rgba(197,155,98,0.94)" stroke-width="10" stroke-linecap="round"></path>
+              <path d="M128 474 C 244 456, 330 404, 420 342 S 570 272, 676 220 S 802 160, 892 120" fill="none" stroke="rgba(197,155,98,0.38)" stroke-width="7" stroke-dasharray="18 16" stroke-linecap="round"></path>
+              <circle cx="126" cy="450" r="14" fill="rgba(151,111,59,0.94)"></circle>
+              <circle cx="884" cy="92" r="14" fill="rgba(151,111,59,0.94)"></circle>
+            </svg>
+            <div class="route-label start">Alexandria, KY</div>
+            <div class="route-label end">Philadelphia, PA</div>
+          </div>
+          <p style="color: var(--muted); line-height: 1.55; margin: 0;">
+            You will be traveling from Alexandria, KY to Philadelphia, PA. The toll-road route
+            should take about 9 hours and 24 minutes and cost about $13. The next shortest route
+            is about 10 hours and 37 minutes. I would recommend the toll roads.
+          </p>
+        </article>
+      </section>
+
+      <section class="panel day-section">
+        <div class="eyebrow">Monday</div>
+        <h2>Monday is the day to stroll and see:</h2>
+        <p>
+          This day is built around the most iconic walkable sites in the historic core,
+          keeping the rhythm easy and giving you time to actually absorb the place.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Description</th>
+              <th>Website</th>
+              <th>Image</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Liberty Bell</strong></td>
+              <td>An easy first stop and one of the defining symbols of the trip.</td>
+              <td><a class="site-link" href="https://www.nps.gov/inde/learn/historyculture/stories-libertybell.htm">nps.gov</a></td>
+              <td><img class="thumb" src="/assets/photos/liberty-bell.jpg" alt="Liberty Bell"></td>
+            </tr>
+            <tr>
+              <td><strong>Independence Hall</strong></td>
+              <td>The center of the revolutionary story and the strongest anchor for the day.</td>
+              <td><a class="site-link" href="https://www.nps.gov/inde/planyourvisit/independencehall.htm">nps.gov</a></td>
+              <td><img class="thumb" src="/assets/photos/independence-hall.jpg" alt="Independence Hall"></td>
+            </tr>
+            <tr>
+              <td><strong>Congress Hall</strong></td>
+              <td>A natural follow-on stop nearby, with strong historical continuity from Independence Hall.</td>
+              <td><a class="site-link" href="https://www.nps.gov/inde/planyourvisit/congresshall.htm">nps.gov</a></td>
+              <td><img class="thumb" src="/assets/photos/congress-hall.jpg" alt="Congress Hall"></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="panel day-section">
+        <div class="eyebrow">Tuesday</div>
+        <h2>Tuesday you will be visiting the museum and waterfront corridor.</h2>
+        <p>
+          Tuesday balances the heavier historical content with a broader city experience:
+          one major museum stop, a waterfront pass, and a cleaner pacing day after the core
+          walking route.
+        </p>
+        <div class="cards">
+          <article class="visit-card">
+            <img src="/assets/photos/museum.jpg" alt="Philadelphia Museum of Art">
+            <div>
+              <h3>Philadelphia Museum of Art</h3>
+              <p>A stronger Tuesday anchor because it gives the day a different texture from Monday while still feeling substantial.</p>
+              <a href="https://philamuseum.org/">philamuseum.org</a>
+            </div>
+          </article>
+          <article class="visit-card">
+            <img src="/assets/photos/harbor-park.jpg" alt="Spruce Street Harbor Park">
+            <div>
+              <h3>Spruce Street Harbor Park</h3>
+              <p>An easier evening reset by the water after a museum-heavy afternoon, with room to wander and decompress.</p>
+              <a href="https://www.delawareriverwaterfront.com/places/spruce-street-harbor-park">delawareriverwaterfront.com</a>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel day-section">
+        <div class="eyebrow">Wednesday</div>
+        <h2>Wednesday you will be going to see a national-park style favorite and one final historic stop.</h2>
+        <p>
+          Because national parks and adjacent heritage sites are your favorite stops,
+          Wednesday leans into that instinct before the return leg of the trip.
+        </p>
+        <div class="cards">
+          <article class="visit-card">
+            <img src="/assets/photos/valley-forge.jpg" alt="Valley Forge National Historical Park">
+            <div>
+              <h3>Valley Forge National Historical Park</h3>
+              <p>This gives the itinerary the kind of stop you naturally enjoy most: room, terrain, and historical weight together.</p>
+              <a href="https://www.nps.gov/vafo/index.htm">nps.gov</a>
+            </div>
+          </article>
+          <article class="visit-card">
+            <img src="/assets/photos/franklin-museum.jpg" alt="Benjamin Franklin Museum">
+            <div>
+              <h3>Benjamin Franklin Museum</h3>
+              <p>A final compact city stop if you still want one more high-signal historical visit before heading out.</p>
+              <a href="https://www.nps.gov/inde/planyourvisit/benjaminfranklinmuseum.htm">nps.gov</a>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

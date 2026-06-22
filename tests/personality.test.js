@@ -160,10 +160,10 @@ section("1. Prompt Architecture — system prompt wiring");
     systemText = sys.content;
   });
 
-  test("system prompt instructs 'boss' address", () => {
+  test("system prompt instructs sparing use of 'boss'", () => {
     assert.ok(
-      /always address chris as .?boss/i.test(systemText),
-      "system prompt must instruct use of 'boss' address"
+      /use .?boss.? sparingly/i.test(systemText),
+      "system prompt must instruct sparing use of 'boss'"
     );
   });
 
@@ -281,7 +281,7 @@ async function runStructureTests() {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 3. ADDRESS & VOICE RULES — every reply calls Chris "boss"
+// 3. ADDRESS & VOICE RULES — "boss" is intermittent, not constant
 // ═════════════════════════════════════════════════════════════════════════════
 
 section("3. Address & Voice Rules — boss, direct, no theater");
@@ -300,13 +300,12 @@ async function runAddressTests() {
     results.push({ msg, domain, r });
   }
 
-  await test("every reply addresses Chris as 'boss'", () => {
-    for (const { msg, r } of results) {
-      assert.ok(
-        /\bboss\b/i.test(r.reply),
-        `Reply to "${msg.slice(0, 40)}" must contain 'boss'. Got: "${r.reply.slice(0, 80)}"`
-      );
-    }
+  await test("'boss' is optional in routine replies and never universal", () => {
+    const bossCount = results.filter(({ r }) => /\bboss\b/i.test(r.reply)).length;
+    assert.ok(
+      bossCount < results.length,
+      `Expected 'boss' to remain optional rather than universal. Got ${bossCount}/${results.length}.`
+    );
   });
 
   await test("no reply uses 'sir', 'Captain', or 'Chris' as direct address", () => {

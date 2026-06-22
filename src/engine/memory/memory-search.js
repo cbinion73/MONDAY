@@ -115,4 +115,8 @@ async function searchTurns(query, opts = {}) {
   return search(query, { ...opts, tables: [TABLE_NAMES.turns] });
 }
 
-module.exports = { search, searchNotes, searchCaptures, searchTurns };
+async function searchCorrespondence(query, opts = {}) {
+  return search(query, { ...opts, tables: [TABLE_NAMES.correspondence] });
+}
+
+module.exports = { search, searchNotes, searchCaptures, searchTurns, searchCorrespondence };

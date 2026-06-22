@@ -39,6 +39,23 @@ const TURN_SEED = {
   ts: 0,
 };
 
+const CORRESPONDENCE_SEED = {
+  id: "_seed",
+  vector: zeroVector(),
+  threadId: "",
+  subject: "",
+  fromAddress: "",
+  text: "",
+  summary: "",
+  domain: "",
+  source: "email",
+  threadType: "personal",
+  significanceScore: 0,
+  relationshipScore: 0,
+  entities: "",
+  ts: 0,
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function nowMs() { return Date.now(); }
@@ -58,6 +75,19 @@ async function addRows(tableName, seed, rows) {
   const filtered = rows.filter((r) => r.id !== "_seed");
   if (!filtered.length) return;
   await table.add(filtered);
+}
+
+async function deleteRowsByIds(tableName, seed, ids = []) {
+  const filtered = ids.filter(Boolean);
+  if (!filtered.length) return 0;
+  const table = await ensureTable(tableName, seed);
+  let deleted = 0;
+  for (const id of filtered) {
+    const safe = String(id).replace(/'/g, "''");
+    await table.delete(`id = '${safe}'`);
+    deleted += 1;
+  }
+  return deleted;
 }
 
 // ── Public write functions ────────────────────────────────────────────────────
@@ -134,6 +164,62 @@ async function indexTurn({ role, text, session = "", ts }) {
 }
 
 /**
+ * Index a preserved correspondence thread.
+ * @param {object} opts
+ * @param {string} opts.threadId
+ * @param {string} opts.subject
+ * @param {string} opts.fromAddress
+ * @param {string} opts.text
+ * @param {string} [opts.summary]
+ * @param {string} [opts.domain]
+ * @param {string} [opts.source]
+ * @param {string} [opts.threadType]
+ * @param {number} [opts.significanceScore]
+ * @param {number} [opts.relationshipScore]
+ * @param {string[]} [opts.entities]
+ * @param {number} [opts.ts]
+ */
+async function indexCorrespondence({
+  threadId,
+  subject = "",
+  fromAddress = "",
+  text,
+  summary = "",
+  domain = "",
+  source = "email",
+  threadType = "personal",
+  significanceScore = 0,
+  relationshipScore = 0,
+  entities = [],
+  ts,
+}) {
+  const vector = await safeEmbed([subject, summary, text].filter(Boolean).join("\n"));
+  const row = {
+    id: `corr_${threadId}`,
+    vector,
+    threadId: threadId || "",
+    subject: subject || "",
+    fromAddress: fromAddress || "",
+    text: (text || "").slice(0, 6000),
+    summary: (summary || "").slice(0, 1200),
+    domain,
+    source,
+    threadType,
+    significanceScore,
+    relationshipScore,
+    entities: JSON.stringify(entities || []),
+    ts: ts || nowMs(),
+  };
+  await addRows(TABLE_NAMES.correspondence, CORRESPONDENCE_SEED, [row]);
+  return row.id;
+}
+
+async function deleteCorrespondenceByThreadIds(threadIds = []) {
+  const ids = threadIds.map((threadId) => `corr_${threadId}`);
+  return deleteRowsByIds(TABLE_NAMES.correspondence, CORRESPONDENCE_SEED, ids);
+}
+
+/**
  * Bulk-index all markdown files in a directory as notes.
  * Skips files already indexed (by checking if id slot exists — future: use a seen-set).
  * @param {string} dir   directory path
@@ -154,4 +240,11 @@ async function indexDirectory(dir, domain = "", type = "note") {
   return count;
 }
 
-module.exports = { indexNote, indexCapture, indexTurn, indexDirectory };
+module.exports = {
+  indexNote,
+  indexCapture,
+  indexTurn,
+  indexCorrespondence,
+  deleteCorrespondenceByThreadIds,
+  indexDirectory,
+};

@@ -17,15 +17,21 @@
 
 const http = require("http");
 const { URL } = require("url");
+const fs = require("node:fs");
+const fsp = require("node:fs/promises");
+const path = require("node:path");
 
 const httpAdapter = require("./adapters/http");
 const discordAdapter = require("./adapters/discord");
 const slackAdapter = require("./adapters/slack");
 const { dispatch, replyViaiMessage, replyViaSlackResponseUrl } = require("./router");
 const { listSessions, clearSession } = require("./sessions");
+const { getVaultRoot } = require("../obsidian/vault-manager");
 
 const PORT = Number(process.env.MONDAY_GATEWAY_PORT || 4312);
 const GATEWAY_SECRET = process.env.MONDAY_GATEWAY_SECRET || "";
+const PUBLIC_DIR = path.join(__dirname, "public");
+const PRESENCE_SENDER_ID = process.env.MONDAY_PRESENCE_SENDER_ID || "presence-web";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -45,6 +51,143 @@ function readBody(req) {
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
+}
+
+function serveFile(res, filePath, contentType) {
+  const fullPath = path.join(PUBLIC_DIR, filePath);
+  if (!fs.existsSync(fullPath)) {
+    res.writeHead(404);
+    res.end("Not found");
+    return;
+  }
+  res.writeHead(200, {
+    "Content-Type": contentType,
+    "Cache-Control": "no-store",
+  });
+  fs.createReadStream(fullPath).pipe(res);
+}
+
+function mimeTypeForPublicPath(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".html") return "text/html; charset=utf-8";
+  if (ext === ".css") return "text/css; charset=utf-8";
+  if (ext === ".js") return "application/javascript; charset=utf-8";
+  if (ext === ".json") return "application/json; charset=utf-8";
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".png") return "image/png";
+  if (ext === ".svg") return "image/svg+xml; charset=utf-8";
+  if (ext === ".webp") return "image/webp";
+  return "application/octet-stream";
+}
+
+function tryServePublicPath(res, pathname) {
+  const normalized = path.posix.normalize(pathname);
+  if (!normalized.startsWith("/")) return false;
+  if (normalized.includes("..")) return false;
+  const relative = normalized.slice(1);
+  if (!relative) return false;
+  const fullPath = path.join(PUBLIC_DIR, relative);
+  if (!fullPath.startsWith(PUBLIC_DIR)) return false;
+  if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isFile()) return false;
+  serveFile(res, relative, mimeTypeForPublicPath(relative));
+  return true;
+}
+
+function normalizeWikiTarget(rawTarget) {
+  return rawTarget.split("|")[0].split("#")[0].trim();
+}
+
+async function listMarkdownFiles(root) {
+  const collected = [];
+
+  async function walk(directory) {
+    const entries = await fsp.readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const fullPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+        continue;
+      }
+      if (entry.isFile() && entry.name.endsWith(".md")) {
+        collected.push(fullPath);
+      }
+    }
+  }
+
+  await walk(root);
+  return collected;
+}
+
+function buildLookupKeys(relativePath) {
+  const noExt = relativePath.replace(/\.md$/i, "");
+  const basename = path.basename(noExt);
+  const normalized = noExt.replace(/\\/g, "/");
+  const withoutLeadingFolder = normalized.includes("/") ? normalized.slice(normalized.indexOf("/") + 1) : normalized;
+  return new Set([
+    normalized,
+    basename,
+    withoutLeadingFolder,
+    normalized.toLowerCase(),
+    basename.toLowerCase(),
+    withoutLeadingFolder.toLowerCase(),
+  ]);
+}
+
+async function parseVaultGraph() {
+  const vaultRoot = getVaultRoot();
+  const files = await listMarkdownFiles(vaultRoot);
+  const nodes = [];
+  const lookup = new Map();
+
+  for (const file of files) {
+    const relativePath = path.relative(vaultRoot, file).replace(/\\/g, "/");
+    const id = relativePath.replace(/\.md$/i, "");
+    const label = path.basename(relativePath, ".md");
+    const node = { id, label, path: relativePath, degree: 0 };
+    nodes.push(node);
+    for (const key of buildLookupKeys(relativePath)) {
+      if (!lookup.has(key)) lookup.set(key, id);
+    }
+  }
+
+  const links = [];
+  const seenLinks = new Set();
+  const wikiPattern = /\[\[([^\]]+)\]\]/g;
+
+  for (const node of nodes) {
+    const raw = await fsp.readFile(path.join(vaultRoot, `${node.id}.md`), "utf8");
+    for (const match of raw.matchAll(wikiPattern)) {
+      const target = normalizeWikiTarget(match[1]);
+      if (!target) continue;
+      const resolved = lookup.get(target) || lookup.get(target.toLowerCase());
+      if (!resolved || resolved === node.id) continue;
+      const a = node.id < resolved ? node.id : resolved;
+      const b = node.id < resolved ? resolved : node.id;
+      const signature = `${a}::${b}`;
+      if (seenLinks.has(signature)) continue;
+      seenLinks.add(signature);
+      links.push({ source: a, target: b });
+    }
+  }
+
+  const degreeById = new Map(nodes.map((node) => [node.id, 0]));
+  for (const link of links) {
+    degreeById.set(link.source, (degreeById.get(link.source) || 0) + 1);
+    degreeById.set(link.target, (degreeById.get(link.target) || 0) + 1);
+  }
+
+  for (const node of nodes) {
+    node.degree = degreeById.get(node.id) || 0;
+  }
+
+  nodes.sort((left, right) => right.degree - left.degree || left.label.localeCompare(right.label));
+  return {
+    generatedAt: new Date().toISOString(),
+    vaultRoot,
+    nodes,
+    links,
+  };
 }
 
 // ── Route Handlers ────────────────────────────────────────────────────────────
@@ -69,6 +212,49 @@ async function handleGenericMessage(req, res, rawBody) {
   } catch (err) {
     console.error("[gateway] dispatch error:", err.message);
     sendJson(res, 500, { error: "Monday encountered an error.", details: err.message });
+  }
+}
+
+async function handlePresenceMessage(req, res, rawBody) {
+  let body;
+  try {
+    body = JSON.parse(rawBody || "{}");
+  } catch {
+    return sendJson(res, 400, { error: "Invalid JSON body" });
+  }
+
+  const text = String(body.text || "").trim();
+  if (!text) {
+    return sendJson(res, 400, { error: "Missing text" });
+  }
+
+  try {
+    const { reply, surfacingPlan } = await dispatch({
+      channel: "presence-web",
+      senderId: PRESENCE_SENDER_ID,
+      text,
+      rawBody,
+      reset: body.reset === true,
+    });
+    sendJson(res, 200, {
+      reply,
+      surfacingPlan: surfacingPlan || null,
+      senderId: PRESENCE_SENDER_ID,
+      channel: "presence-web",
+    });
+  } catch (err) {
+    console.error("[gateway] presence dispatch error:", err.message);
+    sendJson(res, 500, { error: "Monday encountered an error.", details: err.message });
+  }
+}
+
+async function handlePresenceGraph(req, res) {
+  try {
+    const payload = await parseVaultGraph();
+    sendJson(res, 200, payload);
+  } catch (err) {
+    console.error("[gateway] presence graph error:", err.message);
+    sendJson(res, 500, { error: err.message });
   }
 }
 
@@ -219,6 +405,19 @@ const server = http.createServer(async (req, res) => {
 
   try {
     const rawBody = req.method !== "GET" ? await readBody(req) : "";
+
+    if (req.method === "GET" && pathname === "/") {
+      return serveFile(res, "index.html", "text/html; charset=utf-8");
+    }
+    if (req.method === "GET" && tryServePublicPath(res, pathname)) {
+      return;
+    }
+    if (req.method === "POST" && pathname === "/api/presence/message") {
+      return handlePresenceMessage(req, res, rawBody);
+    }
+    if (req.method === "GET" && pathname === "/api/presence/graph") {
+      return handlePresenceGraph(req, res);
+    }
 
     if (req.method === "GET" && pathname === "/gateway/health") {
       return handleHealth(req, res);

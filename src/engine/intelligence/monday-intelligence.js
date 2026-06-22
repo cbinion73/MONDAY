@@ -190,7 +190,7 @@ async function applyMondayIntelligence({
 
     const merged = mergeIntelligence(result, adjustedParsed, {
         enabled: true,
-        provider: "ollama",
+        provider: activeProvider(),
         model: response.model,
         used: true,
         latencyMs,
@@ -1771,7 +1771,7 @@ async function generateDailyBrief({
     return normalizeBriefLists(applyContextGrounding({
       enabled: false,
       source: "deterministic",
-      provider: "ollama",
+      provider: intelligenceEnabled() ? activeProvider() : "deterministic",
       brief: buildDeterministicBriefIntro({ missions, captures, calendar }),
       changed: [
         ...captures.slice(0, 2).map((capture) => capture.content),
@@ -1806,7 +1806,7 @@ async function generateDailyBrief({
     const groundedBrief = normalizeBriefLists(applyContextGrounding({
       enabled: true,
       source: "live",
-      provider: "ollama",
+      provider: activeProvider(),
       model: response.model,
       latencyMs: Date.now() - startedAt,
       ...parsed,
@@ -1828,7 +1828,7 @@ async function generateDailyBrief({
     const fallbackBrief = normalizeBriefLists(applyContextGrounding({
       enabled: true,
       source: "fallback",
-      provider: "ollama",
+      provider: activeProvider(),
       model: DEFAULT_MODEL,
       latencyMs: Date.now() - startedAt,
       brief: buildDeterministicBriefIntro({ missions, captures, calendar }),

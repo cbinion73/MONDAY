@@ -35,6 +35,10 @@ const {
   importEmailThreads,
 } = require("../engine/connectors/email-context");
 const {
+  listEmailMemoryRecords,
+  getEmailMemoryStats,
+} = require("../engine/db/email-memory-store");
+const {
   getFinancialSummary,
   importFinancialAccounts,
 } = require("../engine/connectors/financial-context");
@@ -46,6 +50,13 @@ const {
 const {
   evaluateUsefulness,
 } = require("../engine/evals/usefulness-evaluator");
+const { routeModel } = require("../engine/llm/model-router");
+const {
+  buildApprovalRequest,
+  buildDeclineMessage,
+  classifyApprovalInput,
+  isExpensiveTier,
+} = require("../engine/llm/expensive-model-approval");
 const {
   summarizeReviewPayload,
   toFieldNotesMarkdown,
@@ -306,13 +317,61 @@ async function handleMessage(req, res) {
       return;
     }
 
+    const pendingApproval = session.context?.pendingExpensiveApproval || null;
+    const approvalDecision = pendingApproval
+      ? classifyApprovalInput(body.input)
+      : "other";
+
+    if (pendingApproval && approvalDecision === "decline") {
+      session.context = {
+        ...session.context,
+        pendingExpensiveApproval: null,
+      };
+      sendJson(res, 200, {
+        sessionId: sessionInfo.sessionId,
+        result: {
+          finalState: {
+            activeRole: "direct-advisor",
+            recommendedOutcome: "stay_standard_models",
+          },
+          truth: null,
+          contract: {
+            adjustments: [],
+            blocked: [],
+          },
+          voice: {
+            text: buildDeclineMessage(),
+            voiceMode: "direct-advisor",
+          },
+          workspace: {
+            workspaceMode: "quiet_thread",
+            supportIntent: "preserve_optional_high_cost_pass",
+          },
+          modelDecision: null,
+          nextContext: session.context,
+          intelligence: null,
+        },
+      });
+      return;
+    }
+
+    const effectiveInput =
+      pendingApproval && approvalDecision === "approve"
+        ? pendingApproval.originalInput
+        : body.input;
+    const effectiveHistory =
+      pendingApproval && approvalDecision === "approve"
+        ? pendingApproval.historySnapshot || []
+        : session.messages;
+
     const mergedContext = {
       ...session.context,
       ...(body.context || {}),
     };
+    delete mergedContext.pendingExpensiveApproval;
     const personalContext = {
       ...buildPersonalContext(),
-      captureIntent: detectCaptureIntent(body.input),
+      captureIntent: detectCaptureIntent(effectiveInput),
       calendar: getCalendarSummary(),
       documents: getDocumentsSummary({ limit: 6 }),
       email: getEmailSummary({ limit: 6 }),
@@ -321,10 +380,56 @@ async function handleMessage(req, res) {
     };
 
     const result = await runMondayTurn({
-      input: body.input,
+      input: effectiveInput,
       context: mergedContext,
       councilEnabled: body.councilEnabled === true,
     });
+
+    const preflightDecision = routeModel({
+      domain: result.truth?.domain || result.finalState?.candidateDomain || null,
+      significance: result.finalState?.significance || null,
+      identityProximity: result.finalState?.identityProximity || null,
+      woundRisk: result.finalState?.woundRisk || null,
+      classificationFallback: result.finalState?.classificationFallback || false,
+      input: effectiveInput,
+    });
+
+    if (approvalDecision !== "approve" && isExpensiveTier(preflightDecision.tier)) {
+      const approvalRequest = buildApprovalRequest(preflightDecision, effectiveInput);
+      session.context = {
+        ...session.context,
+        pendingExpensiveApproval: {
+          ...approvalRequest,
+          originalInput: effectiveInput,
+          historySnapshot: session.messages,
+        },
+      };
+      sendJson(res, 200, {
+        sessionId: sessionInfo.sessionId,
+        result: {
+          finalState: {
+            ...result.finalState,
+            activeRole: "direct-advisor",
+            recommendedOutcome: "request_high_cost_permission",
+          },
+          truth: result.truth,
+          contract: result.contract,
+          voice: {
+            text: approvalRequest.warning,
+            voiceMode: "direct-advisor",
+          },
+          workspace: {
+            workspaceMode: "decision_support",
+            supportIntent: "request_high_cost_model_approval",
+          },
+          modelDecision: preflightDecision,
+          nextContext: session.context,
+          intelligence: null,
+        },
+      });
+      return;
+    }
+
     const enrichedPersonalContext = {
       ...personalContext,
       relevantThread: getRelevantThreadContext({
@@ -343,7 +448,7 @@ async function handleMessage(req, res) {
 
     let skillInvocation = { used: false, skills: [], failed: [] };
     try {
-      skillInvocation = await invokeSkillsForTurn(body.input, {
+      skillInvocation = await invokeSkillsForTurn(effectiveInput, {
         workspaceId: turnWorkspaceId,
         domain: turnDomain,
         channel: "sandbox",
@@ -360,7 +465,7 @@ async function handleMessage(req, res) {
     // Pull semantically relevant past context (notes, captures, turns) before LLM call.
     let memoryRecall = [];
     try {
-      memoryRecall = await memory.recall(body.input, {
+      memoryRecall = await memory.recall(effectiveInput, {
         domain: turnDomain ? turnDomain.toLowerCase() : null,
         limit: 4,
       });
@@ -378,25 +483,26 @@ async function handleMessage(req, res) {
 
     const intelligentResult = await applyMondayIntelligence({
       result,
-      input: body.input,
-      history: session.messages,
+      input: effectiveInput,
+      history: effectiveHistory,
       personalContext: finalPersonalContext,
     });
 
     session.context = {
       ...intelligentResult.nextContext,
       workingTheory: intelligentResult.workingTheory || null,
+      pendingExpensiveApproval: null,
     };
     const timestamp = new Date().toISOString();
     session.messages.push({
-      user: body.input,
+      user: effectiveInput,
       monday: intelligentResult.voice.text,
       timestamp,
     });
     const sessionRuntime = sanitizeRuntimeForSession(intelligentResult);
     session.turns.push({
       id: session.turns.length + 1,
-      user: body.input,
+      user: effectiveInput,
       monday: intelligentResult.voice.text,
       timestamp,
       runtime: sessionRuntime,
@@ -406,12 +512,12 @@ async function handleMessage(req, res) {
     const turnDomainFinal = intelligentResult.finalState?.domain || intelligentResult.truth?.domain || null;
 
     // Index this turn into vector memory (fire-and-forget)
-    memory.indexTurn({ role: "user", text: body.input, session: sessionInfo.id }).catch(() => {});
-    memory.indexTurn({ role: "monday", text: intelligentResult.voice.text, session: sessionInfo.id }).catch(() => {});
+    memory.indexTurn({ role: "user", text: effectiveInput, session: sessionInfo.sessionId }).catch(() => {});
+    memory.indexTurn({ role: "monday", text: intelligentResult.voice.text, session: sessionInfo.sessionId }).catch(() => {});
 
     processAfterTurn({
       domain: turnDomainFinal,
-      userText: body.input,
+      userText: effectiveInput,
       mondayReply: intelligentResult.voice.text,
       workingTheory: intelligentResult.workingTheory || null,
       skillsUsed: skillInvocation.skills.map((s) => s.skillId),
@@ -436,7 +542,7 @@ async function handleMessage(req, res) {
     // ── end mission detection ─────────────────────────────────────────────────
 
     const learning = recordTurnLearning({
-      input: body.input,
+      input: effectiveInput,
       sessionId: sessionInfo.sessionId,
       result: intelligentResult,
     });
@@ -452,7 +558,7 @@ async function handleMessage(req, res) {
     const capture =
       personalContext.captureIntent
         ? recordCapture({
-            input: body.input,
+            input: effectiveInput,
             finalState: intelligentResult.finalState,
             truth: intelligentResult.truth,
             context: mergedContext,
@@ -462,7 +568,7 @@ async function handleMessage(req, res) {
     // Index capture into vector memory (fire-and-forget)
     if (capture) {
       memory.indexCapture({
-        text: body.input,
+        text: effectiveInput,
         domain: intelligentResult.finalState?.candidateDomain?.toLowerCase() || "",
         source: "text",
       }).catch(() => {});
@@ -473,7 +579,7 @@ async function handleMessage(req, res) {
     if (capture) {
       try {
         obsidian.handleCapture({
-          content: body.input,
+          content: effectiveInput,
           significance: intelligentResult.finalState?.significance,
           domain: intelligentResult.finalState?.candidateDomain,
           missionId: intelligentResult.finalState?.candidateDomain?.toLowerCase(),
@@ -755,6 +861,34 @@ async function handleEmail(req, res) {
   }
 
   sendJson(res, 405, { error: "Method not allowed." });
+}
+
+async function handleKaty(req, res, url) {
+  if (req.method !== "GET") {
+    sendJson(res, 405, { error: "Method not allowed." });
+    return;
+  }
+
+  try {
+    const limit = Math.max(1, Math.min(50, Number(url.searchParams.get("limit") || 10)));
+    const query = String(url.searchParams.get("query") || "").trim();
+    const records = listEmailMemoryRecords({ limit });
+    const payload = {
+      ok: true,
+      stats: getEmailMemoryStats(),
+      records,
+      query,
+    };
+    if (query) {
+      payload.recall = await memory.searchCorrespondence(query, { limit: Math.min(limit, 8) });
+    }
+    sendJson(res, 200, payload);
+  } catch (error) {
+    sendJson(res, 500, {
+      error: "Failed to inspect Katy correspondence memory.",
+      details: error.message,
+    });
+  }
 }
 
 async function handleFinances(req, res) {
@@ -1218,6 +1352,11 @@ const server = http.createServer((req, res) => {
     pathname === "/api/monday-sandbox/email"
   ) {
     handleEmail(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/monday-sandbox/katy") {
+    handleKaty(req, res, url);
     return;
   }
 

@@ -1,22 +1,25 @@
 "use strict";
-const fs = require("fs");
-const path = require("path");
+const { readEmailStore } = require("./email-context");
+const { retrieveIntelligentEmail } = require("./email-intelligence");
 
-const DATA_DIR = process.env.MONDAY_CONNECTORS_DATA_DIR
-  ? path.resolve(process.env.MONDAY_CONNECTORS_DATA_DIR)
-  : path.resolve(__dirname, "../../../data/connectors");
-
-function readFile(name) {
-  try {
-    return JSON.parse(fs.readFileSync(path.join(DATA_DIR, name), "utf8"));
-  } catch {
-    return {};
+async function read({ limit = 10, missionId = null, unreadOnly = false, query = "" } = {}) {
+  if (query && String(query).trim()) {
+    const result = await retrieveIntelligentEmail({
+      query: String(query).trim(),
+      limit,
+      missionId,
+      unreadOnly,
+    });
+    const store = readEmailStore();
+    return {
+      ...result,
+      unreadCount: (store.threads || []).filter((thread) => thread.unread).length,
+      usedIntelligence: true,
+    };
   }
-}
 
-function read({ limit = 10, missionId = null, unreadOnly = false } = {}) {
-  const data = readFile("email.json");
-  let threads = data.threads || [];
+  const store = readEmailStore();
+  let threads = store.threads || [];
   if (missionId) threads = threads.filter((t) => t.missionId === missionId);
   if (unreadOnly) threads = threads.filter((t) => t.unread);
   return {
@@ -24,7 +27,8 @@ function read({ limit = 10, missionId = null, unreadOnly = false } = {}) {
     data: threads.slice(0, limit),
     count: threads.length,
     unreadCount: threads.filter((t) => t.unread).length,
-    source: data.source || "local",
+    source: store.source || "local",
+    usedIntelligence: false,
   };
 }
 

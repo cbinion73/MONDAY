@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Monday Health Sequence Mockup</title>
+    <style>
+      :root {
+        --bg: #f6f7fa;
+        --panel: rgba(255, 255, 255, 0.84);
+        --text: #23272f;
+        --muted: #8a91a0;
+        --gold: #c59b62;
+        --gold-deep: #a4773d;
+        --gold-soft: rgba(197, 155, 98, 0.12);
+        --line: rgba(197, 155, 98, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: "Avenir Next", "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(197, 155, 98, 0.08), transparent 26%),
+          linear-gradient(180deg, #fbfbfc 0%, var(--bg) 100%);
+        color: var(--text);
+      }
+
+      body {
+        padding: 16px;
+      }
+
+      .sequence-shell {
+        position: relative;
+        width: 100%;
+        height: calc(100vh - 32px);
+      }
+
+      .sequence {
+        width: 100%;
+        height: 100%;
+        display: grid;
+        gap: 16px;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1fr 1fr;
+        grid-template-areas:
+          "a1c a1c"
+          "a1c a1c";
+      }
+
+      .sequence[data-stage="2"] {
+        grid-template-areas:
+          "a1c steps"
+          "a1c steps";
+      }
+
+      .sequence[data-stage="3"] {
+        grid-template-areas:
+          "a1c steps"
+          "weight weight";
+      }
+
+      .sequence[data-stage="4"] {
+        grid-template-areas:
+          "a1c steps"
+          "weight bp";
+      }
+
+      .page-controls {
+        position: absolute;
+        inset: auto 0 10px 0;
+        display: none;
+        justify-content: center;
+        gap: 10px;
+        pointer-events: none;
+      }
+
+      .page-controls.visible {
+        display: flex;
+      }
+
+      .page-arrow {
+        width: 42px;
+        height: 42px;
+        border-radius: 999px;
+        border: 1px solid rgba(197, 155, 98, 0.18);
+        background: rgba(255, 255, 255, 0.7);
+        color: var(--gold-deep);
+        font-size: 22px;
+        pointer-events: auto;
+      }
+
+      .card {
+        position: relative;
+        min-width: 0;
+        min-height: 0;
+        border-radius: 30px;
+        background: var(--panel);
+        border: 1px solid rgba(255, 255, 255, 0.76);
+        backdrop-filter: blur(18px) saturate(1.05);
+        box-shadow:
+          0 22px 52px rgba(88, 99, 113, 0.08),
+          inset 0 1px 0 rgba(255, 255, 255, 0.78);
+        padding: 18px 18px 16px;
+        display: none;
+        grid-template-rows: auto auto auto minmax(0, 1fr);
+        gap: 12px;
+        overflow: hidden;
+        cursor: zoom-in;
+      }
+
+      .card.visible {
+        display: grid;
+      }
+
+      .card.a1c { grid-area: a1c; }
+      .card.steps { grid-area: steps; }
+      .card.weight { grid-area: weight; }
+      .card.bp { grid-area: bp; }
+
+      .eyebrow {
+        color: var(--gold-deep);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+
+      .metric-row {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .metric-row strong {
+        font-size: clamp(46px, 8vmin, 86px);
+        line-height: 0.9;
+        color: var(--gold-deep);
+      }
+
+      .metric-row span {
+        color: var(--muted);
+        font-size: clamp(18px, 2.4vmin, 22px);
+      }
+
+      .insights {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .pill {
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: rgba(197, 155, 98, 0.1);
+        color: var(--gold-deep);
+        font-size: 13px;
+        font-weight: 700;
+        max-width: 100%;
+      }
+
+      .plot {
+        position: relative;
+        min-width: 0;
+        min-height: 0;
+        height: 100%;
+        border-radius: 26px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.45)),
+          linear-gradient(90deg, rgba(197, 155, 98, 0.04), transparent 26%);
+        border: 1px solid rgba(197, 155, 98, 0.1);
+        overflow: hidden;
+      }
+
+      .plot-grid {
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(var(--line) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(197, 155, 98, 0.08) 1px, transparent 1px);
+        background-size: 100% 25%, 16% 100%;
+        opacity: 0.58;
+      }
+
+      .plot-content {
+        position: absolute;
+        inset: 0;
+        transform-origin: center center;
+        touch-action: none;
+      }
+
+      .plot-content svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      .area {
+        fill: rgba(197, 155, 98, 0.16);
+      }
+
+      .line {
+        fill: none;
+        stroke: var(--gold);
+        stroke-width: 4;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .line.alt {
+        stroke: rgba(197, 155, 98, 0.42);
+        stroke-dasharray: 10 10;
+      }
+
+      .dot {
+        fill: var(--gold-deep);
+      }
+
+      .axis-x,
+      .axis-y {
+        position: absolute;
+        color: rgba(138, 145, 160, 0.82);
+        font-size: 12px;
+        z-index: 2;
+      }
+
+      .axis-x {
+        left: 18px;
+        right: 18px;
+        bottom: 14px;
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .axis-y {
+        left: 14px;
+        top: 14px;
+        bottom: 38px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+
+      .overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(246, 247, 250, 0.94);
+        backdrop-filter: blur(10px);
+        display: none;
+        z-index: 20;
+        padding: 16px;
+      }
+
+      .overlay.visible {
+        display: block;
+      }
+
+      .overlay-close {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        width: 42px;
+        height: 42px;
+        border-radius: 999px;
+        border: 1px solid rgba(206, 38, 38, 0.22);
+        background: rgba(255, 255, 255, 0.14);
+        color: #d94141;
+        font-size: 22px;
+        font-weight: 700;
+        z-index: 22;
+      }
+
+      .overlay-card {
+        width: 100%;
+        height: 100%;
+        border-radius: 30px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(18px);
+        box-shadow:
+          0 24px 54px rgba(88, 99, 113, 0.08),
+          inset 0 1px 0 rgba(255, 255, 255, 0.82);
+        padding: 56px 24px 24px;
+        display: grid;
+        grid-template-rows: auto auto auto minmax(0, 1fr);
+        gap: 16px;
+      }
+
+      .overlay .plot {
+        min-height: 0;
+      }
+
+      .overlay .metric-row strong {
+        font-size: clamp(56px, 9vmin, 104px);
+      }
+
+      @media (max-width: 860px) {
+        .sequence,
+        .sequence[data-stage="2"],
+        .sequence[data-stage="3"],
+        .sequence[data-stage="4"] {
+          grid-template-columns: 1fr;
+          grid-template-rows: repeat(4, minmax(0, 1fr));
+          grid-template-areas:
+            "a1c"
+            "steps"
+            "weight"
+            "bp";
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="sequence-shell">
+      <main id="sequence" class="sequence" data-stage="1">
+        <section id="cardA1c" class="card a1c visible" data-card="a1c">
+          <div class="eyebrow">A1C</div>
+          <div class="metric-row"><strong>6.3</strong><span>% A1C</span></div>
+          <div class="insights">
+            <div class="pill">Up from 5.8 six months ago</div>
+            <div class="pill">Prediabetic range rising</div>
+          </div>
+          <div class="plot">
+            <div class="plot-grid"></div>
+            <div class="plot-content">
+              <div class="axis-y"><span>6.5</span><span>6.1</span><span>5.7</span><span>5.3</span></div>
+              <svg viewBox="0 0 1000 520" preserveAspectRatio="none" aria-hidden="true">
+                <path class="area" d="M70 420 L180 398 L290 384 L400 352 L510 324 L620 282 L730 236 L840 194 L930 152 L930 470 L70 470 Z"></path>
+                <polyline class="line" points="70,420 180,398 290,384 400,352 510,324 620,282 730,236 840,194 930,152"></polyline>
+                <circle class="dot" cx="930" cy="152" r="9"></circle>
+              </svg>
+              <div class="axis-x"><span>Jan</span><span>Mar</span><span>May</span><span>Today</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="cardSteps" class="card steps" data-card="steps">
+          <div class="eyebrow">Exercise + Steps</div>
+          <div class="metric-row"><strong>4.1k</strong><span>avg daily steps</span></div>
+          <div class="insights">
+            <div class="pill">Exercise minutes fell 22%</div>
+            <div class="pill">Higher step weeks align with lower glucose</div>
+          </div>
+          <div class="plot">
+            <div class="plot-grid"></div>
+            <div class="plot-content">
+              <div class="axis-y"><span>8k</span><span>6k</span><span>4k</span><span>2k</span></div>
+              <svg viewBox="0 0 1000 340" preserveAspectRatio="none" aria-hidden="true">
+                <polyline class="line" points="70,110 180,96 290,134 400,152 510,176 620,208 730,196 840,226 930,246"></polyline>
+                <polyline class="line alt" points="70,244 180,220 290,206 400,184 510,166 620,142 730,124 840,108 930,96"></polyline>
+                <circle class="dot" cx="930" cy="246" r="8"></circle>
+              </svg>
+              <div class="axis-x"><span>Jan</span><span>Mar</span><span>May</span><span>Today</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="cardWeight" class="card weight" data-card="weight">
+          <div class="eyebrow">Weight</div>
+          <div class="metric-row"><strong>214</strong><span>lbs</span></div>
+          <div class="insights">
+            <div class="pill">Up 11 lbs this year</div>
+            <div class="pill">Insulin resistance risk increasing</div>
+          </div>
+          <div class="plot">
+            <div class="plot-grid"></div>
+            <div class="plot-content">
+              <div class="axis-y"><span>218</span><span>214</span><span>210</span><span>206</span></div>
+              <svg viewBox="0 0 1000 340" preserveAspectRatio="none" aria-hidden="true">
+                <path class="area" d="M70 252 L180 246 L290 232 L400 218 L510 206 L620 182 L730 168 L840 144 L930 118 L930 300 L70 300 Z"></path>
+                <polyline class="line" points="70,252 180,246 290,232 400,218 510,206 620,182 730,168 840,144 930,118"></polyline>
+                <circle class="dot" cx="930" cy="118" r="8"></circle>
+              </svg>
+              <div class="axis-x"><span>Jan</span><span>Mar</span><span>May</span><span>Today</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="cardBp" class="card bp" data-card="bp">
+          <div class="eyebrow">Blood Pressure</div>
+          <div class="metric-row"><strong>134/86</strong><span>mmHg</span></div>
+          <div class="insights">
+            <div class="pill">Up from 122/78 baseline</div>
+            <div class="pill">Trend matches weight gain</div>
+          </div>
+          <div class="plot">
+            <div class="plot-grid"></div>
+            <div class="plot-content">
+              <div class="axis-y"><span>140</span><span>134</span><span>128</span><span>122</span></div>
+              <svg viewBox="0 0 1000 340" preserveAspectRatio="none" aria-hidden="true">
+                <polyline class="line" points="70,214 180,206 290,198 400,188 510,174 620,162 730,154 840,134 930,112"></polyline>
+                <polyline class="line alt" points="70,248 180,240 290,228 400,220 510,208 620,198 730,188 840,176 930,164"></polyline>
+                <circle class="dot" cx="930" cy="112" r="8"></circle>
+              </svg>
+              <div class="axis-x"><span>Jan</span><span>Mar</span><span>May</span><span>Today</span></div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <div id="pageControls" class="page-controls" aria-hidden="true">
+        <button class="page-arrow" type="button" aria-label="Previous page">‹</button>
+        <button class="page-arrow" type="button" aria-label="Next page">›</button>
+      </div>
+    </div>
+
+    <div id="focusOverlay" class="overlay" aria-hidden="true">
+      <button id="overlayClose" class="overlay-close" type="button" aria-label="Close focused graph">×</button>
+      <div id="overlayCard" class="overlay-card"></div>
+    </div>
+
+    <script>
+      const sequence = document.getElementById("sequence");
+      const cards = {
+        a1c: document.getElementById("cardA1c"),
+        steps: document.getElementById("cardSteps"),
+        weight: document.getElementById("cardWeight"),
+        bp: document.getElementById("cardBp"),
+      };
+      const overlay = document.getElementById("focusOverlay");
+      const overlayCard = document.getElementById("overlayCard");
+      const overlayClose = document.getElementById("overlayClose");
+
+      function applyStage(stage) {
+        sequence.dataset.stage = String(stage);
+        cards.a1c.classList.toggle("visible", stage >= 1);
+        cards.steps.classList.toggle("visible", stage >= 2);
+        cards.weight.classList.toggle("visible", stage >= 3);
+        cards.bp.classList.toggle("visible", stage >= 4);
+      }
+
+      function setTransform(target, state) {
+        target.style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`;
+      }
+
+      function attachZoomBehavior(root) {
+        const plotContent = root.querySelector(".plot-content");
+        if (!plotContent) return;
+
+        const state = { scale: 1, x: 0, y: 0 };
+        const pointers = new Map();
+        let pinchStart = null;
+
+        function clampScale(next) {
+          return Math.min(3.5, Math.max(1, next));
+        }
+
+        function resetIfNeeded() {
+          if (state.scale <= 1.01) {
+            state.scale = 1;
+            state.x = 0;
+            state.y = 0;
+            setTransform(plotContent, state);
+          }
+        }
+
+        plotContent.addEventListener("wheel", (event) => {
+          event.preventDefault();
+          const delta = event.deltaY < 0 ? 0.12 : -0.12;
+          state.scale = clampScale(state.scale + delta);
+          setTransform(plotContent, state);
+          resetIfNeeded();
+        }, { passive: false });
+
+        plotContent.addEventListener("pointerdown", (event) => {
+          plotContent.setPointerCapture(event.pointerId);
+          pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        });
+
+        plotContent.addEventListener("pointermove", (event) => {
+          if (!pointers.has(event.pointerId)) return;
+          const current = { x: event.clientX, y: event.clientY };
+
+          if (pointers.size === 1 && state.scale > 1) {
+            const previous = pointers.get(event.pointerId);
+            state.x += current.x - previous.x;
+            state.y += current.y - previous.y;
+            setTransform(plotContent, state);
+          }
+
+          pointers.set(event.pointerId, current);
+
+          if (pointers.size === 2) {
+            const values = [...pointers.values()];
+            const distance = Math.hypot(values[0].x - values[1].x, values[0].y - values[1].y);
+            if (!pinchStart) {
+              pinchStart = { distance, scale: state.scale };
+            } else {
+              state.scale = clampScale((distance / pinchStart.distance) * pinchStart.scale);
+              setTransform(plotContent, state);
+            }
+          }
+        });
+
+        function clearPointer(event) {
+          pointers.delete(event.pointerId);
+          if (pointers.size < 2) pinchStart = null;
+          resetIfNeeded();
+        }
+
+        plotContent.addEventListener("pointerup", clearPointer);
+        plotContent.addEventListener("pointercancel", clearPointer);
+      }
+
+      function openFocus(card) {
+        overlayCard.innerHTML = card.innerHTML;
+        overlay.classList.add("visible");
+        overlay.setAttribute("aria-hidden", "false");
+        attachZoomBehavior(overlayCard);
+      }
+
+      function closeFocus() {
+        overlay.classList.remove("visible");
+        overlay.setAttribute("aria-hidden", "true");
+        overlayCard.innerHTML = "";
+      }
+
+      Object.values(cards).forEach((card) => {
+        card.addEventListener("click", () => {
+          if (!card.classList.contains("visible")) return;
+          openFocus(card);
+        });
+      });
+
+      overlayClose.addEventListener("click", closeFocus);
+      overlay.addEventListener("click", (event) => {
+        if (event.target === overlay) closeFocus();
+      });
+
+      window.addEventListener("message", (event) => {
+        const data = event.data || {};
+        if (data.type === "health-sequence" && Number.isFinite(data.stage)) {
+          applyStage(data.stage);
+        }
+      });
+
+      applyStage(1);
+    </script>
+  </body>
+</html>

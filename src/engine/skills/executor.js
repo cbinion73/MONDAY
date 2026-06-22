@@ -19,6 +19,7 @@ const HANDLERS = {
   "calendar-read":     (p) => require("../connectors/calendar").read(p),
   "documents-read":    (p) => require("../connectors/documents").read(p),
   "email-read":        (p) => require("../connectors/email").read(p),
+  "travel-plan":       (p, ctx) => require("../connectors/travel-plan").planTrip({ ...p, ...ctx }),
   "financial-read":    (p) => require("../connectors/financial").read(p),
   "web-fetch":         (p) => require("../connectors/web").fetchUrl(p),
   "browser-search":    (p) => require("../connectors/browser-search").search(p),
@@ -41,7 +42,7 @@ const HANDLERS = {
  *   opts.channel      — channel string ("sandbox" | "http" | etc.)
  *   opts.bypassTier   — skip tier check (for sandbox test execution only)
  */
-async function executeSkill(skillId, params = {}, { workspaceId = null, domain = null, channel = "sandbox", bypassTier = false } = {}) {
+async function executeSkill(skillId, params = {}, { workspaceId = null, domain = null, channel = "sandbox", senderId = null, bypassTier = false } = {}) {
   // 1. Registry
   const skill = getSkill(skillId);
   if (!skill) {
@@ -90,7 +91,7 @@ async function executeSkill(skillId, params = {}, { workspaceId = null, domain =
   const startMs = Date.now();
   let result;
   try {
-    result = await handler(params);
+    result = await handler(params, { workspaceId, domain, channel, senderId });
   } catch (err) {
     result = { ok: false, error: err.message };
   }

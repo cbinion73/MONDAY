@@ -4,7 +4,7 @@
 // Monday is NOT one of these agents. Monday is what emerges when they convene.
 
 const { chatWithLLM } = require("../llm/llm-router");
-const { selectAgents, COUNCIL } = require("./agents");
+const { selectAgents, COUNCIL, getAgentByKey } = require("./agents");
 const store = require("../persistence/state-store");
 const { getWorkspaceContext, syncAgentTheory } = require("../workspace/workspace-manager");
 
@@ -66,6 +66,16 @@ function parseAgentResponse(text, agent) {
       confidence: "low",
       theory: null,
     };
+  }
+}
+
+function parseSpecialistResponse(text, fallback = {}) {
+  try {
+    const match = String(text || "").match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("no JSON");
+    return JSON.parse(match[0]);
+  } catch {
+    return fallback;
   }
 }
 
@@ -243,4 +253,30 @@ async function councilHealthCheck() {
   return { reads, flagged };
 }
 
-module.exports = { conveneCouncil, councilHealthCheck };
+async function runSpecialistAgent(agentKey, userContent, fallback = {}) {
+  const agent = getAgentByKey(agentKey);
+  if (!agent) {
+    throw new Error(`Unknown council agent: ${agentKey}`);
+  }
+
+  const prompt = [
+    { role: "system", content: agent.systemPrompt },
+    { role: "user", content: userContent },
+  ];
+
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(`${agent.name} timed out`)), COUNCIL_TIMEOUT_MS)
+  );
+
+  const response = await Promise.race([
+    chatWithLLM({ messages: prompt, temperature: 0.3, tier: "background" }),
+    timeoutPromise,
+  ]);
+  const text =
+    typeof response === "string"
+      ? response
+      : response?.content || JSON.stringify(response?.json || {});
+  return parseSpecialistResponse(text, fallback);
+}
+
+module.exports = { conveneCouncil, councilHealthCheck, runSpecialistAgent };

@@ -40,10 +40,10 @@ store = freshStore();
 test("schema_migrations table is populated", () => {
   const { getDb } = require("../src/engine/db/connection");
   const rows = getDb().prepare("SELECT version FROM schema_migrations ORDER BY version").all();
-  assert.deepEqual(rows.map((r) => r.version), [1, 2, 3, 4, 5]);
+  assert.deepEqual(rows.map((r) => r.version), [1, 2, 3, 4, 5, 6, 7]);
 });
 
-test("all 22 user tables exist", () => {
+test("all 25 user tables exist", () => {
   const { getDb } = require("../src/engine/db/connection");
   const tables = new Set(
     getDb().prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((r) => r.name)
@@ -53,6 +53,8 @@ test("all 22 user tables exist", () => {
     "notes", "note_links", "note_tags", "entities", "entity_relations",
     "memory_candidates", "memory_reviews", "indexing_runs", "embedding_records",
     "missions", "decisions", "contradictions", "people", "preferences", "life_events",
+    "email_threads", "email_thread_facts",
+    "email_memory_records",
     "surfacing_queue", "llm_cost_log",
   ];
   for (const t of expected) assert.ok(tables.has(t), `missing table: ${t}`);
@@ -64,7 +66,7 @@ test("migrations are idempotent (running twice is safe)", () => {
   // getDb() already ran them; calling getDb() again should not throw or re-insert
   const db = getDb();
   const count = db.prepare("SELECT COUNT(*) as n FROM schema_migrations").get().n;
-  assert.equal(count, 5);
+  assert.equal(count, 7);
 });
 
 // ── Notes ─────────────────────────────────────────────────────────────────────

@@ -14,6 +14,8 @@ const {
   getCalendarSummary,
   clearCalendarEvents,
   getDataDir,
+  mergeCalendarEvents,
+  readCalendarStore,
 } = require("../src/engine/connectors/calendar-context");
 const { generateDailyBrief } = require("../src/engine/intelligence/monday-intelligence");
 
@@ -62,6 +64,42 @@ async function main() {
     brief.needsAttention.some((item) => item.includes("Pediatrician Appointment"))
   );
   assert.ok(Array.isArray(brief.deservesProtection));
+
+  clearCalendarEvents();
+
+  mergeCalendarEvents(
+    [
+      {
+        id: "apple-1",
+        title: "Rebekah: Hair ",
+        startAt: "2026-06-22T15:30:00.000Z",
+        endAt: "2026-06-22T16:30:00.000Z",
+        source: "apple-calendar",
+      },
+    ],
+    { source: "apple-calendar" }
+  );
+
+  mergeCalendarEvents(
+    [
+      {
+        id: "cozi-1",
+        title: "Rebekah: Hair",
+        startAt: "2026-06-22T15:30:00.000Z",
+        endAt: "2026-06-22T16:30:00.000Z",
+        source: "cozi",
+      },
+    ],
+    { source: "cozi" }
+  );
+
+  const dedupedStore = readCalendarStore();
+  assert.equal(dedupedStore.events.length, 1);
+  assert.equal(dedupedStore.events[0].source, "apple-calendar");
+  assert.deepEqual(
+    dedupedStore.events[0].sources.sort(),
+    ["apple-calendar", "cozi"]
+  );
 
   clearCalendarEvents();
   fs.rmSync(getDataDir(), { recursive: true, force: true });

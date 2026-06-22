@@ -11,6 +11,7 @@ const { resolveMemoryDir } = require("./vector-store");
 module.exports.indexNote     = writer.indexNote;
 module.exports.indexCapture  = writer.indexCapture;
 module.exports.indexTurn     = writer.indexTurn;
+module.exports.indexCorrespondence = writer.indexCorrespondence;
 module.exports.indexDirectory = writer.indexDirectory;
 
 // ── Search ─────────────────────────────────────────────────────────────────
@@ -19,6 +20,7 @@ module.exports.search         = searcher.search;
 module.exports.searchNotes    = searcher.searchNotes;
 module.exports.searchCaptures = searcher.searchCaptures;
 module.exports.searchTurns    = searcher.searchTurns;
+module.exports.searchCorrespondence = searcher.searchCorrespondence;
 
 // ── Context recall (used by JARVIS loop) ──────────────────────────────────
 //

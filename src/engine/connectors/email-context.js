@@ -53,7 +53,7 @@ function writeEmailStore(store) {
 }
 
 function inferMissionId(thread = {}) {
-  const text = `${thread.subject || ""} ${thread.snippet || ""} ${thread.from || ""}`.toLowerCase();
+  const text = `${thread.subject || ""} ${thread.snippet || ""} ${thread.bodyText || ""} ${thread.from || ""}`.toLowerCase();
   if (/\bdoctor|clinic|health|medical\b/.test(text)) return "health";
   if (/\bbook|publisher|write|manuscript\b/.test(text)) return "publishing";
   if (/\bretire|retirement|financial planner\b/.test(text)) return "retirement";
@@ -69,8 +69,19 @@ function normalizeThread(thread = {}) {
     subject: String(thread.subject || "Untitled email"),
     from: thread.from ? String(thread.from) : null,
     snippet: thread.snippet ? String(thread.snippet) : null,
+    bodyText: thread.bodyText ? String(thread.bodyText) : null,
     unread: Boolean(thread.unread),
     starred: Boolean(thread.starred),
+    labelIds: Array.isArray(thread.labelIds) ? thread.labelIds.map(String) : [],
+    providerCategory: thread.providerCategory ? String(thread.providerCategory) : null,
+    categories: Array.isArray(thread.categories) ? thread.categories.map(String) : [],
+    inferenceClassification: thread.inferenceClassification ? String(thread.inferenceClassification) : null,
+    folder: thread.folder ? String(thread.folder) : null,
+    hasAttachments: Boolean(thread.hasAttachments),
+    webLink: thread.webLink ? String(thread.webLink) : null,
+    participants: Array.isArray(thread.participants) ? thread.participants.map(String) : [],
+    userParticipated: Boolean(thread.userParticipated),
+    messageCount: Number(thread.messageCount || 0),
     missionId: thread.missionId || inferMissionId(thread),
     source: thread.source ? String(thread.source) : "manual",
     updatedAt: thread.updatedAt || new Date().toISOString(),

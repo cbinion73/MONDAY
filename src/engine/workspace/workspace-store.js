@@ -163,7 +163,7 @@ function closeThread(id, threadId) {
 // ── tools.json ────────────────────────────────────────────────────────────────
 
 const DEFAULT_TOOLS = {
-  allowed: ["research", "calendar-read", "documents-read"],
+  allowed: ["research", "calendar-read", "documents-read", "travel-plan"],
   blocked: [],
   autonomyTier: 1, // 0=silent, 1=notify, 2=suggest, 3=delegate, 4=blocked
 };

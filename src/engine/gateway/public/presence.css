@@ -1,0 +1,374 @@
+:root {
+  --text: #1f2329;
+  --muted: #8c949f;
+  --accent-deep: #8e7048;
+  --scene-pad-x: clamp(14px, 2vw, 24px);
+  --core-size: clamp(720px, 84vmin, 1080px);
+  --orb-inset: clamp(12px, 2.6vmin, 24px);
+  --chat-width: min(760px, calc(100vw - 28px));
+  --chat-height: clamp(52px, 8vmin, 74px);
+  --chat-radius: clamp(18px, 2.8vmin, 26px);
+  --chat-font: clamp(15px, 2.2vmin, 20px);
+  --icon-size: clamp(58px, 9vmin, 84px);
+  --icon-radius: clamp(18px, 2.8vmin, 26px);
+  --icon-glyph: clamp(30px, 5vmin, 46px);
+  --voice-size: clamp(12px, 1.7vmin, 16px);
+  --voice-offset: clamp(118px, 17vmin, 182px);
+  --thread-width: min(860px, calc(100vw - 28px));
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  color: var(--text);
+  background: #f7f8fb;
+}
+
+.presence-scene {
+  min-height: 100vh;
+  position: relative;
+  overflow: hidden;
+}
+
+.presence-stage {
+  position: relative;
+  min-height: 100vh;
+}
+
+.artifact-surface {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: translateY(28px) scale(0.985);
+  pointer-events: none;
+  transition: opacity 420ms ease, transform 520ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.artifact-surface[data-state="visible"] {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.artifact-shell {
+  height: 100vh;
+  overflow: hidden;
+  background: #fff;
+}
+
+.artifact-frame {
+  width: 100%;
+  height: 100vh;
+  display: block;
+  border: 0;
+  background: #fff;
+}
+
+.presence-center {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+}
+
+.monday-core {
+  position: relative;
+  width: min(100vw, var(--core-size));
+  height: min(100vw, var(--core-size));
+  display: grid;
+  place-items: center;
+}
+
+.memory-core {
+  position: absolute;
+  inset: 0;
+}
+
+.memory-graph {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.core-voice {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + var(--voice-offset));
+  transform: translate(-50%, -50%);
+  color: var(--accent-deep);
+  font-size: var(--voice-size);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.modal-open .presence-center {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.floating-bubbles {
+  position: fixed;
+  left: 50%;
+  bottom: clamp(142px, 20vh, 208px);
+  transform: translateX(-50%);
+  width: min(920px, calc(100vw - 28px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 11;
+  pointer-events: none;
+}
+
+.floating-bubble {
+  max-width: min(820px, 92%);
+  padding: 16px 22px;
+  border-radius: 24px;
+  backdrop-filter: blur(22px) saturate(1.08);
+  box-shadow:
+    0 18px 40px rgba(73, 87, 105, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  transition: opacity 320ms ease, transform 320ms ease;
+}
+
+.floating-bubble.user {
+  margin-left: auto;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  color: #5a6470;
+}
+
+.floating-bubble.monday {
+  margin-right: auto;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  color: #433a30;
+}
+
+.floating-bubble.is-fading {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.presence-dock {
+  position: fixed;
+  left: 50%;
+  bottom: clamp(6px, 1.2vh, 14px);
+  transform: translateX(-50%);
+  width: min(920px, calc(100vw - 28px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.modal-open .presence-dock {
+  bottom: 0;
+  width: 100%;
+  pointer-events: none;
+}
+
+.presence-thread {
+  width: min(100%, var(--thread-width));
+  max-height: min(18vh, 200px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 10px 4px 2px;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 240ms ease, transform 240ms ease;
+}
+
+.modal-open .presence-thread {
+  max-height: 0;
+  min-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  gap: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(18px);
+  pointer-events: none;
+}
+
+.presence-scene:not(.modal-open) .presence-thread {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.presence-message {
+  max-width: min(840px, 92%);
+  padding: 14px 18px;
+  border-radius: 22px;
+  backdrop-filter: blur(18px);
+  line-height: 1.55;
+  box-shadow: 0 12px 28px rgba(31, 35, 41, 0.06);
+}
+
+.presence-message.user {
+  margin-left: auto;
+  background: rgba(255, 255, 255, 0.54);
+  border: 1px solid rgba(151, 124, 78, 0.08);
+  color: #5a6470;
+}
+
+.presence-message.monday {
+  margin-right: auto;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(151, 124, 78, 0.1);
+  color: #433a30;
+}
+
+.presence-message.pending {
+  opacity: 0.72;
+}
+
+.presence-chat {
+  width: var(--chat-width);
+  pointer-events: auto;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.modal-open .presence-chat {
+  position: fixed;
+  left: 50%;
+  bottom: max(6px, env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  width: min(920px, calc(100vw - 28px));
+  z-index: 12;
+}
+
+.presence-chat textarea {
+  width: 100%;
+  min-height: var(--chat-height);
+  max-height: 22vh;
+  border-radius: var(--chat-radius);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.035);
+  display: block;
+  padding: 14px clamp(16px, 2.5vmin, 24px);
+  backdrop-filter: blur(18px) saturate(1.02);
+  box-shadow:
+    0 10px 28px rgba(73, 87, 105, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.38);
+  font: inherit;
+  font-size: var(--chat-font);
+  color: #5b6572;
+  resize: none;
+  outline: none;
+}
+
+.presence-chat textarea::placeholder {
+  color: var(--muted);
+}
+
+.presence-chat textarea:disabled {
+  opacity: 0.65;
+}
+
+.close-modal-button {
+  width: clamp(46px, 6vmin, 54px);
+  height: clamp(46px, 6vmin, 54px);
+  border-radius: 999px;
+  border: 1px solid rgba(206, 38, 38, 0.16);
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(18px) saturate(1.02);
+  color: #d94141;
+  font: inherit;
+  font-size: clamp(16px, 2vmin, 20px);
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow:
+    0 10px 28px rgba(73, 87, 105, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
+  pointer-events: auto;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 200ms ease, visibility 200ms ease;
+}
+
+.modal-open .close-modal-button {
+  opacity: 1;
+  visibility: visible;
+}
+
+.presence-actions {
+  display: flex;
+  gap: 12px;
+  transition: opacity 220ms ease, transform 220ms ease;
+  pointer-events: auto;
+}
+
+.modal-open .presence-actions {
+  opacity: 0;
+  transform: translateY(16px);
+  pointer-events: none;
+}
+
+.image-button {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: var(--icon-radius);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.2));
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.58),
+    inset 0 -10px 24px rgba(197, 155, 98, 0.04),
+    0 10px 26px rgba(119, 132, 150, 0.08);
+  backdrop-filter: blur(22px) saturate(1.15);
+  cursor: pointer;
+}
+
+.image-button:hover,
+.image-button.active {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.34));
+  border-color: rgba(255, 255, 255, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    inset 0 -12px 24px rgba(197, 155, 98, 0.05),
+    0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 8px 28px rgba(119, 132, 150, 0.11);
+}
+
+.icon-svg {
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+  display: block;
+  color: rgba(123, 102, 72, 0.86);
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.4));
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Monday</title>
+    <link rel="stylesheet" href="/presence.css?v=3" />
+  </head>
+  <body>
+    <main class="presence-scene">
+      <section class="presence-stage">
+        <article class="artifact-surface" data-state="hidden" aria-label="Artifact surfaced by Monday">
+          <div class="artifact-shell">
+            <iframe
+              id="artifactFrame"
+              class="artifact-frame"
+              src="about:blank"
+              title="Surfaced artifact"
+              loading="eager"
+              referrerpolicy="no-referrer"
+            ></iframe>
+          </div>
+        </article>
+
+        <section class="presence-center">
+          <div class="monday-core" aria-label="Monday presence">
+            <div class="memory-core">
+              <canvas class="memory-graph" aria-hidden="true"></canvas>
+            </div>
+            <div class="core-voice">MONDAY</div>
+          </div>
+        </section>
+      </section>
+
+      <section id="floatingBubbles" class="floating-bubbles" aria-live="polite"></section>
+
+      <section class="presence-dock">
+        <section id="presenceThread" class="presence-thread" hidden aria-live="polite"></section>
+
+        <form id="presenceComposer" class="presence-chat" autocomplete="off">
+          <label class="sr-only" for="presenceInput">Talk to Monday</label>
+          <textarea
+            id="presenceInput"
+            rows="1"
+            placeholder="Talk to Monday..."
+            enterkeyhint="send"
+          ></textarea>
+          <button
+            id="closeModalButton"
+            class="close-modal-button"
+            type="button"
+            aria-label="Close surfaced artifact"
+          >
+            <span>X</span>
+          </button>
+        </form>
+
+        <section class="presence-actions" aria-label="Primary controls">
+          <button id="chatFocusButton" class="image-button active" type="button" aria-label="Chat interface">
+            <svg class="icon-svg" viewBox="0 0 64 64" aria-hidden="true">
+              <path d="M17 20.5h24c7.3 0 12 4.7 12 11.2S48.3 43 41 43h-8.9L21.5 50v-7.3C14 41.7 9 37.2 9 31.7c0-6.5 4.7-11.2 8-11.2Z" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"></path>
+              <path d="M23.5 29h11" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+              <path d="M23.5 34h17" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.72"></path>
+            </svg>
+          </button>
+          <button id="presenceMicButton" class="image-button" type="button" aria-label="Microphone">
+            <svg class="icon-svg" viewBox="0 0 64 64" aria-hidden="true">
+              <rect x="23" y="12.5" width="18" height="27" rx="9" fill="none" stroke="currentColor" stroke-width="2.1"></rect>
+              <path d="M18.5 30.5c0 8 6 13.8 13.5 13.8s13.5-5.8 13.5-13.8" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"></path>
+              <path d="M32 44.5v7.5" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"></path>
+              <path d="M24.5 52h15" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"></path>
+            </svg>
+          </button>
+          <button id="desktopModeButton" class="image-button" type="button" aria-label="Desktop mode">
+            <svg class="icon-svg" viewBox="0 0 64 64" aria-hidden="true">
+              <rect x="12.5" y="17" width="39" height="23" rx="6.5" fill="none" stroke="currentColor" stroke-width="2.1"></rect>
+              <path d="M32 40.5v7.5" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"></path>
+              <path d="M24.5 48h15" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"></path>
+              <path d="M18.5 24h27" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity="0.7"></path>
+            </svg>
+          </button>
+        </section>
+      </section>
+    </main>
+
+    <script src="/presence.js?v=3"></script>
+  </body>
+</html>

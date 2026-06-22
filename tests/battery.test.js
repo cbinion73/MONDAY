@@ -167,7 +167,7 @@ test("TASK_TYPES.EMBEDDING override → embedding tier", () => {
 test("TASK_TYPES.BACKGROUND override → background tier", () => {
   const d = routeModel({ taskType: TASK_TYPES.BACKGROUND });
   assert.equal(d.tier, "background");
-  assert.equal(d.model, "qwen3:14b");
+  assert.equal(d.model, "qwen3:30b-a3b");
 });
 
 test("TASK_TYPES.STRATEGIC override → strategic tier", () => {
@@ -182,10 +182,10 @@ test("routeInternalTask → utility tier (gpt-5.4-nano)", () => {
   assert.equal(d.model, "gpt-5.4-nano");
 });
 
-test("routeBackgroundTask → background tier (qwen3:14b)", () => {
+test("routeBackgroundTask → background tier (qwen3:30b-a3b)", () => {
   const d = routeBackgroundTask("synthesis run");
   assert.equal(d.tier, "background");
-  assert.equal(d.model, "qwen3:14b");
+  assert.equal(d.model, "qwen3:30b-a3b");
 });
 
 test("routeEmbedding → embedding tier (nomic-embed-text)", () => {

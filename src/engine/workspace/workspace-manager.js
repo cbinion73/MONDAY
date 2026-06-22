@@ -14,6 +14,7 @@ const DEFAULT_SKILLS = [
   "calendar-read",
   "documents-read",
   "email-read",
+  "travel-plan",
   "financial-read",
   "browser-search",
   "browser-read",

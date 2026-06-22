@@ -1,6 +1,14 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const SOURCE_PRIORITY = Object.freeze({
+  "google-calendar": 5,
+  "outlook-calendar": 4,
+  "apple-calendar": 3,
+  cozi: 2,
+  manual: 1,
+  test: 1,
+});
 
 function ensureDataDir() {
   fs.mkdirSync(getDataDir(), { recursive: true });
@@ -62,6 +70,7 @@ function normalizeIso(value) {
 function normalizeEvent(event = {}) {
   const startAt = normalizeIso(event.startAt || event.start || event.startsAt);
   const endAt = normalizeIso(event.endAt || event.end || event.endsAt);
+  const source = event.source ? String(event.source) : "manual";
 
   return {
     id: event.id || crypto.randomUUID(),
@@ -70,15 +79,101 @@ function normalizeEvent(event = {}) {
     endAt,
     location: event.location ? String(event.location) : null,
     notes: event.notes ? String(event.notes) : null,
-    source: event.source ? String(event.source) : "manual",
+    source,
+    sources: Array.isArray(event.sources) && event.sources.length
+      ? [...new Set(event.sources.map(String))]
+      : [source],
   };
 }
 
+function normalizeComparableText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function sourceRank(source) {
+  return SOURCE_PRIORITY[source] || 0;
+}
+
+function eventIdentityKey(event) {
+  return [
+    normalizeComparableText(event.title),
+    event.startAt || "",
+    event.endAt || "",
+  ].join("|");
+}
+
+function locationsCompatible(left, right) {
+  const a = normalizeComparableText(left.location);
+  const b = normalizeComparableText(right.location);
+  return !a || !b || a === b;
+}
+
+function choosePrimaryEvent(left, right) {
+  const leftRank = sourceRank(left.source);
+  const rightRank = sourceRank(right.source);
+  if (rightRank > leftRank) return right;
+  if (leftRank > rightRank) return left;
+
+  const leftNotes = (left.notes || "").length;
+  const rightNotes = (right.notes || "").length;
+  if (rightNotes > leftNotes) return right;
+  return left;
+}
+
+function mergeDuplicateEvent(left, right) {
+  const primary = choosePrimaryEvent(left, right);
+  const secondary = primary === left ? right : left;
+
+  return {
+    ...primary,
+    id: primary.id || secondary.id,
+    title: primary.title || secondary.title,
+    startAt: primary.startAt || secondary.startAt,
+    endAt: primary.endAt || secondary.endAt,
+    location: primary.location || secondary.location || null,
+    notes:
+      (primary.notes || "").length >= (secondary.notes || "").length
+        ? (primary.notes || secondary.notes || null)
+        : (secondary.notes || primary.notes || null),
+    sources: [...new Set([...(left.sources || [left.source]), ...(right.sources || [right.source])])],
+  };
+}
+
+function dedupeCalendarEvents(events = []) {
+  const byIdentity = new Map();
+
+  for (const event of events) {
+    const key = eventIdentityKey(event);
+    const existing = byIdentity.get(key);
+
+    if (!existing) {
+      byIdentity.set(key, event);
+      continue;
+    }
+
+    if (locationsCompatible(existing, event)) {
+      byIdentity.set(key, mergeDuplicateEvent(existing, event));
+      continue;
+    }
+
+    byIdentity.set(`${key}|${normalizeComparableText(event.location)}`, event);
+  }
+
+  return Array.from(byIdentity.values()).sort(
+    (left, right) => Date.parse(left.startAt) - Date.parse(right.startAt)
+  );
+}
+
 function importCalendarEvents(events = [], options = {}) {
-  const normalized = (events || [])
+  const normalized = dedupeCalendarEvents((events || [])
     .map(normalizeEvent)
     .filter((event) => event.startAt)
-    .sort((left, right) => Date.parse(left.startAt) - Date.parse(right.startAt));
+  );
 
   const store = {
     source: options.source || "manual",
@@ -134,9 +229,7 @@ function mergeCalendarEvents(events = [], options = {}) {
     .map((e) => normalizeEvent({ ...e, source }))
     .filter((e) => e.startAt);
 
-  const merged = [...kept, ...incoming].sort(
-    (a, b) => Date.parse(a.startAt) - Date.parse(b.startAt)
-  );
+  const merged = dedupeCalendarEvents([...kept, ...incoming]);
 
   const sources = [...new Set(merged.map((e) => e.source))];
   writeCalendarStore({ source: sources.length === 1 ? sources[0] : "multi", events: merged });

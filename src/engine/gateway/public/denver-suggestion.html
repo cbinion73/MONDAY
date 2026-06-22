@@ -1,0 +1,739 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Monday Denver Suggestion Mockup</title>
+    <style>
+      :root {
+        --bg: #f4f6fa;
+        --panel: rgba(255, 255, 255, 0.9);
+        --text: #1f2329;
+        --muted: #6f7782;
+        --gold: #c59b62;
+        --gold-deep: #956d39;
+        --line: rgba(197, 155, 98, 0.16);
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        font-family: "Avenir Next", "Segoe UI", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(197, 155, 98, 0.08), transparent 30%),
+          linear-gradient(180deg, #fbfbfc 0%, var(--bg) 100%);
+      }
+
+      body {
+        padding: clamp(18px, 2.2vw, 30px);
+      }
+
+      .document {
+        max-width: 1260px;
+        margin: 0 auto;
+        display: grid;
+        gap: 18px;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid rgba(255, 255, 255, 0.76);
+        border-radius: 30px;
+        padding: clamp(20px, 2.4vw, 30px);
+        backdrop-filter: blur(16px) saturate(1.05);
+        box-shadow:
+          0 22px 48px rgba(83, 95, 110, 0.08),
+          inset 0 1px 0 rgba(255, 255, 255, 0.78);
+      }
+
+      .eyebrow {
+        color: var(--gold-deep);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        margin-bottom: 12px;
+      }
+
+      h1, h2, h3, p { margin: 0; }
+
+      .hero {
+        display: grid;
+        grid-template-columns: 1.02fr 0.98fr;
+        gap: 18px;
+        align-items: stretch;
+      }
+
+      .hero-copy {
+        display: grid;
+        gap: 18px;
+        align-content: start;
+      }
+
+      .hero-copy h1 {
+        font-size: clamp(42px, 5.4vw, 78px);
+        line-height: 0.94;
+        letter-spacing: -0.055em;
+      }
+
+      .hero-copy p {
+        color: var(--muted);
+        font-size: clamp(17px, 1.7vw, 20px);
+        line-height: 1.65;
+      }
+
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .chip {
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: rgba(197, 155, 98, 0.11);
+        color: var(--gold-deep);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .suggestion-points {
+        display: grid;
+        gap: 10px;
+      }
+
+      .suggestion-points div {
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1.55;
+      }
+
+      .suggestion-points div::before {
+        content: "•";
+        color: var(--gold-deep);
+        margin-right: 8px;
+      }
+
+      .hero-visual {
+        position: relative;
+        overflow: hidden;
+        min-height: 440px;
+        border-radius: 30px;
+        border: 1px solid rgba(197, 155, 98, 0.14);
+        background: #e8edf3;
+      }
+
+      .hero-visual img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+
+      .hero-overlay {
+        position: absolute;
+        inset: auto 16px 16px 16px;
+        display: grid;
+        gap: 10px;
+        padding: 18px;
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.68);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+      }
+
+      .hero-overlay strong {
+        color: var(--gold-deep);
+        font-size: 14px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .hero-overlay p {
+        color: var(--text);
+        font-size: 15px;
+        line-height: 1.5;
+      }
+
+      .grid-two {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .fit-list {
+        display: grid;
+        gap: 14px;
+      }
+
+      .fit-item {
+        padding: 16px 18px;
+        border-radius: 22px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(197, 155, 98, 0.1);
+      }
+
+      .fit-item h3 {
+        font-size: 22px;
+        letter-spacing: -0.03em;
+        margin-bottom: 6px;
+      }
+
+      .fit-item p {
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .split-photo {
+        position: relative;
+        min-height: 330px;
+        overflow: hidden;
+        border-radius: 28px;
+      }
+
+      .split-photo img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+
+      .mini-badge {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        padding: 9px 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.76);
+        color: var(--gold-deep);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        backdrop-filter: blur(10px);
+      }
+
+      .experience-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .experience-card {
+        overflow: hidden;
+        border-radius: 26px;
+        background: rgba(255, 255, 255, 0.74);
+        border: 1px solid rgba(197, 155, 98, 0.1);
+      }
+
+      .experience-card img {
+        width: 100%;
+        height: 220px;
+        object-fit: cover;
+        display: block;
+      }
+
+      .experience-copy {
+        padding: 18px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .experience-copy h3 {
+        font-size: 24px;
+        letter-spacing: -0.04em;
+      }
+
+      .experience-copy p {
+        color: var(--muted);
+        line-height: 1.58;
+      }
+
+      .mode-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .mode-card {
+        display: grid;
+        gap: 16px;
+        padding: 22px;
+        border-radius: 28px;
+        background: rgba(255, 255, 255, 0.76);
+        border: 1px solid rgba(197, 155, 98, 0.1);
+      }
+
+      .mode-card.recommended {
+        background: linear-gradient(180deg, rgba(197, 155, 98, 0.14), rgba(255, 255, 255, 0.8));
+        border-color: rgba(197, 155, 98, 0.24);
+        box-shadow: 0 18px 36px rgba(197, 155, 98, 0.12);
+      }
+
+      .mode-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        align-items: start;
+      }
+
+      .mode-icon {
+        width: 54px;
+        height: 54px;
+        border-radius: 18px;
+        display: grid;
+        place-items: center;
+        background: rgba(197, 155, 98, 0.08);
+        color: var(--gold-deep);
+        border: 1px solid rgba(197, 155, 98, 0.14);
+        font-size: 26px;
+      }
+
+      .mode-badge {
+        padding: 8px 11px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.72);
+        color: var(--gold-deep);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .mode-title h3 {
+        font-size: 28px;
+        letter-spacing: -0.04em;
+        margin-bottom: 6px;
+      }
+
+      .mode-title p {
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .stats {
+        display: grid;
+        gap: 10px;
+      }
+
+      .stat-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(197, 155, 98, 0.16);
+      }
+
+      .stat-row:last-child {
+        border-bottom: 0;
+      }
+
+      .stat-row span {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .stat-row strong {
+        color: var(--text);
+        font-size: 15px;
+      }
+
+      .mode-note {
+        padding: 14px 16px;
+        border-radius: 20px;
+        background: rgba(197, 155, 98, 0.08);
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .mode-note strong {
+        color: var(--gold-deep);
+      }
+
+      .mini-route {
+        position: relative;
+        min-height: 160px;
+        overflow: hidden;
+        border-radius: 22px;
+        background:
+          linear-gradient(180deg, rgba(235, 241, 248, 0.96), rgba(248, 249, 251, 0.96));
+        border: 1px solid rgba(197, 155, 98, 0.12);
+      }
+
+      .mini-route-grid {
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(rgba(255, 255, 255, 0.56) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.5) 1px, transparent 1px);
+        background-size: 100% 16%, 14% 100%;
+        opacity: 0.52;
+      }
+
+      .mini-stop {
+        position: absolute;
+        padding: 6px 9px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.84);
+        border: 1px solid rgba(197, 155, 98, 0.14);
+        color: var(--gold-deep);
+        font-size: 11px;
+        font-weight: 700;
+        backdrop-filter: blur(8px);
+      }
+
+      .mini-stop.start { left: 8%; bottom: 14%; }
+      .mini-stop.end { right: 8%; top: 14%; }
+
+      .fare-block {
+        display: grid;
+        gap: 8px;
+      }
+
+      .fare-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 10px 12px;
+        border-radius: 16px;
+        background: rgba(197, 155, 98, 0.06);
+      }
+
+      .fare-row span {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .fare-row strong {
+        color: var(--gold-deep);
+        font-size: 14px;
+      }
+
+      .travel-days {
+        display: grid;
+        gap: 6px;
+        padding: 12px 14px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.7);
+        border: 1px solid rgba(197, 155, 98, 0.1);
+      }
+
+      .travel-days div {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 13px;
+      }
+
+      .travel-days span {
+        color: var(--muted);
+      }
+
+      .travel-days strong {
+        color: var(--text);
+      }
+
+      .booking-link {
+        color: #365d90;
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      .travel-frame {
+        display: grid;
+        grid-template-columns: 0.9fr 1.1fr;
+        gap: 18px;
+      }
+
+      .stat-stack {
+        display: grid;
+        gap: 14px;
+      }
+
+      .stat-card {
+        padding: 18px 20px;
+        border-radius: 22px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(197, 155, 98, 0.1);
+      }
+
+      .stat-card span {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+
+      .stat-card strong {
+        display: block;
+        color: var(--gold-deep);
+        font-size: clamp(28px, 3vw, 40px);
+        letter-spacing: -0.04em;
+        margin-bottom: 8px;
+      }
+
+      .stat-card p {
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .stay-notes {
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+
+      .stay-note {
+        padding: 14px 16px;
+        border-left: 3px solid rgba(197, 155, 98, 0.42);
+        background: rgba(197, 155, 98, 0.06);
+        border-radius: 0 18px 18px 0;
+      }
+
+      .stay-note strong {
+        display: block;
+        font-size: 17px;
+        margin-bottom: 4px;
+      }
+
+      .stay-note p {
+        color: var(--muted);
+        line-height: 1.52;
+      }
+
+      @media (max-width: 980px) {
+        .hero,
+        .grid-two,
+        .experience-grid,
+        .mode-grid,
+        .travel-frame {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="document">
+      <section class="hero">
+        <article class="panel hero-copy">
+          <div class="eyebrow">Travel Suggestion</div>
+          <h1>Denver, Colorado</h1>
+          <p>
+            Denver is a strong fit if you want one trip that blends city energy,
+            mountain access, walkable food-and-coffee districts, and easy launch
+            points for bigger outdoor days.
+          </p>
+          <div class="chip-row">
+            <div class="chip">City + mountains</div>
+            <div class="chip">Easy weekend or 4-day trip</div>
+            <div class="chip">Strong day-trip options</div>
+          </div>
+          <div class="suggestion-points">
+            <div>You can stay urban and still get a real Colorado feel.</div>
+            <div>It gives you a cleaner mix of structure and spontaneity than a pure park trip.</div>
+            <div>Red Rocks, Union Station, and Rocky Mountain National Park create a natural rhythm.</div>
+          </div>
+        </article>
+
+        <article class="panel hero-visual">
+          <img src="/assets/photos/denver-skyline.jpg" alt="Denver skyline">
+          <div class="hero-overlay">
+            <strong>Why Monday would suggest this</strong>
+            <p>
+              This gives you a destination with enough visual drama to feel like a getaway,
+              without forcing every day into heavy logistics.
+            </p>
+          </div>
+        </article>
+      </section>
+
+      <section class="grid-two">
+        <article class="panel">
+          <div class="eyebrow">Why It Fits</div>
+          <div class="fit-list">
+            <div class="fit-item">
+              <h3>Flexible Pace</h3>
+              <p>You can do a slower city-centered version or use Denver as a launch pad for bigger mountain days.</p>
+            </div>
+            <div class="fit-item">
+              <h3>High-Reward First Impressions</h3>
+              <p>The skyline, light, and nearby rock formations make it feel visually distinctive right away.</p>
+            </div>
+            <div class="fit-item">
+              <h3>Low Friction Planning</h3>
+              <p>Denver is easier to shape into a suggestion-level trip because the anchors are obvious and complementary.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel split-photo">
+          <img src="/assets/photos/red-rocks.jpg" alt="Red Rocks Amphitheatre">
+          <div class="mini-badge">Signature Stop</div>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="eyebrow">Suggested Shape</div>
+        <div class="experience-grid">
+          <article class="experience-card">
+            <img src="/assets/photos/union-station.jpg" alt="Denver Union Station">
+            <div class="experience-copy">
+              <h3>Arrival + City Core</h3>
+              <p>
+                Start around Union Station and LoDo so the trip opens with a strong sense of place,
+                good food options, and a more relaxed first-day landing.
+              </p>
+            </div>
+          </article>
+          <article class="experience-card">
+            <img src="/assets/photos/red-rocks.jpg" alt="Red Rocks">
+            <div class="experience-copy">
+              <h3>Red Rocks Day</h3>
+              <p>
+                This is the most obvious high-signal Denver move: dramatic landscape, iconic setting,
+                and a fast payoff without requiring a huge commitment.
+              </p>
+            </div>
+          </article>
+          <article class="experience-card">
+            <img src="/assets/photos/rocky-mountain.jpg" alt="Rocky Mountain National Park">
+            <div class="experience-copy">
+              <h3>Mountain Expansion</h3>
+              <p>
+                If you want the trip to breathe wider, add a Rocky Mountain National Park day and let
+                the city serve as the stable home base.
+              </p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="eyebrow">How To Get There</div>
+        <div class="mode-grid">
+          <article class="mode-card">
+            <div class="mode-top">
+              <div class="mode-icon">⌁</div>
+              <div class="mode-badge">Maximum Control</div>
+            </div>
+            <div class="mode-title">
+              <h3>Driving</h3>
+              <p>Best if you want the road to be part of the trip and expect the car to unlock multiple Colorado stops once you arrive.</p>
+            </div>
+            <div class="stats">
+              <div class="stat-row"><span>Drive time</span><strong>18h 10m</strong></div>
+              <div class="stat-row"><span>Distance</span><strong>1,184 miles</strong></div>
+              <div class="stat-row"><span>Best for</span><strong>Longer open travel</strong></div>
+            </div>
+            <div class="mini-route">
+              <div class="mini-route-grid"></div>
+              <svg viewBox="0 0 1000 420" preserveAspectRatio="none" aria-hidden="true" style="position:absolute; inset:0; width:100%; height:100%;">
+                <path d="M110 318 C 246 292, 360 262, 470 206 S 650 118, 880 90" fill="none" stroke="rgba(197,155,98,0.92)" stroke-width="9" stroke-linecap="round"></path>
+                <path d="M110 344 C 246 322, 364 286, 480 232 S 660 150, 884 120" fill="none" stroke="rgba(197,155,98,0.36)" stroke-width="6" stroke-dasharray="14 14" stroke-linecap="round"></path>
+              </svg>
+              <div class="mini-stop start">Alexandria</div>
+              <div class="mini-stop end">Denver</div>
+            </div>
+            <div class="mode-note"><strong>Monday read:</strong> Drive only if the journey itself matters or you want full control on the ground.</div>
+          </article>
+
+          <article class="mode-card">
+            <div class="mode-top">
+              <div class="mode-icon">≋</div>
+              <div class="mode-badge">Slowest Option</div>
+            </div>
+            <div class="mode-title">
+              <h3>Train</h3>
+              <p>Best if you want a more reflective, scenic pace and are willing to trade efficiency for a calmer transit experience.</p>
+            </div>
+            <div class="stats">
+              <div class="stat-row"><span>Travel time</span><strong>31h to 36h</strong></div>
+              <div class="stat-row"><span>Booking site</span><strong><a class="booking-link" href="https://www.amtrak.com/">amtrak.com</a></strong></div>
+              <div class="stat-row"><span>Best for</span><strong>Leisure over speed</strong></div>
+            </div>
+            <div class="fare-block">
+              <div class="fare-row"><span>Lowest fare</span><strong>$162 Tue departure</strong></div>
+              <div class="fare-row"><span>Best fare/value</span><strong>$214 Wed departure</strong></div>
+              <div class="fare-row"><span>Recommended</span><strong>$238 Thu roomier timing</strong></div>
+            </div>
+            <div class="travel-days">
+              <div><span>Cheapest days</span><strong>Tuesday / Wednesday</strong></div>
+              <div><span>Best balance</span><strong>Wednesday midday</strong></div>
+              <div><span>Recommended window</span><strong>Book 2 to 3 weeks out</strong></div>
+            </div>
+            <div class="mode-note"><strong>Monday read:</strong> Train is viable, but usually not the best first recommendation for a short Denver trip.</div>
+          </article>
+
+          <article class="mode-card recommended">
+            <div class="mode-top">
+              <div class="mode-icon">✦</div>
+              <div class="mode-badge">Recommended</div>
+            </div>
+            <div class="mode-title">
+              <h3>Airfare</h3>
+              <p>Best if the goal is to protect time and energy so the trip can actually be spent in Denver and the mountains.</p>
+            </div>
+            <div class="stats">
+              <div class="stat-row"><span>Travel time</span><strong>4h to 6h total</strong></div>
+              <div class="stat-row"><span>Booking site</span><strong><a class="booking-link" href="https://www.google.com/travel/flights">google.com/travel/flights</a></strong></div>
+              <div class="stat-row"><span>Best for</span><strong>3 to 4 day trips</strong></div>
+            </div>
+            <div class="fare-block">
+              <div class="fare-row"><span>Lowest fare</span><strong>$189 Tuesday</strong></div>
+              <div class="fare-row"><span>Best fare/value</span><strong>$242 Wednesday</strong></div>
+              <div class="fare-row"><span>Recommended</span><strong>$268 Thursday nonstop</strong></div>
+            </div>
+            <div class="travel-days">
+              <div><span>Cheapest days</span><strong>Tuesday / Saturday</strong></div>
+              <div><span>Best balance</span><strong>Wednesday morning</strong></div>
+              <div><span>Recommended window</span><strong>Book 3 to 5 weeks out</strong></div>
+            </div>
+            <div class="mode-note"><strong>Monday read:</strong> For this Denver suggestion, flying is the cleanest recommendation unless you specifically want a road trip.</div>
+          </article>
+        </div>
+      </section>
+
+      <section class="travel-frame">
+        <article class="panel stat-stack">
+          <div class="eyebrow">Trip Read</div>
+          <div class="stat-card">
+            <span>Best For</span>
+            <strong>3 to 4 days</strong>
+            <p>Enough time to get one city day, one signature Denver outing, and one larger Colorado move.</p>
+          </div>
+          <div class="stat-card">
+            <span>Travel Style</span>
+            <strong>Structured freedom</strong>
+            <p>You have obvious anchors, but still room to improvise once you are there.</p>
+          </div>
+          <div class="stat-card">
+            <span>Recommendation</span>
+            <strong>Strong yes</strong>
+            <p>If you want a suggestion rather than a full locked itinerary, Denver is an excellent next candidate.</p>
+          </div>
+        </article>
+
+        <article class="panel stay-notes">
+          <div class="eyebrow">How Monday Might Frame It</div>
+          <div class="stay-note">
+            <strong>Stay near the core</strong>
+            <p>Union Station / LoDo gives you the cleanest launch point if you want the city to stay easy.</p>
+          </div>
+          <div class="stay-note">
+            <strong>Use one dramatic anchor per day</strong>
+            <p>Denver works best when each day has one clear visual or geographic centerpiece.</p>
+          </div>
+          <div class="stay-note">
+            <strong>Do not overpack it</strong>
+            <p>The appeal here is contrast: urban comfort, red-rock scenery, and one mountain push, not ten disconnected stops.</p>
+          </div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

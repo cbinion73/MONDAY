@@ -29,8 +29,19 @@ const {
   recordTurnLearning,
 } = require("../learning/closed-loop-learning");
 const { sendViaiMessage } = require("../channels/imessage");
+const { routeModel } = require("../llm/model-router");
+const {
+  buildApprovalRequest,
+  buildDeclineMessage,
+  classifyApprovalInput,
+  isExpensiveTier,
+} = require("../llm/expensive-model-approval");
 const sessions = require("./sessions");
 const { processAfterTurn } = require("../workspace/workspace-manager");
+const {
+  findTravelPlanSkillResult,
+  renderTravelPlanReply,
+} = require("../skills/travel-plan-renderer");
 
 const CHANNEL_LABEL = {
   http: "HTTP",
@@ -60,6 +71,39 @@ async function dispatch(event) {
   }
 
   const session = sessions.getOrCreateSession(channel, senderId);
+  const pendingApproval = session.context?.pendingExpensiveApproval || null;
+  const approvalDecision = pendingApproval
+    ? classifyApprovalInput(text)
+    : "other";
+
+  if (pendingApproval) {
+    if (approvalDecision === "decline") {
+      sessions.saveSession(channel, senderId, {
+        context: {
+          ...session.context,
+          pendingExpensiveApproval: null,
+        },
+      });
+      return { reply: buildDeclineMessage(), truth: null, domain: null };
+    }
+  }
+
+  const pendingTravelIntake = session.context?.pendingTravelIntake || null;
+  const travelContinuation =
+    !pendingApproval &&
+    pendingTravelIntake &&
+    shouldContinuePendingTravel(text);
+
+  const effectiveInput =
+    pendingApproval && approvalDecision === "approve"
+      ? pendingApproval.originalInput
+      : travelContinuation
+        ? `${pendingTravelIntake.originalQuery}\nTrip details: ${text}`
+        : text;
+  const effectiveHistory =
+    pendingApproval && approvalDecision === "approve"
+      ? pendingApproval.historySnapshot || []
+      : session.messages;
 
   // Build context from session + personal store
   const mergedContext = {
@@ -67,10 +111,11 @@ async function dispatch(event) {
     channel,
     senderId,
   };
+  delete mergedContext.pendingExpensiveApproval;
 
   const personalContext = {
     ...buildPersonalContext(),
-    captureIntent: detectCaptureIntent(text),
+    captureIntent: detectCaptureIntent(effectiveInput),
     calendar: getCalendarSummary(),
     documents: getDocumentsSummary({ limit: 4 }),
     email: getEmailSummary({ limit: 4 }),
@@ -80,10 +125,34 @@ async function dispatch(event) {
 
   // Run the Monday engine
   const result = await runMondayTurn({
-    input: text,
+    input: effectiveInput,
     context: mergedContext,
     councilEnabled: false, // council reserved for sandbox dev; too slow for real-time channels
   });
+
+  const preflightDecision = routeModel({
+    domain: result.truth?.domain || result.finalState?.candidateDomain || null,
+    significance: result.finalState?.significance || null,
+    identityProximity: result.finalState?.identityProximity || null,
+    woundRisk: result.finalState?.woundRisk || null,
+    classificationFallback: result.finalState?.classificationFallback || false,
+    input: effectiveInput,
+  });
+
+  if (approvalDecision !== "approve" && isExpensiveTier(preflightDecision.tier)) {
+    const approvalRequest = buildApprovalRequest(preflightDecision, effectiveInput);
+    sessions.saveSession(channel, senderId, {
+      context: {
+        ...session.context,
+        pendingExpensiveApproval: {
+          ...approvalRequest,
+          originalInput: effectiveInput,
+          historySnapshot: session.messages,
+        },
+      },
+    });
+    return { reply: approvalRequest.warning, truth: result.truth, domain: result.finalState.domain };
+  }
 
   const enrichedPersonalContext = {
     ...personalContext,
@@ -97,16 +166,18 @@ async function dispatch(event) {
   // Runs between engine resolution and LLM call so Monday answers from live data.
   const { invokeSkillsForTurn } = require("../skills/skill-invoker");
   const { updateTheoryFromEvidence } = require("../skills/theory-from-evidence");
+  const { buildArtifactPlan } = require("../surfacing/artifact-planner");
 
   const turnDomain = result.truth?.domain || result.finalState?.domain || null;
   const turnWorkspaceId = turnDomain ? turnDomain.toLowerCase() : null;
 
   let skillInvocation = { used: false, skills: [], failed: [] };
   try {
-    skillInvocation = await invokeSkillsForTurn(text, {
+    skillInvocation = await invokeSkillsForTurn(effectiveInput, {
       workspaceId: turnWorkspaceId,
       domain: turnDomain,
       channel,
+      senderId,
     });
   } catch (err) {
     console.warn("[gateway:router] skill invocation error:", err.message);
@@ -116,22 +187,35 @@ async function dispatch(event) {
     ? updateTheoryFromEvidence(personalContext.priorWorkingTheory, skillInvocation.skills)
     : null;
 
+  const surfacingPlan =
+    buildArtifactPlan({
+      input: effectiveInput,
+      domain: turnDomain,
+      recommendedOutcome: result.finalState?.recommendedOutcome || null,
+      skillResults: skillInvocation.skills,
+    }) || skillInvocation.surfacingPlan || null;
+
   const finalPersonalContext = {
     ...enrichedPersonalContext,
     skillResults: skillInvocation.skills,
     theoryEvidence,
+    surfacingPlan,
   };
   // ── end JARVIS loop ────────────────────────────────────────────────────────
 
   // Apply intelligence layer (Ollama/Claude refinement)
   const intelligentResult = await applyMondayIntelligence({
     result,
-    input: text,
-    history: session.messages,
+    input: effectiveInput,
+    history: effectiveHistory,
     personalContext: finalPersonalContext,
   });
 
-  const reply = intelligentResult.voice.text;
+  const travelPlanSkill = findTravelPlanSkillResult(skillInvocation.skills);
+  const travelPlanStatus = travelPlanSkill?.raw?.data?.status || null;
+  const reply = travelPlanSkill
+    ? renderTravelPlanReply(travelPlanSkill)
+    : intelligentResult.voice.text;
   const domain = result.finalState?.domain || intelligentResult.truth?.domain || null;
 
   // ── Mission detection ──────────────────────────────────────────────────────
@@ -162,7 +246,7 @@ async function dispatch(event) {
   // Append to domain workspace log and sync working theory
   processAfterTurn({
     domain,
-    userText: text,
+    userText: effectiveInput,
     mondayReply: reply,
     workingTheory: intelligentResult.workingTheory || null,
     skillsUsed: skillInvocation.skills.map((s) => s.skillId),
@@ -174,22 +258,37 @@ async function dispatch(event) {
     context: {
       ...intelligentResult.nextContext,
       workingTheory: intelligentResult.workingTheory || null,
+      pendingExpensiveApproval: null,
+      pendingTravelIntake:
+        travelPlanStatus === "needs_input"
+          ? {
+              originalQuery: travelContinuation
+                ? effectiveInput
+                : text,
+              requestedAt: new Date().toISOString(),
+            }
+          : null,
     },
   });
-  sessions.appendMessage(channel, senderId, { user: text, monday: reply });
+  sessions.appendMessage(channel, senderId, { user: effectiveInput, monday: reply });
 
   // Record learning + capture
-  recordTurnLearning({ input: text, sessionId: `${channel}:${senderId}`, result: intelligentResult });
+  recordTurnLearning({ input: effectiveInput, sessionId: `${channel}:${senderId}`, result: intelligentResult });
   if (personalContext.captureIntent) {
     recordCapture({
-      input: text,
+      input: effectiveInput,
       finalState: intelligentResult.finalState,
       truth: intelligentResult.truth,
       context: mergedContext,
     });
   }
 
-  return { reply, truth: intelligentResult.truth, domain: result.finalState.domain };
+  return {
+    reply,
+    truth: intelligentResult.truth,
+    domain: result.finalState.domain,
+    surfacingPlan,
+  };
 }
 
 /**
@@ -222,3 +321,12 @@ async function replyViaSlackResponseUrl(responseUrl, body) {
 }
 
 module.exports = { dispatch, replyViaiMessage, replyViaSlackResponseUrl };
+
+function shouldContinuePendingTravel(text) {
+  const value = String(text || "").trim();
+  if (!value) return false;
+  return /\b(mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday)\b/i.test(value) ||
+    /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2}\b/i.test(value) ||
+    /\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/.test(value) ||
+    /\b(leaving|arriving|staying|hotel|reservation|tickets?|philadelphia|washington|statue of liberty|new york)\b/i.test(value);
+}

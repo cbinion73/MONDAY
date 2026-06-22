@@ -13,15 +13,23 @@ const { detectIntents } = require("./intent-detector");
 const { executeSkill } = require("./executor");
 const { normalizeSkillResult } = require("./skill-result-normalizer");
 const store = require("../workspace/workspace-store");
+const { buildArtifactPlan } = require("../surfacing/artifact-planner");
 
 const SKILL_TIMEOUT_MS = 8000;
 const MAX_SKILLS_PER_TURN = 3; // cap to keep latency predictable
 
-async function invokeSkillsForTurn(input, { workspaceId = null, domain = null, channel = "turn" } = {}) {
+async function invokeSkillsForTurn(input, { workspaceId = null, domain = null, channel = "turn", senderId = null } = {}) {
   // 1. Rule-based intent detection
   const intents = detectIntents(input);
   if (intents.length === 0) {
-    return { used: false, skills: [], failed: [], detectedCount: 0, gatedCount: 0 };
+    return {
+      used: false,
+      skills: [],
+      failed: [],
+      detectedCount: 0,
+      gatedCount: 0,
+      surfacingPlan: buildArtifactPlan({ input, domain, recommendedOutcome: null, skillResults: [] }),
+    };
   }
 
   // 2. Trust gate — filter by workspace allowed list
@@ -42,6 +50,7 @@ async function invokeSkillsForTurn(input, { workspaceId = null, domain = null, c
       detectedCount: intents.length,
       gatedCount: 0,
       gateBlocked: true,
+      surfacingPlan: buildArtifactPlan({ input, domain, recommendedOutcome: null, skillResults: [] }),
     };
   }
 
@@ -54,6 +63,7 @@ async function invokeSkillsForTurn(input, { workspaceId = null, domain = null, c
             workspaceId,
             domain,
             channel,
+            senderId,
             bypassTier: false,
           }),
           new Promise((_, reject) =>
@@ -112,6 +122,12 @@ async function invokeSkillsForTurn(input, { workspaceId = null, domain = null, c
     failed,
     detectedCount: intents.length,
     gatedCount: gated.length,
+    surfacingPlan: buildArtifactPlan({
+      input,
+      domain,
+      recommendedOutcome: null,
+      skillResults: skills,
+    }),
   };
 }
 

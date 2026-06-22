@@ -25,6 +25,66 @@ function formatDate(iso) {
   } catch { return iso; }
 }
 
+const TRAVEL_KW = /\b(ticket|tickets|reservation|confirmation|itinerary|trip|travel|entry|admission|tour|visit|museum|philadelphia|washington|dc|new york|statue of liberty|ellis island)\b/i;
+
+function extractTravelFacts(thread = {}) {
+  const text = `${thread.subject || ""} ${thread.snippet || ""} ${thread.bodyText || ""}`.replace(/\s+/g, " ").trim();
+  if (!TRAVEL_KW.test(text)) return null;
+
+  const facts = [];
+  const normalized = text;
+
+  const dateMatches = normalized.match(/\b(?:mon|tues|wed|thu|fri|sat|sun)?\.?,?\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2}(?:,\s*\d{4})?/gi)
+    || normalized.match(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g)
+    || [];
+  const timeMatches = normalized.match(/\b\d{1,2}:\d{2}\s?(?:AM|PM|am|pm)\b/g)
+    || normalized.match(/\b\d{1,2}\s?(?:AM|PM|am|pm)\b/g)
+    || [];
+  const codeMatches = normalized.match(/\b(?:confirmation|conf(?:irmation)?|reservation|order|booking|ticket)\s*(?:number|#|no\.?)?\s*[:#]?\s*([A-Z0-9-]{5,})\b/gi) || [];
+
+  const destinationPatterns = [
+    /philadelphia/i,
+    /washington,\s*dc|washington dc|\bdc\b/i,
+    /statue of liberty/i,
+    /ellis island/i,
+    /new york/i,
+  ];
+
+  const destinations = destinationPatterns
+    .filter((pattern) => pattern.test(normalized))
+    .map((pattern) => {
+      const raw = pattern.source.toLowerCase();
+      if (raw.includes("philadelphia")) return "Philadelphia";
+      if (raw.includes("statue of liberty")) return "Statue of Liberty";
+      if (raw.includes("ellis")) return "Ellis Island";
+      if (raw.includes("new york")) return "New York";
+      return "Washington, DC";
+    });
+
+  if (destinations.length > 0) {
+    facts.push(`ticket-related for ${[...new Set(destinations)].join(", ")}`);
+  }
+  if (dateMatches.length > 0) {
+    facts.push(`date${dateMatches.length > 1 ? "s" : ""}: ${dateMatches.slice(0, 3).join(", ")}`);
+  }
+  if (timeMatches.length > 0) {
+    facts.push(`time${timeMatches.length > 1 ? "s" : ""}: ${timeMatches.slice(0, 3).join(", ")}`);
+  }
+  if (codeMatches.length > 0) {
+    facts.push(`confirmation details present`);
+  }
+
+  return facts.length > 0
+    ? {
+        subject: thread.subject || "Travel email",
+        facts,
+      }
+    : {
+        subject: thread.subject || "Travel email",
+        facts: ["travel-related ticket or itinerary email found"],
+      };
+}
+
 // ── Per-skill normalizers ─────────────────────────────────────────────────────
 
 function normalizeCalendar(raw) {
@@ -86,8 +146,40 @@ function normalizeEmail(raw) {
     observations.push(`"${t.subject || "No subject"}" from ${t.from || "unknown"}${t.unread ? " [unread]" : ""}`);
   }
 
+  const routed = threads.filter((thread) => thread.threadType || thread.domain || thread.providerCategory);
+  for (const t of routed.slice(0, 5)) {
+    const parts = [];
+    if (t.threadType) parts.push(`type: ${t.threadType}`);
+    if (t.domain) parts.push(`domain: ${t.domain}`);
+    if (typeof t.significanceScore === "number") parts.push(`significance ${Math.round(t.significanceScore * 100)}%`);
+    if (typeof t.junkScore === "number") parts.push(`junk ${Math.round(t.junkScore * 100)}%`);
+    if (parts.length > 0) observations.push(`Email intelligence: "${t.subject || "No subject"}" — ${parts.join("; ")}`);
+  }
+
+  const travelFacts = threads
+    .map(extractTravelFacts)
+    .filter(Boolean)
+    .slice(0, 5);
+
+  for (const fact of travelFacts) {
+    observations.push(`Travel email: "${fact.subject}" — ${fact.facts.join("; ")}`);
+  }
+
+  for (const thread of threads.slice(0, 5)) {
+    for (const fact of thread.structuredFacts || []) {
+      if (fact.type === "date" || fact.type === "time" || fact.type === "location" || fact.type === "reservation" || fact.type === "entry_instruction") {
+        observations.push(`Extracted ${fact.type}: ${fact.value}`);
+      }
+    }
+  }
+
   if (unread.length > 5) patterns.push("inbox accumulating — needs attention");
   if (unread.length === 0) patterns.push("inbox is current");
+  if (travelFacts.length > 0) patterns.push("ticket or itinerary details present in email");
+  if (raw?.usedIntelligence) patterns.push("local email intelligence funnel used before cloud response");
+  if (threads.some((thread) => thread.threadType === "junk" || thread.providerCategory === "promotions")) {
+    patterns.push("promotional or junk email filtered down before answer");
+  }
 
   const summary = threads.slice(0, 3).map((t) => `"${t.subject}" from ${t.from}`).join("; ");
 
@@ -223,6 +315,46 @@ function normalizeLlm(raw, source) {
   };
 }
 
+function normalizeTravelPlan(raw) {
+  const data = raw?.data || {};
+  const observations = [];
+  const patterns = [];
+
+  if (data.missionRead) observations.push(`Travel mission read: ${data.missionRead}`);
+  if (data.noDirectTicketEvidence) {
+    observations.push("No direct ticket evidence was confirmed in reachable email results.");
+    patterns.push("trip planning is falling back to calendar constraints and partial confirmations");
+  }
+  if (Array.isArray(data.confirmedItems) && data.confirmedItems.length > 0) {
+    for (const item of data.confirmedItems.slice(0, 8)) observations.push(`Confirmed: ${item}`);
+    patterns.push("trip planning has confirmed reservation evidence");
+  }
+  if (Array.isArray(data.missingItems) && data.missingItems.length > 0) {
+    for (const item of data.missingItems.slice(0, 5)) observations.push(`Missing: ${item}`);
+  }
+  if (Array.isArray(data.plan) && data.plan.length > 0) {
+    observations.push(`${data.plan.length} travel day${data.plan.length === 1 ? "" : "s"} sequenced`);
+    for (const day of data.plan.slice(0, 4)) {
+      observations.push(`${day.day}: ${day.summary}`);
+    }
+    patterns.push("trip plan organized into day-by-day execution");
+  }
+  if (Array.isArray(data.risks) && data.risks.length > 0) {
+    for (const item of data.risks.slice(0, 4)) observations.push(`Risk: ${item}`);
+  }
+  if (Array.isArray(data.contingencies) && data.contingencies.length > 0) {
+    patterns.push("contingencies prepared for travel gaps");
+  }
+
+  return {
+    observations,
+    patterns,
+    summary: data.missionRead || "Travel plan assembled",
+    confidence: data.confidence === "high" ? 0.93 : data.confidence === "medium" ? 0.78 : 0.6,
+    source: "travel-plan",
+  };
+}
+
 function normalizeDefault(raw, skillId) {
   return {
     observations: [`${skillId} returned data`],
@@ -243,6 +375,7 @@ const NORMALIZERS = {
   "web-fetch":       normalizeWebFetch,
   "browser-search":  normalizeBrowserSearch,
   "browser-read":    normalizeBrowserRead,
+  "travel-plan":     normalizeTravelPlan,
   "summarize":       (r) => normalizeLlm(r, "summarize"),
   "draft-reply":     (r) => normalizeLlm(r, "draft-reply"),
 };

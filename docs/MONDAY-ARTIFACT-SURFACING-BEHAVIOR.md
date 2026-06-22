@@ -144,6 +144,134 @@ The same artifact system should be reusable for:
 The system is universal.
 The thing that changes is the surfaced content, not the interaction pattern.
 
+## Document Surfacing Rules
+
+Document-style surfacing should use the same full-screen modal pattern as websites and graph displays.
+
+The modal system is stable.
+The internal block composition changes based on what Monday is trying to show.
+
+Examples of document-style surfaces include:
+
+- travel suggestions
+- full itineraries
+- research surveys
+- briefings
+- comparison memos
+- source-grounded recommendation documents
+
+Document artifacts should be assembled from reusable blocks rather than forced into one rigid template.
+
+Useful blocks include:
+
+- hero
+- executive summary
+- map or route
+- comparison table
+- pricing options
+- image cards
+- timeline
+- recommendation callout
+- next steps
+
+Monday should choose only the blocks needed to make the point clearly.
+
+That means:
+
+- not every document needs a timeline
+- not every document needs images
+- not every document needs a table
+- not every document needs the same ordering
+
+The surface should feel composed for the subject at hand, not generated from a generic report mold.
+
+## Data Source To Display Rules
+
+When Monday builds a graph or data display, she should treat the artifact as the visible end of a reasoning chain:
+
+`trusted source -> extracted signal -> selected comparison -> visual display -> spoken explanation`
+
+She should not begin with the graph.
+She should begin with the question:
+
+- what source should I trust for this?
+- what signal actually matters?
+- what comparison would make the pattern visible?
+- what display shape would make the point fastest?
+
+### Approved Display Inputs
+
+Typical input sources may include:
+
+- medical or health records
+- calendar data
+- email-derived structured facts
+- financial records
+- local vault or notes data
+- external websites when current information is required
+- future structured connectors or imported datasets
+
+### Display Discipline
+
+Monday should only surface data when it improves understanding.
+
+That means:
+
+- do not graph something merely because data exists
+- graph when trend, contrast, correlation, or anomaly would make the truth easier to see
+- prefer a single decisive visual over a crowded dashboard
+- add additional visuals only when they materially clarify causality or context
+
+### Graph Selection Rules
+
+When choosing what to display, prefer visuals that reveal:
+
+- trend over time
+- comparison between two variables
+- correlation between two related signals
+- current value against baseline
+- worsening or improving direction
+
+If a number alone is enough, do not force a chart.
+If a chart makes the pattern immediate, prefer the chart.
+
+### Narrative Display Rules
+
+When multiple data sources are involved, Monday should build the display in explanatory order.
+
+That means:
+
+- first surface the primary signal
+- then surface the likely explanatory or correlated factor
+- then add broader causal or systemic context
+- only add a fourth panel if it completes the picture meaningfully
+
+The display should unfold in the same order Monday would explain it aloud.
+
+### Source Fidelity Rules
+
+When drawing on data sources, Monday should behave as though every graph is making a claim that must be grounded.
+
+That means:
+
+- pull from the most direct trusted source available
+- do not invent data just to make the display feel complete
+- if a data source is partial, present it as partial
+- if the signal is weak, say the signal is weak
+- if the display is hypothetical or projected, distinguish projection from observed history
+
+### Universal Display Principle
+
+Monday is not building dashboards for their own sake.
+She is assembling visual evidence in support of discernment.
+
+The visual should help the user see:
+
+- what is happening
+- why Monday thinks it matters
+- what appears to be driving it
+- what should happen next
+
 ## Health Dashboard Sequence Pattern
 
 One especially important expected behavior emerged from the health scenario:

@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Monday Quantum Survey Mockup</title>
+    <style>
+      :root {
+        --bg: #f4f6fa;
+        --panel: rgba(255, 255, 255, 0.9);
+        --text: #1d2230;
+        --muted: #70798a;
+        --gold: #c59b62;
+        --gold-deep: #946c39;
+        --line: rgba(197, 155, 98, 0.15);
+        --soft: rgba(197, 155, 98, 0.08);
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        font-family: "Avenir Next", "Segoe UI", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(197, 155, 98, 0.08), transparent 30%),
+          linear-gradient(180deg, #fbfbfc 0%, var(--bg) 100%);
+      }
+
+      body {
+        padding: clamp(18px, 2.2vw, 30px);
+      }
+
+      .document {
+        max-width: 1260px;
+        margin: 0 auto;
+        display: grid;
+        gap: 18px;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid rgba(255, 255, 255, 0.76);
+        border-radius: 30px;
+        padding: clamp(20px, 2.4vw, 30px);
+        backdrop-filter: blur(16px) saturate(1.05);
+        box-shadow:
+          0 22px 48px rgba(83, 95, 110, 0.08),
+          inset 0 1px 0 rgba(255, 255, 255, 0.78);
+      }
+
+      .eyebrow {
+        color: var(--gold-deep);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        margin-bottom: 12px;
+      }
+
+      h1, h2, h3, p { margin: 0; }
+
+      .hero {
+        display: grid;
+        grid-template-columns: 1.04fr 0.96fr;
+        gap: 18px;
+      }
+
+      .hero-copy {
+        display: grid;
+        gap: 18px;
+        align-content: start;
+      }
+
+      .hero-copy h1 {
+        font-size: clamp(42px, 5vw, 76px);
+        line-height: 0.94;
+        letter-spacing: -0.055em;
+      }
+
+      .hero-copy p {
+        color: var(--muted);
+        font-size: clamp(17px, 1.7vw, 20px);
+        line-height: 1.64;
+      }
+
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .chip {
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: rgba(197, 155, 98, 0.11);
+        color: var(--gold-deep);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .hero-visual {
+        position: relative;
+        min-height: 420px;
+        border-radius: 30px;
+        overflow: hidden;
+        border: 1px solid rgba(197, 155, 98, 0.14);
+        background:
+          radial-gradient(circle at 28% 24%, rgba(255,255,255,0.9), rgba(255,255,255,0.3) 14%, transparent 28%),
+          radial-gradient(circle at 72% 32%, rgba(197,155,98,0.18), transparent 24%),
+          linear-gradient(180deg, rgba(235, 241, 248, 0.96), rgba(248, 249, 251, 0.96));
+      }
+
+      .hero-note {
+        position: absolute;
+        inset: auto 16px 16px 16px;
+        display: grid;
+        gap: 8px;
+        padding: 18px;
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.68);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+      }
+
+      .hero-note strong {
+        color: var(--gold-deep);
+        font-size: 13px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .hero-note p {
+        color: var(--text);
+        font-size: 15px;
+        line-height: 1.55;
+      }
+
+      .grid-two {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .summary-stack {
+        display: grid;
+        gap: 14px;
+      }
+
+      .summary-card {
+        padding: 16px 18px;
+        border-radius: 22px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(197, 155, 98, 0.1);
+      }
+
+      .summary-card h3 {
+        font-size: 22px;
+        letter-spacing: -0.03em;
+        margin-bottom: 6px;
+      }
+
+      .summary-card p {
+        color: var(--muted);
+        line-height: 1.56;
+      }
+
+      .visual-card {
+        position: relative;
+        overflow: hidden;
+        min-height: 320px;
+        border-radius: 28px;
+        background:
+          radial-gradient(circle at 50% 50%, rgba(197,155,98,0.18), transparent 32%),
+          linear-gradient(180deg, rgba(238, 242, 247, 0.95), rgba(248, 249, 251, 0.95));
+        border: 1px solid rgba(197, 155, 98, 0.12);
+      }
+
+      .visual-pill {
+        position: absolute;
+        padding: 9px 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.78);
+        color: var(--gold-deep);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        border: 1px solid rgba(197, 155, 98, 0.14);
+        backdrop-filter: blur(8px);
+      }
+
+      .visual-pill.one { left: 11%; top: 14%; }
+      .visual-pill.two { right: 12%; top: 20%; }
+      .visual-pill.three { left: 18%; bottom: 18%; }
+      .visual-pill.four { right: 16%; bottom: 16%; }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        border-spacing: 0;
+        overflow: hidden;
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.74);
+      }
+
+      thead th {
+        text-align: left;
+        padding: 16px 18px;
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--gold-deep);
+        background: rgba(197, 155, 98, 0.08);
+        border-bottom: 1px solid var(--line);
+      }
+
+      tbody td {
+        padding: 16px 18px;
+        vertical-align: top;
+        border-bottom: 1px solid rgba(197, 155, 98, 0.08);
+        font-size: 15px;
+        line-height: 1.5;
+      }
+
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .section {
+        display: grid;
+        gap: 14px;
+      }
+
+      .section h2 {
+        font-size: clamp(30px, 3.1vw, 44px);
+        letter-spacing: -0.04em;
+      }
+
+      .section > p {
+        color: var(--muted);
+        line-height: 1.62;
+        font-size: 17px;
+      }
+
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .card {
+        padding: 18px;
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(197, 155, 98, 0.1);
+        display: grid;
+        gap: 10px;
+      }
+
+      .card h3 {
+        font-size: 24px;
+        letter-spacing: -0.04em;
+      }
+
+      .card p {
+        color: var(--muted);
+        line-height: 1.58;
+      }
+
+      .timeline {
+        display: grid;
+        gap: 14px;
+      }
+
+      .timeline-item {
+        display: grid;
+        grid-template-columns: 120px 1fr;
+        gap: 16px;
+        padding: 14px 16px;
+        border-radius: 22px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(197, 155, 98, 0.1);
+      }
+
+      .timeline-item strong {
+        color: var(--gold-deep);
+        font-size: 16px;
+        letter-spacing: 0.02em;
+      }
+
+      .timeline-item p {
+        color: var(--muted);
+        line-height: 1.56;
+      }
+
+      .next-steps {
+        display: grid;
+        gap: 12px;
+      }
+
+      .next-step {
+        padding: 14px 16px;
+        border-left: 3px solid rgba(197, 155, 98, 0.42);
+        background: var(--soft);
+        border-radius: 0 18px 18px 0;
+      }
+
+      .next-step strong {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 17px;
+      }
+
+      .next-step p {
+        color: var(--muted);
+        line-height: 1.54;
+      }
+
+      @media (max-width: 980px) {
+        .hero,
+        .grid-two,
+        .cards,
+        .timeline-item {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="document">
+      <section class="hero">
+        <article class="panel hero-copy">
+          <div class="eyebrow">Research Survey</div>
+          <h1>Quantum Computing</h1>
+          <p>
+            Quantum computing is best understood right now as a race to make fragile,
+            high-potential systems reliable enough to do useful work before noise destroys
+            the computation.
+          </p>
+          <div class="chip-row">
+            <div class="chip">Qubits</div>
+            <div class="chip">Error correction</div>
+            <div class="chip">Hardware race</div>
+            <div class="chip">Practical timelines</div>
+          </div>
+          <p>
+            If Monday were surfacing a discussion brief, she would likely compress the field
+            into what matters most: what it is, which approaches exist, what the bottlenecks are,
+            and where the real inflection points may appear.
+          </p>
+        </article>
+
+        <article class="panel hero-visual">
+          <svg viewBox="0 0 1000 620" preserveAspectRatio="none" aria-hidden="true" style="position:absolute; inset:0; width:100%; height:100%;">
+            <circle cx="500" cy="310" r="108" fill="rgba(197,155,98,0.14)"></circle>
+            <circle cx="500" cy="310" r="178" fill="none" stroke="rgba(197,155,98,0.18)" stroke-width="2"></circle>
+            <circle cx="500" cy="310" r="238" fill="none" stroke="rgba(197,155,98,0.12)" stroke-width="2"></circle>
+            <ellipse cx="500" cy="310" rx="272" ry="116" fill="none" stroke="rgba(197,155,98,0.34)" stroke-width="3"></ellipse>
+            <ellipse cx="500" cy="310" rx="190" ry="252" fill="none" stroke="rgba(197,155,98,0.26)" stroke-width="3" transform="rotate(32 500 310)"></ellipse>
+            <ellipse cx="500" cy="310" rx="212" ry="244" fill="none" stroke="rgba(197,155,98,0.2)" stroke-width="3" transform="rotate(-28 500 310)"></ellipse>
+            <circle cx="500" cy="310" r="26" fill="rgba(148,108,57,0.94)"></circle>
+            <circle cx="760" cy="310" r="8" fill="rgba(197,155,98,0.96)"></circle>
+            <circle cx="635" cy="108" r="8" fill="rgba(197,155,98,0.96)"></circle>
+            <circle cx="302" cy="476" r="8" fill="rgba(197,155,98,0.96)"></circle>
+          </svg>
+          <div class="visual-pill one">Coherence</div>
+          <div class="visual-pill two">Scaling</div>
+          <div class="visual-pill three">Noise</div>
+          <div class="visual-pill four">Correction</div>
+          <div class="hero-note">
+            <strong>Monday framing</strong>
+            <p>
+              The hardest problem is not proving quantum mechanics can compute. It is building machines
+              that can keep enough qubits stable, controllable, and correctable long enough to matter.
+            </p>
+          </div>
+        </article>
+      </section>
+
+      <section class="grid-two">
+        <article class="panel summary-stack">
+          <div class="eyebrow">Executive Read</div>
+          <div class="summary-card">
+            <h3>What It Is</h3>
+            <p>Quantum computers use qubits that can behave in superposition and become entangled, allowing some problems to be explored very differently from classical machines.</p>
+          </div>
+          <div class="summary-card">
+            <h3>Why It Matters</h3>
+            <p>The promise is not universal speedup. The promise is targeted advantage in areas like simulation, optimization, chemistry, cryptography, and certain search structures.</p>
+          </div>
+          <div class="summary-card">
+            <h3>What Holds It Back</h3>
+            <p>Noise, error rates, cooling/control complexity, and the huge overhead required to turn fragile physical qubits into dependable logical ones.</p>
+          </div>
+        </article>
+
+        <article class="panel visual-card">
+          <svg viewBox="0 0 1000 580" preserveAspectRatio="none" aria-hidden="true" style="position:absolute; inset:0; width:100%; height:100%;">
+            <path d="M132 422 C 222 398, 296 340, 380 302 S 540 234, 634 206 S 798 178, 884 154" fill="none" stroke="rgba(197,155,98,0.92)" stroke-width="10" stroke-linecap="round"></path>
+            <path d="M130 454 C 226 430, 304 380, 396 346 S 560 286, 650 258 S 802 226, 890 208" fill="none" stroke="rgba(197,155,98,0.36)" stroke-width="7" stroke-dasharray="18 16" stroke-linecap="round"></path>
+            <text x="132" y="482" fill="rgba(112,121,138,0.95)" font-size="22">NISQ era</text>
+            <text x="764" y="138" fill="rgba(148,108,57,0.95)" font-size="22">Fault tolerance</text>
+          </svg>
+          <div class="hero-note">
+            <strong>Field arc</strong>
+            <p>
+              Most of the field today still sits in the noisy intermediate-scale quantum phase. The major transition
+              everyone is chasing is useful logical computation, not just larger raw qubit counts.
+            </p>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel section">
+        <div class="eyebrow">Hardware Approaches</div>
+        <h2>The field is not one architecture.</h2>
+        <p>
+          Different teams are pursuing different physical ways to build qubits. Monday would likely show the contrast
+          clearly because the tradeoffs shape the whole conversation.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Approach</th>
+              <th>Strength</th>
+              <th>Main challenge</th>
+              <th>How it feels today</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Superconducting</strong></td>
+              <td>Fast gates and strong industrial momentum.</td>
+              <td>Noise, calibration burden, and massive correction overhead.</td>
+              <td>Most visible platform race.</td>
+            </tr>
+            <tr>
+              <td><strong>Trapped ions</strong></td>
+              <td>High-fidelity operations and cleaner qubits.</td>
+              <td>Scaling speed and system complexity.</td>
+              <td>Elegant but operationally demanding.</td>
+            </tr>
+            <tr>
+              <td><strong>Neutral atoms</strong></td>
+              <td>Flexible layouts and promising scale.</td>
+              <td>Control precision and platform maturity.</td>
+              <td>Fast-moving and strategically interesting.</td>
+            </tr>
+            <tr>
+              <td><strong>Photonic</strong></td>
+              <td>Room-temperature potential and networking advantages.</td>
+              <td>Deterministic operations and resource overhead.</td>
+              <td>Compelling for long-term architectures.</td>
+            </tr>
+            <tr>
+              <td><strong>Topological</strong></td>
+              <td>Theoretical promise of greater robustness.</td>
+              <td>Still proving the underlying hardware path.</td>
+              <td>High-upside, high-uncertainty bet.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="panel section">
+        <div class="eyebrow">Where It Could Matter</div>
+        <h2>Not every problem is a quantum problem.</h2>
+        <p>
+          One of the most useful survey moves is to separate hype from likely fit. Monday should make that distinction visible.
+        </p>
+        <div class="cards">
+          <article class="card">
+            <h3>Chemistry</h3>
+            <p>Simulating molecules and materials remains one of the most intuitive long-term use cases because the underlying systems are quantum in the first place.</p>
+          </article>
+          <article class="card">
+            <h3>Optimization</h3>
+            <p>Often discussed, but practical advantage is much harder to prove. This is an area where expectations should stay disciplined.</p>
+          </article>
+          <article class="card">
+            <h3>Cryptography</h3>
+            <p>The best-known public impact is the eventual pressure quantum systems could place on existing public-key schemes, which is why post-quantum migration matters now.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="grid-two">
+        <article class="panel section">
+          <div class="eyebrow">Milestones</div>
+          <h2>What changes the conversation?</h2>
+          <div class="timeline">
+            <div class="timeline-item">
+              <strong>Today</strong>
+              <p>Growing qubit counts, better fidelities, and increasingly credible demonstrations, but still heavy dependence on narrow benchmark stories.</p>
+            </div>
+            <div class="timeline-item">
+              <strong>Next phase</strong>
+              <p>More convincing logical qubits, lower error rates, and repeated evidence that correction can work economically enough to scale.</p>
+            </div>
+            <div class="timeline-item">
+              <strong>Real inflection</strong>
+              <p>A system that solves a commercially or scientifically meaningful problem with a defensible advantage over classical alternatives.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel section">
+          <div class="eyebrow">Where Monday Goes Next</div>
+          <h2>How she could steer the discussion.</h2>
+          <div class="next-steps">
+            <div class="next-step">
+              <strong>Compare the major companies</strong>
+              <p>She could surface a follow-on document comparing IBM, Google, IonQ, Rigetti, PsiQuantum, and others by architecture and maturity.</p>
+            </div>
+            <div class="next-step">
+              <strong>Separate hype from investable signals</strong>
+              <p>She could turn the conversation into a market-read document: timelines, public claims, constraints, and what would count as real traction.</p>
+            </div>
+            <div class="next-step">
+              <strong>Zoom into one use case</strong>
+              <p>She could pivot from survey to a deep dive on chemistry, cryptography, AI adjacency, or national-security implications.</p>
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

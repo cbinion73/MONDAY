@@ -8,6 +8,24 @@
 const CONFIDENCE_THRESHOLD = 0.65;
 
 const INTENT_RULES = [
+  // ── Travel Planning ───────────────────────────────────────────────────────
+  {
+    skillId: "travel-plan",
+    reason: "the question asks Monday to build a trip plan from reservations, tickets, and calendar constraints",
+    baseConfidence: 0.96,
+    params: (input) => ({ query: input.trim(), expedited: /\b(quickly|right now|asap|urgent|urgently|immediately|fast|expedite|rush)\b/i.test(input) }),
+    patterns: [
+      /\bplan\b.*\btrip\b/i,
+      /\btravel\b.*\bplan\b/i,
+      /\btickets?\b.*\bemail\b/i,
+      /\bitinerary\b/i,
+      /\breservation\b/i,
+      /\bphiladelphia\b/i,
+      /\bstatue of liberty\b/i,
+      /\bwashington(?:,?\s*dc)?\b/i,
+    ],
+  },
+
   // ── Calendar ───────────────────────────────────────────────────────────────
   {
     skillId: "calendar-read",
@@ -25,6 +43,7 @@ const INTENT_RULES = [
       /\bthis week\b/i,
       /\bnext week\b/i,
       /what.{0,20}(on|coming up|planned)/i,
+      /\b(calendar|schedule|meetings?)\b.{0,20}\b(graph|chart|dashboard|show|display)\b/i,
     ],
   },
 
@@ -33,7 +52,7 @@ const INTENT_RULES = [
     skillId: "email-read",
     reason: "the question requires checking current email or messages",
     baseConfidence: 0.90,
-    params: () => ({}),
+    params: (input) => ({ query: input.trim() }),
     patterns: [
       /\bemail\b/i,
       /\binbox\b/i,
@@ -44,6 +63,7 @@ const INTENT_RULES = [
       /\bheard from\b/i,
       /\breplied\b/i,
       /\bwaiting.*response\b/i,
+      /\b(email|inbox|messages?|threads?)\b.{0,20}\b(graph|chart|dashboard|show|display)\b/i,
     ],
   },
 
@@ -68,6 +88,7 @@ const INTENT_RULES = [
       /\binvestment\b/i,
       /\bnet worth\b/i,
       /\bbrokerage\b/i,
+      /\b(finances?|spending|budget|accounts?|money|net worth)\b.{0,20}\b(graph|chart|dashboard|show|display)\b/i,
     ],
   },
 
@@ -128,6 +149,8 @@ const INTENT_RULES = [
       /what.*wrote/i,
       /\bsaved\b/i,
       /my (plan|notes|doc)/i,
+      /\b(notes?|documents?|files?|medical record)\b.{0,20}\b(graph|chart|dashboard|show|display)\b/i,
+      /\bmedical record\b/i,
     ],
   },
 ];
@@ -156,13 +179,19 @@ function detectIntents(input) {
 
   // Deduplicate — highest confidence wins per skillId
   const seen = new Set();
-  return raw
+  let ranked = raw
     .sort((a, b) => b.confidence - a.confidence)
     .filter((d) => {
       if (seen.has(d.skillId)) return false;
       seen.add(d.skillId);
       return true;
     });
+
+  if (ranked.some((intent) => intent.skillId === "travel-plan")) {
+    ranked = ranked.filter((intent) => !["calendar-read", "email-read"].includes(intent.skillId));
+  }
+
+  return ranked;
 }
 
 function hasAnyIntents(input) {
