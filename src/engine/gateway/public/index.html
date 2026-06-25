@@ -3,74 +3,112 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Monday Daily</title>
-    <link rel="stylesheet" href="/presence.css?v=4" />
+    <title>Monday</title>
+    <link rel="stylesheet" href="/presence.css?v=6" />
   </head>
   <body>
-    <main class="daily-app">
-      <aside class="subject-rail" aria-label="Subjects">
-        <div class="rail-brand">
-          <div class="rail-mark">M</div>
-          <div>
-            <p class="rail-label">Monday</p>
-            <h1>Daily</h1>
+    <main class="presence-scene" data-brain-state="idle">
+      <section class="presence-stage">
+        <header class="presence-topline" aria-live="polite">
+          <p id="greetingLine" class="topline-greeting">Good morning, Chris.</p>
+          <div class="topline-meta">
+            <span id="subjectBadge" class="subject-badge">Watching</span>
+            <span id="stageSubheading" class="topline-subheading"></span>
           </div>
-        </div>
-
-        <nav id="subjectNav" class="subject-nav" aria-label="Subject navigation"></nav>
-      </aside>
-
-      <section class="daily-stage">
-        <header class="stage-header">
-          <div>
-            <p id="stageEyebrow" class="stage-eyebrow">Monday Daily</p>
-            <h2 id="stageTitle" class="stage-title">Loading your morning briefing...</h2>
-          </div>
-          <p id="stageSubheading" class="stage-subheading"></p>
         </header>
 
-        <section class="presenter-shell">
-          <div id="presenceBanner" class="presence-banner" hidden></div>
-
-          <article class="monday-voice">
-            <div class="voice-mark">Monday</div>
-            <div class="voice-copy">
-              <p id="messageEyebrow" class="message-eyebrow">Briefing</p>
-              <div id="messageThread" class="message-thread" aria-live="polite"></div>
+        <article
+          id="artifactSurface"
+          class="artifact-surface"
+          data-state="hidden"
+          aria-label="Supporting information surfaced by Monday"
+        >
+          <div class="artifact-shell">
+            <div class="artifact-toolbar">
+              <div class="artifact-heading">
+                <p id="artifactEyebrow" class="artifact-eyebrow">Supporting Brief</p>
+                <h2 id="artifactTitle" class="artifact-title">Monday found something worth opening.</h2>
+              </div>
+              <button
+                id="closeModalButton"
+                class="close-modal-button"
+                type="button"
+                aria-label="Close supporting information"
+              >
+                Close
+              </button>
             </div>
-          </article>
-
-          <section id="propStage" class="prop-stage" aria-live="polite"></section>
-
-          <footer class="reveal-controls">
-            <button id="stayHereButton" class="secondary-button" type="button">Stay here</button>
-            <button id="askAboutButton" class="ghost-button" type="button">Ask about this</button>
-            <button id="nextInsightButton" class="primary-button" type="button">Continue</button>
-          </footer>
-        </section>
-
-        <section class="composer-shell" aria-label="Talk to Monday">
-          <div class="composer-header">
-            <span>Talk to Monday</span>
-            <span class="composer-note">The workspace supports the answer. It never becomes the answer.</span>
+            <iframe
+              id="artifactFrame"
+              class="artifact-frame"
+              src="about:blank"
+              title="Monday supporting information"
+              loading="eager"
+              referrerpolicy="no-referrer"
+            ></iframe>
           </div>
+        </article>
 
-          <section id="conversationLog" class="conversation-log" hidden aria-live="polite"></section>
+        <section class="presence-center">
+          <div class="monday-core" aria-label="Monday presence">
+            <div class="memory-core">
+              <canvas class="memory-graph" aria-hidden="true"></canvas>
+            </div>
+            <div class="core-voice">MONDAY</div>
+            <div id="brainStatus" class="brain-status">Idle</div>
+          </div>
+        </section>
+      </section>
 
-          <form id="presenceComposer" class="composer-form" autocomplete="off">
-            <label class="sr-only" for="presenceInput">Talk to Monday</label>
-            <textarea
-              id="presenceInput"
-              rows="1"
-              placeholder="Talk to Monday..."
-              enterkeyhint="send"
-            ></textarea>
-            <button class="primary-button" type="submit">Send</button>
-          </form>
+      <section id="floatingBubbles" class="floating-bubbles" aria-live="polite"></section>
+
+      <section class="presence-dock">
+        <section id="presenceThread" class="presence-thread" hidden aria-live="polite"></section>
+
+        <form id="presenceComposer" class="presence-chat" autocomplete="off">
+          <label class="sr-only" for="presenceInput">Talk to Monday</label>
+          <textarea
+            id="presenceInput"
+            rows="1"
+            placeholder="Hey Monday..."
+            enterkeyhint="send"
+          ></textarea>
+          <button id="sendButton" class="send-button" type="submit" aria-label="Send message">
+            Send
+          </button>
+        </form>
+
+        <section class="presence-actions" aria-label="Primary controls">
+          <button id="presenceMicButton" class="image-button" type="button" aria-label="Microphone">
+            <svg class="icon-svg" viewBox="0 0 64 64" aria-hidden="true">
+              <rect x="23" y="12.5" width="18" height="27" rx="9" fill="none" stroke="currentColor" stroke-width="2.1"></rect>
+              <path d="M18.5 30.5c0 8 6 13.8 13.5 13.8s13.5-5.8 13.5-13.8" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"></path>
+              <path d="M32 44.5v7.5" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"></path>
+              <path d="M24.5 52h15" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"></path>
+            </svg>
+          </button>
+          <button id="continueButton" class="image-button" type="button" aria-label="Continue">
+            <svg class="icon-svg" viewBox="0 0 64 64" aria-hidden="true">
+              <path d="M20 16l24 16-24 16V16Z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"></path>
+            </svg>
+          </button>
+          <button id="askAboutButton" class="image-button" type="button" aria-label="Ask about this">
+            <svg class="icon-svg" viewBox="0 0 64 64" aria-hidden="true">
+              <circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="2.1"></circle>
+              <path d="M25 25.5c1.4-3.2 4.1-5 7.8-5 4.4 0 7.6 2.6 7.6 6.7 0 3.1-1.6 5-4.8 6.8-2.6 1.4-3.5 2.6-3.5 4.8" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"></path>
+              <circle cx="32" cy="45.5" r="1.6" fill="currentColor"></circle>
+            </svg>
+          </button>
+          <button id="stayHereButton" class="image-button" type="button" aria-label="Stay here">
+            <svg class="icon-svg" viewBox="0 0 64 64" aria-hidden="true">
+              <path d="M18 32h28" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"></path>
+              <path d="M34 20l12 12-12 12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </button>
         </section>
       </section>
     </main>
 
-    <script src="/presence.js?v=4"></script>
+    <script src="/presence.js?v=6"></script>
   </body>
 </html>

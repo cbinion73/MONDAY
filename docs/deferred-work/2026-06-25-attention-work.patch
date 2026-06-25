@@ -1,0 +1,1235 @@
+diff --git a/src/engine/conversation/conversation-engine.js b/src/engine/conversation/conversation-engine.js
+index 89723c4..a7d4c3d 100644
+--- a/src/engine/conversation/conversation-engine.js
++++ b/src/engine/conversation/conversation-engine.js
+@@ -6,7 +6,7 @@ const {
+   hydrateConversationEnvelope,
+   saveConversationEnvelope,
+ } = require("./conversation-manager");
+-const { rankSubjectConversations } = require("./conversation-resolver");
++const { deriveAttentionDecision } = require("./attention-engine");
+ const {
+   buildPresenterPayload,
+   buildConversationUpdateFromReply,
+@@ -68,12 +68,12 @@ function applySurfacingToConversations(envelope, pendingSurfacing, presenterStat
+ function deriveConversationEnvelope(channel, senderId, requestedSubjectId = null) {
+   const presenterState = buildPresenterState();
+   const { envelope } = hydrateConversationEnvelope(channel, senderId, presenterState);
+-  const { pendingSurfacing, leadSubjectId } = rankSubjectConversations(presenterState, envelope);
++  const pendingSurfacing = nextSurfacingItem();
+   const withSurfacing = applySurfacingToConversations(envelope, pendingSurfacing, presenterState);
+-  const requested =
+-    requestedSubjectId && requestedSubjectId !== "daily" && presenterState.subjects[requestedSubjectId]
+-      ? requestedSubjectId
+-      : null;
++  const requested = requestedSubjectId && requestedSubjectId !== "daily" ? requestedSubjectId : null;
++  const attentionDecision = deriveAttentionDecision(presenterState, withSurfacing, {
++    requestedSubjectId,
++  });
+ 
+   const freshLastSelected =
+     withSurfacing.lastSelectedSubjectId &&
+@@ -83,27 +83,28 @@ function deriveConversationEnvelope(channel, senderId, requestedSubjectId = null
+ 
+   const subjectId =
+     requested ||
+-    (pendingSurfacing ? leadSubjectId : null) ||
++    attentionDecision.selectedSubjectId ||
+     freshLastSelected ||
+-    leadSubjectId;
++    null;
+ 
+-  const conversation = withSurfacing.subjects[subjectId];
+-  const pendingMatchesSelected =
+-    pendingSurfacing && normalizeSubjectId(pendingSurfacing.domain) === subjectId;
+-  const stageMode = pendingMatchesSelected && !requested && !freshLastSelected
+-    ? "interruption"
+-    : isFresh(conversation?.lastTouchedAt)
+-      ? "resume"
+-      : "arrival";
++  const conversation = subjectId ? withSurfacing.subjects[subjectId] : null;
++  const attentionMode = attentionDecision.selectedMode;
++  const stageMode =
++    attentionMode === "surface_change" ||
++    attentionMode === "surface_contradiction" ||
++    attentionMode === "surface_opportunity"
++      ? "interruption"
++      : attentionMode === "continue_current" || attentionMode === "return_to_unfinished"
++        ? "resume"
++        : "arrival";
+   const phase =
+-    conversation?.revealState === "revealed" ||
+-    (pendingMatchesSelected && (requested || freshLastSelected))
++    conversation?.revealState === "revealed"
+       ? "reveal"
+       : "thought";
+   const nextEnvelope = {
+     ...withSurfacing,
+-    activeSubjectId: subjectId,
+-    lastSelectedSubjectId: subjectId,
++    activeSubjectId: subjectId || withSurfacing.activeSubjectId || null,
++    lastSelectedSubjectId: subjectId || withSurfacing.lastSelectedSubjectId || null,
+   };
+   saveConversationEnvelope(channel, senderId, nextEnvelope);
+ 
+@@ -114,6 +115,7 @@ function deriveConversationEnvelope(channel, senderId, requestedSubjectId = null
+     stageMode,
+     phase,
+     pendingSurfacing,
++    attentionDecision,
+   };
+ }
+ 
+@@ -131,6 +133,7 @@ function getConversationTurnContext({ channel, senderId, requestedSubjectId = nu
+     stageMode: derived.stageMode,
+     phase: derived.phase,
+     pendingSurfacing: derived.pendingSurfacing,
++    attentionDecision: derived.attentionDecision,
+     subject,
+     conversation,
+   };
+@@ -203,6 +206,9 @@ function advanceConversationState({ channel, senderId, action = "continue", subj
+         : "subject",
+     phase: nextConversation.revealState === "revealed" ? "reveal" : "thought",
+     pendingSurfacing,
++    attentionDecision: deriveAttentionDecision(presenterState, nextEnvelope, {
++      requestedSubjectId: selectedSubjectId,
++    }),
+   });
+ }
+ 
+diff --git a/src/engine/conversation/conversation-presenter.js b/src/engine/conversation/conversation-presenter.js
+index 49adb23..a52d87b 100644
+--- a/src/engine/conversation/conversation-presenter.js
++++ b/src/engine/conversation/conversation-presenter.js
+@@ -265,6 +265,12 @@ function buildStageCopy(conversation, subject, stageMode, arrival) {
+ }
+ 
+ function buildControls(conversation, phase) {
++  if (!conversation) {
++    return {
++      primaryAction: "pause",
++      primaryLabel: "Stay here",
++    };
++  }
+   if (phase === "thought" && conversation.pendingReveal) {
+     return {
+       primaryAction: "continue",
+@@ -277,12 +283,27 @@ function buildControls(conversation, phase) {
+   };
+ }
+ 
+-function buildNavigation(presenterState, envelope, leadSubjectId) {
++function attentionStatusForSubject(subjectId, conversation, attentionDecision) {
++  const candidate = (attentionDecision?.candidates || []).find((item) => item.subjectId === subjectId);
++  if (!candidate) return conversation?.status || "Watching";
++  if (attentionDecision?.selectedSubjectId === subjectId) return "Lead";
++  if (candidate.status === "blocked") return "Blocked";
++  if (candidate.shouldStayQuiet && /not ripe/i.test(candidate.quietReason || "")) return "Not ripe";
++  if (candidate.shouldStayQuiet) return "Quiet";
++  if (candidate.shouldSurface && candidate.urgency === "important") return "Ready";
++  return "Watching";
++}
++
++function buildNavigation(presenterState, envelope, leadSubjectId, attentionDecision = null) {
+   return Object.values(presenterState.subjects || {}).map((subject) => ({
+     id: subject.id,
+     name: subject.name,
+     domain: subject.domain,
+-    state: envelope.subjects[subject.id]?.status || subject.state || "Watching",
++    state: attentionStatusForSubject(
++      subject.id,
++      envelope.subjects[subject.id],
++      attentionDecision
++    ),
+     summary:
+       envelope.subjects[subject.id]?.currentRead ||
+       envelope.subjects[subject.id]?.currentConversationSummary ||
+@@ -299,13 +320,29 @@ function buildPresenterPayload({
+   stageMode,
+   phase,
+   pendingSurfacing = null,
++  attentionDecision = null,
+ }) {
+-  const subject = presenterState.subjects[subjectId];
+-  const conversation = envelope.subjects[subjectId];
+-  const arrival = deriveArrivalMetadata(conversation, subject, stageMode);
+-  const stageCopy = buildStageCopy(conversation, subject, stageMode, arrival);
++  const subject = subjectId ? presenterState.subjects[subjectId] : null;
++  const conversation = subjectId ? envelope.subjects[subjectId] : null;
++  const arrival =
++    conversation && subject
++      ? deriveArrivalMetadata(conversation, subject, stageMode)
++      : {
++          arrivalMode: "no_clear_priority",
++          arrivalReason: attentionDecision?.selectedReason || "Nothing is asking to lead right now.",
++          arrivalConfidence: attentionDecision?.confidence || 0.42,
++          urgency: "watching",
++        };
++  const stageCopy =
++    conversation && subject
++      ? buildStageCopy(conversation, subject, stageMode, arrival)
++      : {
++          eyebrow: "Presence",
++          title: null,
++          body: null,
++        };
+   const propState = resolvePropState({
+-    prop: conversation.pendingReveal,
++    prop: conversation?.pendingReveal,
+     phase,
+   });
+ 
+@@ -313,12 +350,17 @@ function buildPresenterPayload({
+     generatedAt: presenterState.generatedAt,
+     greeting: presenterState.greeting,
+     subheading: presenterState.subheading,
+-    navigation: buildNavigation(presenterState, envelope, subjectId),
++    navigation: buildNavigation(presenterState, envelope, subjectId, attentionDecision),
+     subjects: Object.values(presenterState.subjects || {}).reduce((acc, item) => {
+       const conversationForItem = envelope.subjects[item.id];
++      const attentionState = attentionStatusForSubject(
++        item.id,
++        conversationForItem,
++        attentionDecision
++      );
+       acc[item.id] = {
+         ...item,
+-        state: conversationForItem?.status || item.state,
++        state: attentionState,
+         summary:
+           conversationForItem?.currentRead ||
+           conversationForItem?.currentConversationSummary ||
+@@ -336,35 +378,37 @@ function buildPresenterPayload({
+     },
+     conversation: {
+       subjectId,
+-      read: conversation.currentRead,
+-      whatIThink: conversation.whatIThink,
+-      whatChangedMyMind: conversation.whatChangedMyMind,
+-      whatIAmStillChecking: conversation.whatIAmStillChecking,
+-      summary: conversation.currentConversationSummary,
+-      thought: conversation.currentThought,
+-      openQuestion: conversation.currentQuestion || conversation.currentOpenQuestion,
+-      question: conversation.currentQuestion,
+-      hypothesis: conversation.currentHypothesis,
+-      recommendation: conversation.currentRecommendation,
+-      concern: conversation.currentConcern,
+-      opportunity: conversation.currentOpportunity,
+-      readStale: conversation.currentReadStale,
+-      confidence: conversation.currentReadConfidence,
+-      decision: conversation.currentReadDecision,
+-      labels: conversation.currentReadLabels || [],
+-      evidence: conversation.currentReadEvidence || null,
+-      driftMemory: conversation.driftMemory || null,
+-      supportingSignals: conversation.currentReadSupportingSignals || [],
+-      opposingSignals: conversation.currentReadOpposingSignals || [],
+-      status: conversation.status,
+-      waitingOn: conversation.waitingOn,
+-      lastProgressAt: conversation.lastProgressAt,
++      history: conversation?.history || [],
++      read: conversation?.currentRead || null,
++      whatIThink: conversation?.whatIThink || null,
++      whatChangedMyMind: conversation?.whatChangedMyMind || null,
++      whatIAmStillChecking: conversation?.whatIAmStillChecking || null,
++      summary: conversation?.currentConversationSummary || null,
++      thought: conversation?.currentThought || null,
++      openQuestion: conversation?.currentQuestion || conversation?.currentOpenQuestion || null,
++      question: conversation?.currentQuestion || null,
++      hypothesis: conversation?.currentHypothesis || null,
++      recommendation: conversation?.currentRecommendation || null,
++      concern: conversation?.currentConcern || null,
++      opportunity: conversation?.currentOpportunity || null,
++      readStale: conversation?.currentReadStale ?? true,
++      confidence: conversation?.currentReadConfidence ?? 0.5,
++      decision: conversation?.currentReadDecision || null,
++      labels: conversation?.currentReadLabels || [],
++      evidence: conversation?.currentReadEvidence || null,
++      driftMemory: conversation?.driftMemory || null,
++      supportingSignals: conversation?.currentReadSupportingSignals || [],
++      opposingSignals: conversation?.currentReadOpposingSignals || [],
++      status: conversation?.status || "Watching",
++      waitingOn: conversation?.waitingOn || null,
++      lastProgressAt: conversation?.lastProgressAt || null,
+     },
+-    subject,
++    attention: attentionDecision || null,
++    subject: subject || null,
+     stage: {
+       mode: stageMode,
+       phase,
+-      subjectId,
++      subjectId: subjectId || "daily",
+       title: stageCopy.title,
+       body: stageCopy.body,
+       eyebrow: stageCopy.eyebrow,
+@@ -374,7 +418,13 @@ function buildPresenterPayload({
+       urgency: arrival.urgency,
+       pauseSuggestedMs: propState.visible ? 1200 : 800,
+       prop: propState,
+-      provenance: conversation.provenance || null,
++      provenance: conversation?.provenance || null,
++      attentionReason:
++        attentionDecision?.selectedSubjectId &&
++        attentionDecision?.selectedReason &&
++        attentionDecision.selectedMode !== "continue_current"
++          ? attentionDecision.selectedReason
++          : null,
+     },
+     controls: buildControls(conversation, phase),
+   };
+diff --git a/src/engine/conversation/follow-up-resolver.js b/src/engine/conversation/follow-up-resolver.js
+index bbe3f82..4f72787 100644
+--- a/src/engine/conversation/follow-up-resolver.js
++++ b/src/engine/conversation/follow-up-resolver.js
+@@ -20,6 +20,21 @@ function resolveFollowUpIntent(text) {
+   const normalized = String(text || "").trim().toLowerCase();
+   if (!normalized) return null;
+ 
++  if (/^(why this|why this one|why this subject)\b/.test(normalized)) {
++    return "why_this";
++  }
++  if (/^why not\b/.test(normalized)) {
++    return "why_not_subject";
++  }
++  if (/^(what else are you watching|what else are you watching right now)\b/.test(normalized)) {
++    return "what_else_are_you_watching";
++  }
++  if (/^(is anything more important|is there anything more important)\b/.test(normalized)) {
++    return "is_anything_more_important";
++  }
++  if (/^(should we talk about something else|should we talk about anything else)\b/.test(normalized)) {
++    return "should_we_talk_about_something_else";
++  }
+   if (/^(what changed your mind|what changed your read|what shifted your read)\b/.test(normalized)) {
+     return "what_changed_your_mind";
+   }
+@@ -74,8 +89,117 @@ function resolveFollowUpIntent(text) {
+   return null;
+ }
+ 
+-function buildFollowUpReply({ intent, subject, conversation, stageMode = "resume" }) {
+-  if (!intent || !subject || !conversation) return null;
++function parseWhyNotTarget(text, attentionDecision) {
++  const normalized = String(text || "").toLowerCase();
++  const candidates = attentionDecision?.candidates || [];
++  return candidates.find((candidate) =>
++    normalized.includes(String(candidate.subjectName || "").toLowerCase())
++  ) || null;
++}
++
++function buildAttentionReply({ intent, subject, conversation, attentionDecision, input }) {
++  if (!attentionDecision) return null;
++
++  if (intent === "why_this" || intent === "why_are_you_bringing_this_up") {
++    const lead = attentionDecision.selectedSubjectName || subject?.name || "this";
++    const whyNot = attentionDecision.whyNotOthers || [];
++    const supporting = whyNot[0];
++    const reply = [
++      `I'm bringing up ${lead} because ${String(attentionDecision.selectedReason || "").replace(/\.$/, "").toLowerCase()}.`,
++      attentionDecision.whyThis,
++      supporting ? `${supporting.subjectName} still matters, but ${supporting.reason.charAt(0).toLowerCase()}${supporting.reason.slice(1)}` : null,
++    ].filter(Boolean).join(" ");
++    return {
++      reply,
++      update: {
++        status: "Discussing",
++        lastMondayConclusion: reply,
++      },
++    };
++  }
++
++  if (intent === "why_not_subject") {
++    const target = parseWhyNotTarget(input, attentionDecision);
++    if (!target) {
++      const reply = "I do have other watched subjects, but none of them had a stronger claim on attention than this one.";
++      return {
++        reply,
++        update: {
++          status: "Discussing",
++          lastMondayConclusion: reply,
++        },
++      };
++    }
++    const reply = `${target.subjectName} matters, but ${target.reason.charAt(0).toLowerCase()}${target.reason.slice(1)}`;
++    return {
++      reply,
++      update: {
++        status: "Discussing",
++        lastMondayConclusion: reply,
++      },
++    };
++  }
++
++  if (intent === "what_else_are_you_watching") {
++    const watched = (attentionDecision.whyNotOthers || [])
++      .slice(0, 3)
++      .map((item) => `${item.subjectName}: ${item.reason}`)
++      .join(" ");
++    const reply = watched
++      ? `I'm also watching ${watched}`
++      : "Nothing else has a stronger claim on attention right now.";
++    return {
++      reply,
++      update: {
++        status: "Discussing",
++        lastMondayConclusion: reply,
++      },
++    };
++  }
++
++  if (intent === "is_anything_more_important") {
++    const lead = attentionDecision.selectedSubjectName || subject?.name || "this";
++    const reply =
++      attentionDecision.selectedMode === "no_clear_priority"
++        ? "No. Nothing is urgent enough to override a natural conversation start right now."
++        : `No. ${lead} still has the strongest claim on attention right now.`;
++    return {
++      reply,
++      update: {
++        status: "Discussing",
++        lastMondayConclusion: reply,
++      },
++    };
++  }
++
++  if (intent === "should_we_talk_about_something_else") {
++    const alternative = (attentionDecision.whyNotOthers || []).find((item) => item.status !== "quiet");
++    const reply = alternative
++      ? `We could, but I would stay with ${attentionDecision.selectedSubjectName} first. If you want another path after that, ${alternative.subjectName} is the next live thread.`
++      : `We could, but I do not think anything else deserves the floor more than ${attentionDecision.selectedSubjectName || "this"} right now.`;
++    return {
++      reply,
++      update: {
++        status: "Discussing",
++        lastMondayConclusion: reply,
++      },
++    };
++  }
++
++  return null;
++}
++
++function buildFollowUpReply({ intent, subject, conversation, stageMode = "resume", attentionDecision = null, input = "" }) {
++  if (!intent) return null;
++  const attentionReply = buildAttentionReply({
++    intent,
++    subject,
++    conversation,
++    attentionDecision,
++    input,
++  });
++  if (attentionReply) return attentionReply;
++  if (!subject || !conversation) return null;
+   const arrival = deriveArrivalMetadata(conversation, subject, stageMode);
+ 
+   if (intent === "what_changed") {
+diff --git a/src/engine/intelligence/monday-intelligence.js b/src/engine/intelligence/monday-intelligence.js
+index 70401ef..0d424b9 100644
+--- a/src/engine/intelligence/monday-intelligence.js
++++ b/src/engine/intelligence/monday-intelligence.js
+@@ -102,6 +102,8 @@ async function applyMondayIntelligence({
+     subject: personalContext.livingConversation?.subject || null,
+     conversation: personalContext.livingConversation?.conversation || null,
+     stageMode: personalContext.livingConversation?.stageMode || "resume",
++    attentionDecision: personalContext.livingConversation?.attentionDecision || null,
++    input,
+   });
+ 
+   if (followUpReply) {
+diff --git a/tests/conversation-followup.test.js b/tests/conversation-followup.test.js
+index b49f43d..f2bea81 100644
+--- a/tests/conversation-followup.test.js
++++ b/tests/conversation-followup.test.js
+@@ -12,6 +12,11 @@ const {
+ 
+ function run() {
+   assert.equal(resolveFollowUpIntent("What changed?"), "what_changed");
++  assert.equal(resolveFollowUpIntent("Why this?"), "why_this");
++  assert.equal(resolveFollowUpIntent("Why not Family?"), "why_not_subject");
++  assert.equal(resolveFollowUpIntent("What else are you watching?"), "what_else_are_you_watching");
++  assert.equal(resolveFollowUpIntent("Is anything more important?"), "is_anything_more_important");
++  assert.equal(resolveFollowUpIntent("Should we talk about something else?"), "should_we_talk_about_something_else");
+   assert.equal(resolveFollowUpIntent("What changed your mind?"), "what_changed_your_mind");
+   assert.equal(resolveFollowUpIntent("Why do you think that?"), "why_do_you_think_that");
+   assert.equal(resolveFollowUpIntent("What would change your mind?"), "what_would_change_your_mind");
+@@ -217,10 +222,40 @@ function run() {
+   ];
+ 
+   for (const fixture of fixtures) {
++    const attentionDecision = {
++      selectedSubjectId: fixture.subject.id,
++      selectedSubjectName: fixture.subject.name,
++      selectedReason: `the ${fixture.subject.name} read changed and the recommendation is still unresolved`,
++      selectedMode: "surface_change",
++      confidence: fixture.conversation.currentReadConfidence || 0.68,
++      urgency: "important_but_not_urgent",
++      whyThis: "The read changed materially enough to deserve the floor.",
++      whyNotOthers: [
++        {
++          subjectId: "family",
++          subjectName: "Family",
++          reason: "it matters, but it is not ready for action yet.",
++          status: "quiet",
++        },
++        {
++          subjectId: "health",
++          subjectName: "Health",
++          reason: "the evidence is thin today.",
++          status: "quiet",
++        },
++      ],
++      candidates: [
++        { subjectId: fixture.subject.id, subjectName: fixture.subject.name, reason: "Lead signal.", shouldSurface: true, shouldStayQuiet: false, status: "lead" },
++        { subjectId: "family", subjectName: "Family", reason: "It matters, but it is not ready for action yet.", shouldSurface: false, shouldStayQuiet: true, status: "quiet" },
++        { subjectId: "health", subjectName: "Health", reason: "The evidence is thin today.", shouldSurface: false, shouldStayQuiet: true, status: "quiet" },
++      ],
++    };
++
+     const changed = buildFollowUpReply({
+       intent: "what_changed",
+       subject: fixture.subject,
+       conversation: fixture.conversation,
++      attentionDecision,
+     });
+     fixture.expected.changed.forEach((pattern) => assert.match(changed.reply, pattern, `${fixture.label} changed`));
+     assert.equal(changed.update.status, "Revising");
+@@ -231,6 +266,7 @@ function run() {
+       intent: "why_it_matters",
+       subject: fixture.subject,
+       conversation: fixture.conversation,
++      attentionDecision,
+     });
+     fixture.expected.matters.forEach((pattern) => assert.match(matters.reply, pattern, `${fixture.label} matters`));
+     assert.equal(matters.update.status, "Discussing");
+@@ -241,6 +277,7 @@ function run() {
+       intent: "next_move",
+       subject: fixture.subject,
+       conversation: fixture.conversation,
++      attentionDecision,
+     });
+     fixture.expected.nextMove.forEach((pattern) => assert.match(nextMove.reply, pattern, `${fixture.label} next move`));
+     assert.equal(nextMove.update.status, "Discussing");
+@@ -252,6 +289,15 @@ function run() {
+     intent: "what_changed_your_mind",
+     subject: fixtures[0].subject,
+     conversation: fixtures[0].conversation,
++    attentionDecision: {
++      selectedSubjectId: "retirement",
++      selectedSubjectName: "Retirement",
++      selectedReason: "the read changed and the recommendation is unresolved",
++      selectedMode: "surface_change",
++      whyThis: "The read changed materially enough to deserve the floor.",
++      whyNotOthers: [],
++      candidates: [],
++    },
+   });
+   assert.match(changedMind.reply, /strongest signal/i);
+   assert.match(changedMind.reply, /financial side/i);
+@@ -305,8 +351,94 @@ function run() {
+     subject: fixtures[0].subject,
+     conversation: fixtures[0].conversation,
+     stageMode: "arrival",
++    attentionDecision: {
++      selectedSubjectId: "retirement",
++      selectedSubjectName: "Retirement",
++      selectedReason: "the read changed and the recommendation is unresolved",
++      selectedMode: "surface_change",
++      whyThis: "The read changed materially enough to deserve the floor.",
++      whyNotOthers: [
++        { subjectId: "family", subjectName: "Family", reason: "it matters, but it is not ready for action yet.", status: "quiet" },
++      ],
++      candidates: [],
++    },
++  });
++  assert.match(whyBring.reply, /bringing up Retirement/i);
++  assert.match(whyBring.reply, /not ready for action yet/i);
++
++  const whyThis = buildFollowUpReply({
++    intent: "why_this",
++    subject: fixtures[0].subject,
++    conversation: fixtures[0].conversation,
++    attentionDecision: {
++      selectedSubjectId: "retirement",
++      selectedSubjectName: "Retirement",
++      selectedReason: "the read changed and the recommendation is unresolved",
++      selectedMode: "surface_change",
++      whyThis: "The read changed materially enough to deserve the floor.",
++      whyNotOthers: [
++        { subjectId: "family", subjectName: "Family", reason: "it matters, but it is not ready for action yet.", status: "quiet" },
++      ],
++      candidates: [],
++    },
++  });
++  assert.match(whyThis.reply, /bringing up Retirement/i);
++
++  const whyNotFamily = buildFollowUpReply({
++    intent: "why_not_subject",
++    input: "Why not Family?",
++    subject: fixtures[0].subject,
++    conversation: fixtures[0].conversation,
++    attentionDecision: {
++      selectedSubjectId: "retirement",
++      selectedSubjectName: "Retirement",
++      selectedReason: "the read changed and the recommendation is unresolved",
++      selectedMode: "surface_change",
++      whyThis: "The read changed materially enough to deserve the floor.",
++      whyNotOthers: [],
++      candidates: [
++        { subjectId: "family", subjectName: "Family", reason: "It matters, but it is not ready for action yet.", shouldSurface: false, shouldStayQuiet: true, status: "quiet" },
++      ],
++    },
++  });
++  assert.match(whyNotFamily.reply, /Family matters/i);
++  assert.match(whyNotFamily.reply, /not ready for action yet/i);
++
++  const watching = buildFollowUpReply({
++    intent: "what_else_are_you_watching",
++    subject: fixtures[0].subject,
++    conversation: fixtures[0].conversation,
++    attentionDecision: {
++      selectedSubjectId: "retirement",
++      selectedSubjectName: "Retirement",
++      selectedReason: "the read changed and the recommendation is unresolved",
++      selectedMode: "surface_change",
++      whyThis: "The read changed materially enough to deserve the floor.",
++      whyNotOthers: [
++        { subjectId: "family", subjectName: "Family", reason: "it matters, but it is not ready for action yet.", status: "quiet" },
++        { subjectId: "health", subjectName: "Health", reason: "the evidence is thin today.", status: "quiet" },
++      ],
++      candidates: [],
++    },
++  });
++  assert.match(watching.reply, /Family/i);
++  assert.match(watching.reply, /Health/i);
++
++  const moreImportant = buildFollowUpReply({
++    intent: "is_anything_more_important",
++    subject: fixtures[0].subject,
++    conversation: fixtures[0].conversation,
++    attentionDecision: {
++      selectedSubjectId: "retirement",
++      selectedSubjectName: "Retirement",
++      selectedReason: "the read changed and the recommendation is unresolved",
++      selectedMode: "surface_change",
++      whyThis: "The read changed materially enough to deserve the floor.",
++      whyNotOthers: [],
++      candidates: [],
++    },
+   });
+-  assert.match(whyBring.reply, /center of gravity has moved|repeated Retirement signals/i);
++  assert.match(moreImportant.reply, /Retirement still has the strongest claim/i);
+ 
+   const urgency = buildFollowUpReply({
+     intent: "is_this_urgent",
+diff --git a/src/engine/conversation/attention-engine.js b/src/engine/conversation/attention-engine.js
+new file mode 100644
+index 0000000..ccb34dd
+--- /dev/null
++++ b/src/engine/conversation/attention-engine.js
+@@ -0,0 +1,409 @@
++"use strict";
++
++const { getContradictions } = require("../db/knowledge-store");
++const { nextSurfacingItem } = require("../db/surfacing-store");
++
++const SIGNIFICANCE_LEVELS = {
++  chris: 0.78,
++  retirement: 0.96,
++  family: 0.95,
++  faith: 0.88,
++  publishing: 0.82,
++  work: 0.84,
++  health: 0.86,
++  "summer-camp": 0.74,
++};
++
++function hoursSince(isoString) {
++  if (!isoString) return null;
++  const parsed = Date.parse(isoString);
++  if (Number.isNaN(parsed)) return null;
++  return (Date.now() - parsed) / (1000 * 60 * 60);
++}
++
++function contradictionSeverityForDomain(domain) {
++  try {
++    const contradictions = getContradictions({ domain, status: "active" });
++    return contradictions.length;
++  } catch {
++    return 0;
++  }
++}
++
++function significanceForSubject(subject) {
++  return SIGNIFICANCE_LEVELS[subject.id] || 0.7;
++}
++
++function stewardshipState(conversation) {
++  if (conversation.status === "Blocked") return "blocked";
++  if (conversation.status === "Resolved") return "resolved";
++  if (conversation.status === "Paused") return "paused";
++  if (conversation.status === "Ready" || conversation.status === "Revising") return "ready";
++  if (conversation.status === "Discussing") return "active";
++  if (conversation.status === "Researching") return "researching";
++  return "watching";
++}
++
++function freshnessScore(conversation) {
++  const age =
++    hoursSince(conversation.lastTheoryChangedAt) ??
++    hoursSince(conversation.lastProgressAt) ??
++    hoursSince(conversation.lastUpdatedAt);
++  if (age === null) return 0.45;
++  if (age <= 4) return 1;
++  if (age <= 12) return 0.82;
++  if (age <= 24) return 0.68;
++  if (age <= 72) return 0.52;
++  return 0.28;
++}
++
++function elapsedSurfaceScore(conversation) {
++  const age = hoursSince(conversation.lastTouchedAt || conversation.lastUserAttentionAt);
++  if (age === null) return 0.72;
++  if (age <= 2) return 0.12;
++  if (age <= 12) return 0.3;
++  if (age <= 24) return 0.55;
++  if (age <= 72) return 0.74;
++  return 0.92;
++}
++
++function userAttentionPenalty(conversation) {
++  const age = hoursSince(conversation.lastUserAttentionAt || conversation.lastTouchedAt);
++  if (age === null) return 0;
++  if (age <= 1.5) return 0.18;
++  if (age <= 6) return 0.09;
++  return 0;
++}
++
++function deriveUrgency(conversation, contradictionSeverity, significanceLevel) {
++  if (conversation.status === "Blocked") return "blocked";
++  if (conversation.status === "Resolved") return "quiet";
++  if (contradictionSeverity >= 3 && significanceLevel >= 0.9) return "important";
++  if (conversation.status === "Ready" || conversation.status === "Revising") return "important";
++  if (conversation.currentReadDecision === "wait" || conversation.currentReadStale) return "watching";
++  return "watching";
++}
++
++function quietReasonForCandidate({
++  significanceLevel,
++  contradictionSeverity,
++  confidence,
++  freshness,
++  conversation,
++}) {
++  if (conversation.status === "Blocked") return "Blocked.";
++  if (conversation.status === "Resolved") return "Resolved.";
++  if (conversation.currentReadDecision === "wait" || confidence < 0.5) {
++    return "The read is not stable enough yet.";
++  }
++  if (contradictionSeverity > 0 && conversation.status === "Watching") {
++    return "It matters, but it is not ripe for action yet.";
++  }
++  if (significanceLevel >= 0.88 && freshness < 0.6) {
++    return "It matters, but there is not enough fresh evidence today.";
++  }
++  if (conversation.status === "Watching") return "It is being watched, but it is not asking for the floor.";
++  return "Nothing here is asking to interrupt first.";
++}
++
++function deriveCandidateMode({
++  isCurrent,
++  unresolvedRecommendation,
++  changedMaterially,
++  contradictionSeverity,
++  opportunityRipeness,
++  confidence,
++  quietButImportant,
++  conversation,
++  pendingSurfacingMatch,
++}) {
++  if (pendingSurfacingMatch && confidence >= 0.5) return "surface_change";
++  if (
++    isCurrent &&
++    conversation.status !== "Resolved" &&
++    conversation.status !== "Blocked" &&
++    (conversation.status === "Discussing" ||
++      conversation.status === "Paused" ||
++      unresolvedRecommendation ||
++      conversation.unresolvedQuestion)
++  ) {
++    return "continue_current";
++  }
++  if (contradictionSeverity >= 2 && confidence >= 0.54) return "surface_contradiction";
++  if (
++    changedMaterially &&
++    confidence >= 0.58
++  ) return "surface_change";
++  if (
++    !isCurrent &&
++    conversation.status !== "Resolved" &&
++    (unresolvedRecommendation || conversation.unresolvedQuestion || conversation.status === "Paused")
++  ) {
++    return "return_to_unfinished";
++  }
++  if (opportunityRipeness >= 0.68 && confidence >= 0.56) return "surface_opportunity";
++  if (quietButImportant) return "do_not_interrupt";
++  if (conversation.status === "Watching") return "quiet_watch";
++  return "no_clear_priority";
++}
++
++function shouldSurfaceForMode(mode) {
++  return [
++    "continue_current",
++    "return_to_unfinished",
++    "surface_change",
++    "surface_contradiction",
++    "surface_opportunity",
++  ].includes(mode);
++}
++
++function reasonForMode(mode, subject, conversation, contradictionSeverity, opportunityRipeness) {
++  switch (mode) {
++    case "continue_current":
++      return `The ${subject.name} conversation is still alive and unresolved.`;
++    case "return_to_unfinished":
++      return `We left a real ${subject.name} thought unresolved.`;
++    case "surface_change":
++      return `The ${subject.name} read changed materially.`;
++    case "surface_contradiction":
++      return `${subject.name} has a contradiction that is getting harder to ignore.`;
++    case "surface_opportunity":
++      return `${subject.name} has an opportunity that looks ripe enough to use.`;
++    case "do_not_interrupt":
++      return `${subject.name} matters, but timing is wrong.`;
++    case "quiet_watch":
++      return `${subject.name} is being watched quietly.`;
++    default:
++      return `${subject.name} does not have a stronger claim on attention right now.`;
++  }
++}
++
++function buildCandidate({ subject, conversation, envelope, pendingSurfacing, contradictionOverride = null }) {
++  const significanceLevel = significanceForSubject(subject);
++  const contradictionSeverity =
++    contradictionOverride ?? contradictionSeverityForDomain(subject.domain || subject.name);
++  const confidence = Number(conversation.currentReadConfidence ?? 0.5);
++  const freshness = freshnessScore(conversation);
++  const unresolvedRecommendation = Boolean(
++    conversation.currentRecommendation &&
++    conversation.unresolved !== false &&
++    conversation.status !== "Resolved"
++  );
++  const changedMaterially = Boolean(
++    conversation.driftMemory?.centerShifted ||
++    conversation.status === "Revising" ||
++    (hoursSince(conversation.lastTheoryChangedAt) ?? Infinity) <= 24 ||
++    (conversation.currentReadLabels || []).includes("center shifted")
++  );
++  const opportunityRipeness =
++    conversation.currentOpportunity
++      ? Math.max(confidence, freshness)
++      : conversation.pendingRecommendation
++        ? Math.max(0.55, confidence)
++        : 0;
++  const workforceCompletion = conversation.latestWorkforceSignal ? 1 : 0;
++  const elapsedSinceLastSurfaced = elapsedSurfaceScore(conversation);
++  const recentAttentionPenalty = userAttentionPenalty(conversation);
++  const isCurrent = envelope.activeSubjectId === subject.id;
++  const urgency = deriveUrgency(conversation, contradictionSeverity, significanceLevel);
++  const quietButImportant =
++    significanceLevel >= 0.88 &&
++    !changedMaterially &&
++    !unresolvedRecommendation &&
++    contradictionSeverity <= 1 &&
++    (conversation.status === "Watching" || conversation.currentReadDecision === "wait");
++  const interruptibility =
++    isCurrent && recentAttentionPenalty > 0 ? "protected" : conversation.status === "Blocked" ? "blocked" : "open";
++  const pendingSurfacingMatch = Boolean(
++    pendingSurfacing &&
++    String(pendingSurfacing.domain || "").trim().toLowerCase() ===
++      String(subject.domain || subject.name).trim().toLowerCase()
++  );
++  const mode = deriveCandidateMode({
++    isCurrent,
++    unresolvedRecommendation,
++    changedMaterially,
++    contradictionSeverity,
++    opportunityRipeness,
++    confidence,
++    quietButImportant,
++    conversation,
++    pendingSurfacingMatch,
++  });
++  const shouldSurface = shouldSurfaceForMode(mode) && interruptibility !== "blocked";
++  const shouldStayQuiet = !shouldSurface || interruptibility === "protected";
++  const quietReason = shouldStayQuiet
++    ? quietReasonForCandidate({
++        significanceLevel,
++        contradictionSeverity,
++        confidence,
++        freshness,
++        conversation,
++      })
++    : null;
++  const stewardship = stewardshipState(conversation);
++
++  let score = significanceLevel * 30;
++  score += confidence * 16;
++  score += freshness * 10;
++  score += elapsedSinceLastSurfaced * 9;
++  score += contradictionSeverity * 5;
++  score += opportunityRipeness * 8;
++  score += workforceCompletion * 6;
++  score += unresolvedRecommendation ? 14 : 0;
++  score += changedMaterially ? 15 : 0;
++  score += isCurrent ? 7 : 0;
++  score -= recentAttentionPenalty * 16;
++  score -= shouldStayQuiet ? 8 : 0;
++  score -= stewardship === "resolved" ? 32 : 0;
++  score -= stewardship === "blocked" ? 18 : 0;
++  score += mode === "continue_current" ? 24 : 0;
++  score += mode === "return_to_unfinished" ? 14 : 0;
++  score += mode === "surface_change" ? 12 : 0;
++  score += mode === "surface_contradiction" ? 9 : 0;
++  score += mode === "surface_opportunity" ? 7 : 0;
++
++  if (pendingSurfacingMatch) {
++    score += 10;
++  }
++
++  const reason = reasonForMode(mode, subject, conversation, contradictionSeverity, opportunityRipeness);
++
++  return {
++    subjectId: subject.id,
++    subjectName: subject.name,
++    score: Number(score.toFixed(2)),
++    reason,
++    status: stewardship,
++    urgency,
++    shouldSurface,
++    shouldStayQuiet,
++    quietReason,
++    significanceLevel,
++    stewardshipState: stewardship,
++    currentReadConfidence: confidence,
++    currentReadFreshness: freshness,
++    unresolvedRecommendation,
++    contradictionSeverity,
++    opportunityRipeness,
++    workforceCompletion,
++    recentAttentionPenalty,
++    elapsedSinceLastSurfaced,
++    interruptibility,
++    quietButImportant,
++    mode,
++  };
++}
++
++function buildWhyThis(candidate) {
++  switch (candidate.mode) {
++    case "continue_current":
++      return "The current conversation is still alive, and we left something real unresolved.";
++    case "return_to_unfinished":
++      return "We left a real recommendation or open thought unresolved.";
++    case "surface_change":
++      return "The read changed materially enough to deserve the floor.";
++    case "surface_contradiction":
++      return "A contradiction crossed the point where silence would be less faithful.";
++    case "surface_opportunity":
++      return "An opportunity became ripe enough that it is worth acting on.";
++    default:
++      return "This is the strongest available signal right now.";
++  }
++}
++
++function buildWhyNotOthers(selectedCandidate, sortedCandidates) {
++  return sortedCandidates
++    .filter((candidate) => candidate.subjectId !== selectedCandidate.subjectId)
++    .slice(0, 3)
++    .map((candidate) => ({
++      subjectId: candidate.subjectId,
++      subjectName: candidate.subjectName,
++      reason: candidate.shouldStayQuiet
++        ? candidate.quietReason || `${candidate.subjectName} is not ready yet.`
++        : `${candidate.subjectName} matters, but it has a weaker claim on attention than ${selectedCandidate.subjectName} right now.`,
++      status: candidate.shouldStayQuiet ? "quiet" : "watching",
++    }));
++}
++
++function chooseAttentionCandidate(sortedCandidates) {
++  const surfaceable = sortedCandidates.filter((candidate) => candidate.shouldSurface);
++  if (!surfaceable.length) return null;
++  const top = surfaceable[0];
++  if (top.score < 34) return null;
++  return top;
++}
++
++function deriveAttentionDecision(presenterState, envelope, options = {}) {
++  const pendingSurfacing = options.pendingSurfacing || nextSurfacingItem();
++  const requestedSubjectId =
++    options.requestedSubjectId && options.requestedSubjectId !== "daily"
++      ? options.requestedSubjectId
++      : null;
++
++  const candidates = Object.values(presenterState.subjects || {})
++    .map((subject) =>
++      buildCandidate({
++        subject,
++        conversation: envelope.subjects[subject.id],
++        envelope,
++        pendingSurfacing,
++        contradictionOverride: options.contradictionSeverityBySubject?.[subject.id] ?? null,
++      })
++    )
++    .sort((a, b) => b.score - a.score);
++
++  if (requestedSubjectId && presenterState.subjects[requestedSubjectId]) {
++    const requested = candidates.find((candidate) => candidate.subjectId === requestedSubjectId);
++    const whyNotOthers = requested ? buildWhyNotOthers(requested, candidates) : [];
++    return {
++      selectedSubjectId: requestedSubjectId,
++      selectedSubjectName: presenterState.subjects[requestedSubjectId].name,
++      selectedReason: "Chris explicitly steered the conversation here.",
++      selectedMode: "continue_current",
++      confidence: requested?.currentReadConfidence ?? 0.7,
++      urgency: requested?.urgency || "watching",
++      whyThis: "Chris chose to stay with this subject.",
++      whyNotOthers,
++      candidates,
++    };
++  }
++
++  const selected = chooseAttentionCandidate(candidates);
++  if (!selected) {
++    return {
++      selectedSubjectId: null,
++      selectedSubjectName: null,
++      selectedReason: "Nothing has a strong enough claim on attention right now.",
++      selectedMode: "no_clear_priority",
++      confidence: 0.42,
++      urgency: "watching",
++      whyThis: "No subject deserves to interrupt first.",
++      whyNotOthers: candidates.slice(0, 3).map((candidate) => ({
++        subjectId: candidate.subjectId,
++        subjectName: candidate.subjectName,
++        reason: candidate.shouldStayQuiet
++          ? candidate.quietReason || `${candidate.subjectName} is staying quiet.`
++          : `${candidate.subjectName} does not have a strong enough claim on attention right now.`,
++        status: candidate.shouldStayQuiet ? "quiet" : "watching",
++      })),
++      candidates,
++    };
++  }
++
++  return {
++    selectedSubjectId: selected.subjectId,
++    selectedSubjectName: selected.subjectName,
++    selectedReason: selected.reason,
++    selectedMode: selected.mode,
++    confidence: selected.currentReadConfidence,
++    urgency: selected.urgency,
++    whyThis: buildWhyThis(selected),
++    whyNotOthers: buildWhyNotOthers(selected, candidates),
++    candidates,
++  };
++}
++
++module.exports = {
++  deriveAttentionDecision,
++};
+diff --git a/tests/attention-engine.test.js b/tests/attention-engine.test.js
+new file mode 100644
+index 0000000..146d965
+--- /dev/null
++++ b/tests/attention-engine.test.js
+@@ -0,0 +1,190 @@
++"use strict";
++
++const assert = require("node:assert/strict");
++const { deriveAttentionDecision } = require("../src/engine/conversation/attention-engine");
++
++function baseConversation(overrides = {}) {
++  return {
++    status: "Watching",
++    currentReadConfidence: 0.6,
++    currentReadDecision: "hold",
++    currentReadStale: false,
++    currentReadLabels: [],
++    currentRecommendation: null,
++    currentOpportunity: null,
++    pendingRecommendation: null,
++    unresolved: true,
++    unresolvedQuestion: null,
++    latestWorkforceSignal: null,
++    driftMemory: {
++      centerShifted: false,
++      durability: "fragile",
++      volatility: "low",
++    },
++    lastTheoryChangedAt: null,
++    lastProgressAt: null,
++    lastUpdatedAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
++    lastTouchedAt: null,
++    lastUserAttentionAt: null,
++    ...overrides,
++  };
++}
++
++function run() {
++  const presenterState = {
++    subjects: {
++      retirement: { id: "retirement", name: "Retirement", domain: "Retirement" },
++      family: { id: "family", name: "Family", domain: "Family" },
++      health: { id: "health", name: "Health", domain: "Health" },
++      publishing: { id: "publishing", name: "Publishing", domain: "Publishing" },
++    },
++  };
++
++  const now = Date.now();
++  const envelope = {
++    activeSubjectId: "retirement",
++    lastSelectedSubjectId: "retirement",
++    subjects: {
++      retirement: baseConversation({
++        status: "Discussing",
++        currentReadConfidence: 0.78,
++        currentRecommendation: "Name the parts of work to lay down first.",
++        unresolvedQuestion: "What part of work is carrying too much?",
++        lastUserAttentionAt: new Date(now - 30 * 60 * 1000).toISOString(),
++      }),
++      family: baseConversation({
++        status: "Watching",
++        currentReadConfidence: 0.75,
++        driftMemory: { centerShifted: false, durability: "durable", volatility: "low" },
++      }),
++      health: baseConversation({
++        status: "Watching",
++        currentReadConfidence: 0.44,
++        currentReadDecision: "wait",
++        currentReadStale: true,
++      }),
++      publishing: baseConversation({
++        status: "Watching",
++        currentReadConfidence: 0.64,
++        currentOpportunity: "The book thread is becoming writable again.",
++      }),
++    },
++  };
++
++  const unresolvedBeatsWeak = deriveAttentionDecision(presenterState, envelope, {
++    contradictionSeverityBySubject: {
++      retirement: 0,
++      family: 0,
++      health: 0,
++      publishing: 0,
++    },
++  });
++  assert.equal(unresolvedBeatsWeak.selectedSubjectId, "retirement");
++  assert.equal(unresolvedBeatsWeak.selectedMode, "continue_current");
++
++  const theoryShiftEnvelope = {
++    ...envelope,
++    activeSubjectId: "family",
++    subjects: {
++      ...envelope.subjects,
++      retirement: baseConversation({
++        status: "Revising",
++        currentReadConfidence: 0.82,
++        currentRecommendation: "Do not set a retirement date yet.",
++        currentReadLabels: ["center shifted"],
++        driftMemory: {
++          centerShifted: true,
++          durability: "durable",
++          volatility: "medium",
++        },
++        lastTheoryChangedAt: new Date(now - 60 * 60 * 1000).toISOString(),
++      }),
++      family: baseConversation({
++        status: "Discussing",
++        currentReadConfidence: 0.54,
++        lastUserAttentionAt: new Date(now - 10 * 60 * 1000).toISOString(),
++      }),
++    },
++  };
++  const shiftBeatsRecent = deriveAttentionDecision(presenterState, theoryShiftEnvelope, {
++    contradictionSeverityBySubject: {
++      retirement: 0,
++      family: 0,
++      health: 0,
++      publishing: 0,
++    },
++  });
++  assert.equal(shiftBeatsRecent.selectedSubjectId, "retirement");
++  assert.equal(shiftBeatsRecent.selectedMode, "surface_change");
++
++  const contradictionEnvelope = {
++    ...envelope,
++    activeSubjectId: "health",
++    subjects: {
++      ...envelope.subjects,
++      family: baseConversation({
++        status: "Ready",
++        currentReadConfidence: 0.79,
++        currentReadDecision: "hold",
++        lastTheoryChangedAt: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
++      }),
++      retirement: baseConversation({
++        status: "Watching",
++        currentReadConfidence: 0.62,
++        currentReadDecision: "wait",
++        currentRecommendation: null,
++      }),
++    },
++  };
++  const contradictionLead = deriveAttentionDecision(presenterState, contradictionEnvelope, {
++    contradictionSeverityBySubject: { family: 3 },
++  });
++  assert.equal(contradictionLead.selectedSubjectId, "family");
++  assert.equal(contradictionLead.selectedMode, "surface_contradiction");
++
++  const quietImportantEnvelope = {
++    ...envelope,
++    activeSubjectId: null,
++    subjects: {
++      retirement: baseConversation({
++        status: "Watching",
++        currentReadConfidence: 0.49,
++        currentReadDecision: "wait",
++        currentReadStale: true,
++      }),
++      family: baseConversation({
++        status: "Watching",
++        currentReadConfidence: 0.58,
++        currentReadDecision: "wait",
++      }),
++      health: baseConversation({
++        status: "Watching",
++        currentReadConfidence: 0.42,
++        currentReadDecision: "wait",
++        currentReadStale: true,
++      }),
++      publishing: baseConversation({
++        status: "Watching",
++        currentReadConfidence: 0.52,
++        currentReadDecision: "wait",
++      }),
++    },
++  };
++  const noPriority = deriveAttentionDecision(presenterState, quietImportantEnvelope, {
++    contradictionSeverityBySubject: {
++      retirement: 0,
++      family: 0,
++      health: 0,
++      publishing: 0,
++    },
++  });
++  assert.equal(noPriority.selectedMode, "no_clear_priority");
++  assert.equal(noPriority.selectedSubjectId, null);
++
++  const watchedHealth = noPriority.candidates.find((candidate) => candidate.subjectId === "health");
++  assert.equal(watchedHealth.shouldStayQuiet, true);
++
++  console.log("attention-engine: ok");
++}
++
++run();

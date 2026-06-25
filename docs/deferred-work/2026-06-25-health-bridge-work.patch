@@ -1,0 +1,556 @@
+diff --git a/src/engine/gateway/presenter-state.js b/src/engine/gateway/presenter-state.js
+index a594378..ec5ca95 100644
+--- a/src/engine/gateway/presenter-state.js
++++ b/src/engine/gateway/presenter-state.js
+@@ -7,6 +7,7 @@ const { getWorkingTheories, getActiveThreads, getHeartbeatLog } = require("../db
+ const { getDecisions, getContradictions } = require("../db/knowledge-store");
+ const { listWorkspaces, getWorkspace } = require("../workspace/workspace-store");
+ const { nextSurfacingItem, getPendingItems } = require("../db/surfacing-store");
++const { buildHealthSummary } = require("../health/bridge-store");
+ const { formatLocalDate, formatLocalTime } = require("../utils/local-time");
+ 
+ const SUBJECT_ORDER = [
+@@ -332,6 +333,7 @@ function buildPresenterState() {
+   const pendingCount = getPendingItems().length;
+   const workspaces = listWorkspaces({ status: "active" });
+   const heartbeat = getHeartbeatLog({ limit: 1 })[0] || null;
++  const healthSummary = buildHealthSummary();
+ 
+   const subjects = [
+     buildStaticSubject(
+@@ -363,8 +365,12 @@ function buildPresenterState() {
+       "health",
+       "Health",
+       "Health",
+-      getTheoryForDomain("Health") ||
++      (healthSummary.status && healthSummary.status !== "ready_for_bridge"
++        ? healthSummary.summaryText
++        : null) ||
++        getTheoryForDomain("Health") ||
+         getDomainWorkspace("health")?.memory?.workingTheory ||
++        healthSummary.summaryText ||
+         "Health is a watched domain right now. There is not enough strong runtime evidence yet to make it the lead signal this morning."
+     ),
+     buildStaticSubject(
+diff --git a/src/engine/gateway/server.js b/src/engine/gateway/server.js
+index eb5fd64..f7d8cba 100644
+--- a/src/engine/gateway/server.js
++++ b/src/engine/gateway/server.js
+@@ -30,6 +30,12 @@ const {
+   hydratePresenceState,
+   advancePresenceState,
+ } = require("./presence-engine");
++const {
++  buildHealthSummary,
++  getCurrentBridgeStatus,
++  getMyChartSummary,
++  ingestHealthSync,
++} = require("../health/bridge-store");
+ const { getVaultRoot } = require("../obsidian/vault-manager");
+ const { initFromMissions } = require("../workspace/workspace-manager");
+ 
+@@ -400,6 +406,35 @@ async function handleHealth(req, res) {
+   });
+ }
+ 
++async function handleHealthBridgeStatus(req, res) {
++  sendJson(res, 200, getCurrentBridgeStatus());
++}
++
++async function handleHealthSummary(req, res) {
++  sendJson(res, 200, buildHealthSummary());
++}
++
++async function handleHealthMyChartSummary(req, res) {
++  sendJson(res, 200, getMyChartSummary());
++}
++
++async function handleHealthSync(req, res, rawBody) {
++  let body;
++  try {
++    body = JSON.parse(rawBody || "{}");
++  } catch {
++    return sendJson(res, 400, { ok: false, error: "Invalid JSON body" });
++  }
++
++  const signals = Array.isArray(body.signals) ? body.signals : [];
++  if (signals.length === 0) {
++    return sendJson(res, 400, { ok: false, error: "Health sync requires a non-empty signals array." });
++  }
++
++  const result = ingestHealthSync(body);
++  sendJson(res, 200, result);
++}
++
+ async function handleSessions(req, res) {
+   // Require gateway secret to list sessions
+   const auth = req.headers["authorization"] || "";
+@@ -461,6 +496,18 @@ const server = http.createServer(async (req, res) => {
+     if (req.method === "GET" && pathname === "/api/presence/graph") {
+       return handlePresenceGraph(req, res);
+     }
++    if (req.method === "GET" && pathname === "/api/health/status") {
++      return handleHealthBridgeStatus(req, res);
++    }
++    if (req.method === "GET" && pathname === "/api/health/summary") {
++      return handleHealthSummary(req, res);
++    }
++    if (req.method === "GET" && pathname === "/api/health/mychart/summary") {
++      return handleHealthMyChartSummary(req, res);
++    }
++    if (req.method === "POST" && (pathname === "/api/health/sync" || pathname === "/api/health/bridge/apple")) {
++      return handleHealthSync(req, res, rawBody);
++    }
+ 
+     if (req.method === "GET" && pathname === "/gateway/health") {
+       return handleHealth(req, res);
+diff --git a/src/engine/health/bridge-store.js b/src/engine/health/bridge-store.js
+new file mode 100644
+index 0000000..7ccd17c
+--- /dev/null
++++ b/src/engine/health/bridge-store.js
+@@ -0,0 +1,336 @@
++"use strict";
++
++const fs = require("node:fs");
++const os = require("node:os");
++const path = require("node:path");
++
++const Database = require("better-sqlite3");
++
++function resolveMondayHealthDir() {
++  if (process.env.MONDAY_HEALTH_DIR) return process.env.MONDAY_HEALTH_DIR;
++  return path.resolve(__dirname, "../../../data/health");
++}
++
++function resolveJarvisHealthDir() {
++  if (process.env.MONDAY_JARVIS_HEALTH_DIR) return process.env.MONDAY_JARVIS_HEALTH_DIR;
++  return path.join(os.homedir(), ".jarvis", "health");
++}
++
++function ensureDir(dirPath) {
++  fs.mkdirSync(dirPath, { recursive: true });
++}
++
++function filePath(name) {
++  const dir = resolveMondayHealthDir();
++  ensureDir(dir);
++  return path.join(dir, name);
++}
++
++function appendJsonl(file, payload) {
++  fs.appendFileSync(file, `${JSON.stringify(payload)}\n`, "utf8");
++}
++
++function readJson(file, fallback) {
++  try {
++    if (!fs.existsSync(file)) return cloneFallback(fallback);
++    return JSON.parse(fs.readFileSync(file, "utf8"));
++  } catch {
++    return cloneFallback(fallback);
++  }
++}
++
++function writeJson(file, payload) {
++  const tmp = `${file}.tmp`;
++  fs.writeFileSync(tmp, JSON.stringify(payload, null, 2), "utf8");
++  fs.renameSync(tmp, file);
++}
++
++function cloneFallback(value) {
++  if (Array.isArray(value)) return [...value];
++  if (value && typeof value === "object") return { ...value };
++  return value;
++}
++
++function nowIso() {
++  return new Date().toISOString();
++}
++
++function defaultBridgeState() {
++  return {
++    lastUpdated: null,
++    sources: {},
++    latestMetrics: {},
++    recentSignals: [],
++  };
++}
++
++function loadBridgeState() {
++  return readJson(filePath("bridge-state.json"), defaultBridgeState());
++}
++
++function saveBridgeState(state) {
++  const payload = {
++    ...defaultBridgeState(),
++    ...state,
++    lastUpdated: state.lastUpdated || nowIso(),
++  };
++  writeJson(filePath("bridge-state.json"), payload);
++  appendJsonl(filePath("bridge-state-log.jsonl"), {
++    savedAt: nowIso(),
++    state: payload,
++  });
++  return payload;
++}
++
++const METRIC_MAP = {
++  sleep_duration: "sleep_hours",
++  sleep_hours: "sleep_hours",
++  steps: "steps",
++  active_energy: "active_calories",
++  active_calories: "active_calories",
++  exercise_minutes: "exercise_minutes",
++  resting_heart_rate: "resting_hr",
++  resting_hr: "resting_hr",
++  heart_rate_variability: "hrv",
++  hrv: "hrv",
++  weight: "weight",
++  body_weight: "weight",
++  blood_glucose: "glucose_mg_dl",
++  glucose: "glucose_mg_dl",
++  blood_pressure_systolic: "systolic_bp",
++  blood_pressure_diastolic: "diastolic_bp",
++  oxygen_saturation: "blood_oxygen",
++  blood_oxygen: "blood_oxygen",
++};
++
++function normalizeSignal(signal, source = "unknown") {
++  const metric = String(signal.metric || signal.name || "").trim();
++  const normalizedMetric = METRIC_MAP[metric] || metric;
++  const timestamp = signal.timestamp || signal.captured_at || signal.observed_at || nowIso();
++  return {
++    metric,
++    normalizedMetric,
++    value: signal.value,
++    unit: signal.unit || null,
++    source: signal.source || signal.provenance || source,
++    timestamp,
++    confidence: signal.confidence ?? null,
++    raw: signal,
++  };
++}
++
++function ingestHealthSync(payload = {}) {
++  const state = loadBridgeState();
++  const source = String(payload.source || "health_bridge").trim() || "health_bridge";
++  const syncedAt = payload.synced_at || nowIso();
++  const signals = Array.isArray(payload.signals) ? payload.signals : [];
++  const normalizedSignals = signals.map((signal) => normalizeSignal(signal, source));
++
++  const existingSource = state.sources[source] || {};
++  state.sources[source] = {
++    name: source,
++    lastSync: syncedAt,
++    signalCount: (existingSource.signalCount || 0) + normalizedSignals.length,
++    deviceContext: payload.device_context || existingSource.deviceContext || null,
++    lastPayloadSource: payload.source || source,
++  };
++
++  for (const signal of normalizedSignals) {
++    if (!signal.normalizedMetric) continue;
++    state.latestMetrics[signal.normalizedMetric] = {
++      value: signal.value,
++      unit: signal.unit,
++      source: signal.source,
++      observedAt: signal.timestamp,
++      metric: signal.metric,
++      confidence: signal.confidence,
++    };
++    state.recentSignals.unshift({
++      metric: signal.metric,
++      normalizedMetric: signal.normalizedMetric,
++      value: signal.value,
++      unit: signal.unit,
++      source: signal.source,
++      observedAt: signal.timestamp,
++    });
++  }
++  state.recentSignals = state.recentSignals.slice(0, 200);
++  state.lastUpdated = syncedAt;
++  saveBridgeState(state);
++
++  return {
++    ok: true,
++    source,
++    syncedAt,
++    receivedSignals: normalizedSignals.length,
++    latestMetrics: state.latestMetrics,
++  };
++}
++
++function getCurrentBridgeStatus() {
++  const state = loadBridgeState();
++  const dexcomTokenPresent = dexcomTokenCandidates().some((candidate) => fs.existsSync(candidate));
++  const jarvisDir = resolveJarvisHealthDir();
++  return {
++    ok: true,
++    bridgeReady: true,
++    lastUpdated: state.lastUpdated,
++    sourceCount: Object.keys(state.sources || {}).length,
++    liveSources: state.sources,
++    dexcomConfigured: dexcomTokenPresent || Boolean(process.env.DEXCOM_CLIENT_ID),
++    jarvisHealthDir: jarvisDir,
++    jarvisHealthDirExists: fs.existsSync(jarvisDir),
++    mychartImported: Boolean(getMyChartSummary().hasData),
++  };
++}
++
++function dexcomTokenCandidates() {
++  return [
++    path.join(resolveMondayHealthDir(), "dexcom_tokens.json"),
++    path.join(resolveJarvisHealthDir(), "dexcom_tokens.json"),
++    path.join(os.homedir(), ".jarvis", "dexcom_tokens.json"),
++  ];
++}
++
++function withReadonlyDb(callback, fallback = null) {
++  const dbPath = path.join(resolveJarvisHealthDir(), "health.db");
++  if (!fs.existsSync(dbPath)) return fallback;
++  const db = new Database(dbPath, { readonly: true, fileMustExist: true });
++  try {
++    return callback(db);
++  } catch {
++    return fallback;
++  } finally {
++    db.close();
++  }
++}
++
++function safeSingle(db, sql) {
++  try {
++    return db.prepare(sql).get() || null;
++  } catch {
++    return null;
++  }
++}
++
++function safeAll(db, sql) {
++  try {
++    return db.prepare(sql).all() || [];
++  } catch {
++    return [];
++  }
++}
++
++function getJarvisRuntimeSummary() {
++  const jarvisDir = resolveJarvisHealthDir();
++  const files = {
++    healthState: path.join(jarvisDir, "chris_health_state.json"),
++    mychartRecords: path.join(jarvisDir, "mychart_records.json"),
++  };
++  const state = fs.existsSync(files.healthState) ? readJson(files.healthState, {}) : {};
++  const dbSummary = withReadonlyDb((db) => ({
++    counts: {
++      daily_metrics: safeSingle(db, "SELECT COUNT(*) AS rows FROM daily_metrics")?.rows || 0,
++      test_results: safeSingle(db, "SELECT COUNT(*) AS rows FROM test_results")?.rows || 0,
++      bp_readings: safeSingle(db, "SELECT COUNT(*) AS rows FROM bp_readings")?.rows || 0,
++      glucose_readings: safeSingle(db, "SELECT COUNT(*) AS rows FROM glucose_readings")?.rows || 0,
++      mychart_pages: safeSingle(db, "SELECT COUNT(*) AS rows FROM mychart_pages")?.rows || 0,
++    },
++    latestMetric: safeSingle(
++      db,
++      "SELECT date, source, steps, resting_hr, hrv, sleep_hours, blood_oxygen, weight FROM daily_metrics ORDER BY date DESC LIMIT 1"
++    ),
++    latestBp: safeSingle(
++      db,
++      "SELECT reading_date, source, systolic, diastolic, pulse FROM bp_readings ORDER BY reading_date DESC LIMIT 1"
++    ),
++    latestGlucose: safeSingle(
++      db,
++      "SELECT reading_time, source, glucose_mgdl, trend, trend_rate FROM glucose_readings ORDER BY reading_time DESC LIMIT 1"
++    ),
++    mychartPages: safeAll(db, "SELECT page_key, page_type, synced_at FROM mychart_pages ORDER BY synced_at DESC LIMIT 8"),
++  }), {
++    counts: {},
++    latestMetric: null,
++    latestBp: null,
++    latestGlucose: null,
++    mychartPages: [],
++  });
++
++  return {
++    jarvisHealthDir: jarvisDir,
++    available: fs.existsSync(jarvisDir),
++    healthStateUpdatedAt: state?.metadata?.last_updated || null,
++    counts: dbSummary.counts,
++    latestMetric: dbSummary.latestMetric,
++    latestBp: dbSummary.latestBp,
++    latestGlucose: dbSummary.latestGlucose,
++    mychartPages: dbSummary.mychartPages,
++    importedConditions: Array.isArray(state?.medical_history?.known_conditions)
++      ? state.medical_history.known_conditions.slice(0, 5).map((item) => item.name).filter(Boolean)
++      : [],
++  };
++}
++
++function getMyChartSummary() {
++  const recordsPath = path.join(resolveJarvisHealthDir(), "mychart_records.json");
++  const records = fs.existsSync(recordsPath) ? readJson(recordsPath, {}) : {};
++  const pageKeys = Object.keys(records).filter((key) => key !== "last_updated");
++  return {
++    hasData: pageKeys.length > 0,
++    lastUpdated: records.last_updated || null,
++    pages: pageKeys,
++    previews: pageKeys.slice(0, 6).map((key) => ({
++      page: key,
++      scrapedAt: records[key]?.scraped_at || null,
++      preview: String(records[key]?.content || "").slice(0, 140),
++    })),
++  };
++}
++
++function buildHealthSummary() {
++  const bridge = loadBridgeState();
++  const jarvis = getJarvisRuntimeSummary();
++  const mychart = getMyChartSummary();
++  const latestMetrics = bridge.latestMetrics || {};
++
++  const headlineParts = [];
++  if (latestMetrics.sleep_hours?.value != null) headlineParts.push(`sleep ${latestMetrics.sleep_hours.value}h`);
++  if (latestMetrics.resting_hr?.value != null) headlineParts.push(`resting HR ${latestMetrics.resting_hr.value}`);
++  if (latestMetrics.steps?.value != null) headlineParts.push(`${latestMetrics.steps.value} steps`);
++  if (latestMetrics.glucose_mg_dl?.value != null) headlineParts.push(`glucose ${latestMetrics.glucose_mg_dl.value}`);
++
++  const importedParts = [];
++  if (jarvis.latestMetric?.date) importedParts.push(`latest JARVIS metric ${jarvis.latestMetric.date}`);
++  if ((jarvis.counts?.test_results || 0) > 0) importedParts.push(`${jarvis.counts.test_results} labs imported`);
++  if (mychart.hasData) importedParts.push(`${mychart.pages.length} MyChart page snapshots`);
++
++  const summaryText = headlineParts.length
++    ? `Live bridge is receiving health signals: ${headlineParts.join(", ")}.`
++    : importedParts.length
++      ? `Health has imported history available: ${importedParts.join(", ")}.`
++      : "Health bridge is ready, but no live signals have reached Monday yet.";
++
++  return {
++    status: headlineParts.length ? "live" : importedParts.length ? "history_only" : "ready_for_bridge",
++    summaryText,
++    lastUpdated: bridge.lastUpdated || jarvis.healthStateUpdatedAt || null,
++    latestMetrics,
++    sourceCount: Object.keys(bridge.sources || {}).length,
++    liveSources: bridge.sources || {},
++    jarvis,
++    mychart,
++  };
++}
++
++module.exports = {
++  buildHealthSummary,
++  getCurrentBridgeStatus,
++  getJarvisRuntimeSummary,
++  getMyChartSummary,
++  ingestHealthSync,
++  loadBridgeState,
++  resolveJarvisHealthDir,
++  resolveMondayHealthDir,
++  saveBridgeState,
++};
+diff --git a/tests/health-bridge.test.js b/tests/health-bridge.test.js
+new file mode 100644
+index 0000000..9de094f
+--- /dev/null
++++ b/tests/health-bridge.test.js
+@@ -0,0 +1,102 @@
++"use strict";
++
++const test = require("node:test");
++const assert = require("node:assert/strict");
++const fs = require("node:fs");
++const os = require("node:os");
++const path = require("node:path");
++const Database = require("better-sqlite3");
++
++function resetModules() {
++  for (const key of Object.keys(require.cache)) {
++    if (
++      key.includes("/src/engine/health/bridge-store") ||
++      key.includes("/src/engine/gateway/presenter-state")
++    ) {
++      delete require.cache[key];
++    }
++  }
++}
++
++test("health bridge ingests normalized live signals", () => {
++  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "monday-health-bridge-"));
++  process.env.MONDAY_HEALTH_DIR = tempRoot;
++  process.env.MONDAY_JARVIS_HEALTH_DIR = path.join(tempRoot, "jarvis");
++  resetModules();
++
++  const { ingestHealthSync, buildHealthSummary } = require("../src/engine/health/bridge-store");
++  const result = ingestHealthSync({
++    source: "jarvis_iphone",
++    synced_at: "2026-06-25T12:00:00.000Z",
++    signals: [
++      { metric: "sleep_duration", timestamp: "2026-06-25T06:30:00.000Z", value: 7.1, unit: "h", source: "healthkit" },
++      { metric: "resting_heart_rate", timestamp: "2026-06-25T06:30:00.000Z", value: 57, unit: "bpm", source: "healthkit" },
++      { metric: "steps", timestamp: "2026-06-25T12:00:00.000Z", value: 4200, unit: "count", source: "healthkit" },
++    ],
++    device_context: { platform: "ios", watch_paired: true, healthkit_available: true },
++  });
++
++  assert.equal(result.ok, true);
++  assert.equal(result.receivedSignals, 3);
++
++  const summary = buildHealthSummary();
++  assert.equal(summary.status, "live");
++  assert.equal(summary.latestMetrics.sleep_hours.value, 7.1);
++  assert.equal(summary.latestMetrics.resting_hr.value, 57);
++  assert.match(summary.summaryText, /Live bridge is receiving health signals/i);
++});
++
++test("health summary pulls imported JARVIS runtime and MyChart records", () => {
++  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "monday-health-jarvis-"));
++  const mondayHealthDir = path.join(tempRoot, "monday");
++  const jarvisHealthDir = path.join(tempRoot, "jarvis");
++  fs.mkdirSync(mondayHealthDir, { recursive: true });
++  fs.mkdirSync(jarvisHealthDir, { recursive: true });
++
++  fs.writeFileSync(
++    path.join(jarvisHealthDir, "mychart_records.json"),
++    JSON.stringify({
++      last_updated: "2026-06-24T09:00:00.000Z",
++      medications: { scraped_at: "2026-06-24T08:00:00.000Z", content: "Aspirin 81mg daily" },
++    }),
++    "utf8"
++  );
++  fs.writeFileSync(
++    path.join(jarvisHealthDir, "chris_health_state.json"),
++    JSON.stringify({
++      metadata: { last_updated: "2026-06-24" },
++      medical_history: { known_conditions: [{ name: "Type 2 diabetes mellitus" }] },
++    }),
++    "utf8"
++  );
++
++  const db = new Database(path.join(jarvisHealthDir, "health.db"));
++  db.exec(`
++    CREATE TABLE daily_metrics (date TEXT, source TEXT, steps INTEGER, resting_hr REAL, hrv REAL, sleep_hours REAL, blood_oxygen REAL, weight REAL);
++    CREATE TABLE test_results (test_name TEXT, result_date TEXT, value TEXT);
++    CREATE TABLE bp_readings (reading_date TEXT, source TEXT, systolic INTEGER, diastolic INTEGER, pulse INTEGER);
++    CREATE TABLE glucose_readings (reading_time TEXT, source TEXT, glucose_mgdl INTEGER, trend TEXT, trend_rate REAL);
++    CREATE TABLE mychart_pages (page_key TEXT, page_type TEXT, synced_at TEXT);
++  `);
++  db.prepare("INSERT INTO daily_metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run("2026-06-24", "apple_health", 8123, 58, 44, 7.2, 98, 201.5);
++  db.prepare("INSERT INTO test_results VALUES (?, ?, ?)").run("HGB A1C", "2026-06-24", "7.1");
++  db.prepare("INSERT INTO bp_readings VALUES (?, ?, ?, ?, ?)").run("2026-06-24T07:00:00.000Z", "manual", 128, 82, 68);
++  db.prepare("INSERT INTO mychart_pages VALUES (?, ?, ?)").run("medications", "html", "2026-06-24T08:00:00.000Z");
++  db.close();
++
++  process.env.MONDAY_HEALTH_DIR = mondayHealthDir;
++  process.env.MONDAY_JARVIS_HEALTH_DIR = jarvisHealthDir;
++  resetModules();
++
++  const { buildHealthSummary } = require("../src/engine/health/bridge-store");
++  const { buildPresenterState } = require("../src/engine/gateway/presenter-state");
++
++  const summary = buildHealthSummary();
++  assert.equal(summary.status, "history_only");
++  assert.equal(summary.jarvis.counts.test_results, 1);
++  assert.equal(summary.mychart.hasData, true);
++  assert.match(summary.summaryText, /Health has imported history available/i);
++
++  const presenter = buildPresenterState();
++  assert.match(presenter.subjects.health.summary, /Health has imported history available/i);
++});
