@@ -190,6 +190,175 @@ test("wallet boilerplate does not count as durable transactional evidence", () =
   assert.equal(verdict.preserve, false);
 });
 
+test("newsletter-style military roundup is not preserved just because it has dated content", () => {
+  const verdict = shouldPreserveCorrespondence({
+    threadType: "transactional",
+    providerCategory: "focused",
+    significanceScore: 0.47,
+    relationshipScore: 0.4,
+    junkScore: 0.22,
+    actionability: 0,
+    structuredFacts: [
+      { type: "date", value: "Monday, April 13, 2026" },
+      { type: "time", value: "8:00 AM" },
+    ],
+    userParticipated: false,
+    from: "communications@ausa.org",
+    subject: "AUSA's 5 Things",
+    snippet: "View in browser. A weekly tipsheet for members.",
+    bodyText: "AUSA's Five Things weekly tipsheet. View online. Forward to a friend.",
+    domain: "Family",
+  });
+  assert.equal(verdict.preserve, false);
+});
+
+test("promotional museum blast is not preserved just because it looks event-shaped", () => {
+  const verdict = shouldPreserveCorrespondence({
+    threadType: "transactional",
+    providerCategory: "focused",
+    significanceScore: 0.61,
+    relationshipScore: 0.3,
+    junkScore: 0.18,
+    actionability: 0.7,
+    structuredFacts: [
+      { type: "date", value: "April 28, 2026" },
+      { type: "time", value: "7:00 PM" },
+      { type: "location", value: "Cincinnati Museum Center" },
+    ],
+    userParticipated: false,
+    from: "information@cincymuseum.org",
+    subject: "April 28 | An Evening with The Shroomery",
+    snippet: "Discover the world of mushrooms with The Shroomery.",
+    bodyText: "View online for event details. Forward to a friend. Join us for a special evening.",
+    domain: "Family",
+  });
+  assert.equal(verdict.preserve, false);
+});
+
+test("cozi family agenda is preserved as real continuity value", () => {
+  const verdict = shouldPreserveCorrespondence({
+    threadType: "transactional",
+    providerCategory: "focused",
+    significanceScore: 0.7,
+    relationshipScore: 0.3,
+    junkScore: 0.05,
+    actionability: 0.4,
+    structuredFacts: [
+      { type: "date", value: "April 19, 2026" },
+      { type: "time", value: "7:30 PM" },
+      { type: "traveler", value: "Caleb" },
+    ],
+    userParticipated: false,
+    from: "no-reply@cozi.com",
+    subject: "Your agenda for Apr 19-26",
+    snippet: "Your family's agenda for Apr 19–26.",
+    bodyText: "Agenda for the week. Sunday church. Tuesday meeting. Wednesday baseball.",
+    domain: "Family",
+  });
+  assert.equal(verdict.preserve, true);
+});
+
+test("gift-guide promo is not preserved even when misclassified as transactional", () => {
+  const verdict = shouldPreserveCorrespondence({
+    threadType: "transactional",
+    providerCategory: "focused",
+    significanceScore: 0.36,
+    relationshipScore: 0.3,
+    junkScore: 0.14,
+    actionability: 0.7,
+    structuredFacts: [{ type: "traveler", value: "Chris" }],
+    userParticipated: false,
+    from: "email@em.kay.com",
+    subject: "Graduation Gifts They'll Love",
+    snippet: "Gifts under $300 to celebrate their next chapter!",
+    bodyText: "View in browser. Gift guide. Shop now for graduation jewelry.",
+    domain: "Retirement",
+  });
+  assert.equal(verdict.preserve, false);
+});
+
+test("retail percent-off blast is not preserved even when classified as transactional", () => {
+  const verdict = shouldPreserveCorrespondence({
+    threadType: "transactional",
+    providerCategory: "other",
+    significanceScore: 0.51,
+    relationshipScore: 0.4,
+    junkScore: 0.18,
+    actionability: 0.7,
+    structuredFacts: [
+      { type: "date", value: "Tomorrow" },
+      { type: "traveler", value: "Chris" },
+    ],
+    userParticipated: false,
+    from: "duluthtrading@mail.duluthtrading.com",
+    subject: "Ends Tomorrow! 20% OFF Everything",
+    snippet: "Extra 10% OFF gear for your getaway.",
+    bodyText: "Today only. 20% off. Shop now and save big.",
+    domain: "Family",
+  });
+  assert.equal(verdict.preserve, false);
+});
+
+test("one-way faith newsletter is not preserved just because it mentions news or culture", () => {
+  const verdict = shouldPreserveCorrespondence({
+    threadType: "faith",
+    providerCategory: "focused",
+    significanceScore: 0.22,
+    relationshipScore: 0.3,
+    junkScore: 0.08,
+    actionability: 0,
+    structuredFacts: [{ type: "traveler", value: "Women" }],
+    userParticipated: false,
+    from: "mail@answersingenesis.org",
+    subject: "Infallible Proofs for the Resurrection",
+    snippet: "Get the latest science, Bible, and culture news.",
+    bodyText: "Weekly edition. Read online for the latest science, Bible, and culture news.",
+    domain: "Faith",
+  });
+  assert.equal(verdict.preserve, false);
+});
+
+test("bogus reservation fact does not preserve retail promo mail", () => {
+  const verdict = shouldPreserveCorrespondence({
+    threadType: "transactional",
+    providerCategory: "focused",
+    significanceScore: 0.36,
+    relationshipScore: 0.3,
+    junkScore: 0.14,
+    actionability: 0.7,
+    structuredFacts: [
+      { type: "reservation", value: "cut-off" },
+      { type: "traveler", value: "Buy Online Pick" },
+    ],
+    userParticipated: false,
+    from: "email@em.kay.com",
+    subject: "Single or Taken? Let KAY Know!",
+    snippet: "Unlock gift ideas handpicked just for you! View Email in Browser.",
+    bodyText: "",
+    domain: "Retirement",
+  });
+  assert.equal(verdict.preserve, false);
+});
+
+test("single weak time fact does not preserve newsletter-style mail", () => {
+  const verdict = shouldPreserveCorrespondence({
+    threadType: "transactional",
+    providerCategory: "focused",
+    significanceScore: 0.51,
+    relationshipScore: 0.4,
+    junkScore: 0.12,
+    actionability: 0.7,
+    structuredFacts: [{ type: "time", value: "9 pm" }],
+    userParticipated: false,
+    from: "hello@jeffersonfisher.com",
+    subject: "3 things: good boundaries, responding to a liar, and sparkling lemonade",
+    snippet: "2 min read",
+    bodyText: "",
+    domain: "Family",
+  });
+  assert.equal(verdict.preserve, false);
+});
+
 test("genuine relational work thread with participation is preserved", () => {
   const verdict = shouldPreserveCorrespondence({
     threadType: "work",

@@ -56,6 +56,14 @@ importEmailThreads(
       unread: true,
       labelIds: ["INBOX", "CATEGORY_UPDATES"],
       updatedAt: "2026-06-21T08:00:00.000Z",
+      structuredFacts: [
+        { type: "confirmation_number", value: "ABC12345", confidence: 0.95 },
+        { type: "scheduled_date", value: "June 26, 2026", confidence: 0.94 },
+        { type: "scheduled_time", value: "10:00 AM", confidence: 0.94 },
+        { type: "location_name", value: "Statue of Liberty", confidence: 0.93 },
+        { type: "location_address", value: "Battery Park, New York, NY", confidence: 0.95 },
+        { type: "summary", value: "Reserve ticket confirmation for the Statue of Liberty.", confidence: 0.85 },
+      ],
     },
   ],
   { source: "multi" }
@@ -93,7 +101,8 @@ async function main() {
     assert.equal(result.ok, true);
     assert.equal(result.data.status, "completed");
     assert.equal(result.data.noDirectTicketEvidence, false);
-    assert.ok(result.data.confirmedItems.some((item) => item.includes("ABC12345")));
+    assert.ok(result.data.confirmedItems.some((item) => item.includes("confirmation_number: ABC12345")));
+    assert.ok(result.data.confirmedItems.some((item) => item.includes("scheduled_date: June 26, 2026")));
     assert.ok(result.data.plan.length >= 1);
   });
 

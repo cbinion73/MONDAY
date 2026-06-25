@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Monday Artifact</title>
+    <style>
+      :root {
+        --bg: #fbfbfd;
+        --card: rgba(255, 255, 255, 0.74);
+        --line: rgba(160, 124, 69, 0.14);
+        --gold: #a47a3d;
+        --gold-deep: #8c6735;
+        --text: #30281f;
+        --muted: #7f7364;
+        --shadow: 0 18px 50px rgba(123, 106, 82, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background:
+          radial-gradient(circle at top, rgba(220, 199, 165, 0.18), transparent 34%),
+          linear-gradient(180deg, #fdfdfd 0%, #f8f8fb 100%);
+        color: var(--text);
+        font-family: "Avenir Next", "Segoe UI", sans-serif;
+      }
+
+      body {
+        padding: clamp(18px, 3vw, 34px);
+      }
+
+      main {
+        max-width: 1240px;
+        margin: 0 auto;
+        display: grid;
+        gap: 18px;
+      }
+
+      .hero {
+        display: grid;
+        gap: 12px;
+        padding: clamp(24px, 4vw, 36px);
+        border-radius: 30px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.6));
+        border: 1px solid rgba(255, 255, 255, 0.72);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(26px) saturate(1.06);
+      }
+
+      .eyebrow {
+        color: var(--gold-deep);
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        font-size: 12px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(32px, 5vw, 56px);
+        line-height: 0.98;
+        font-weight: 700;
+      }
+
+      .summary {
+        max-width: 70ch;
+        color: var(--muted);
+        font-size: clamp(16px, 2vw, 20px);
+        line-height: 1.55;
+      }
+
+      .metric-strip,
+      .focus-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 16px;
+      }
+
+      .section {
+        display: grid;
+        gap: 12px;
+      }
+
+      .section-title {
+        margin: 0;
+        color: var(--gold-deep);
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      .card,
+      .metric,
+      .chip,
+      .evidence-item,
+      .recommendation {
+        border-radius: 26px;
+        background: var(--card);
+        border: 1px solid rgba(255, 255, 255, 0.72);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(24px) saturate(1.08);
+      }
+
+      .metric {
+        padding: 22px 24px;
+      }
+
+      .metric-value {
+        font-size: clamp(28px, 4vw, 44px);
+        line-height: 1;
+        color: var(--gold);
+        font-weight: 700;
+      }
+
+      .metric-label {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .card {
+        padding: 22px 24px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .card h3 {
+        margin: 0;
+        font-size: 20px;
+      }
+
+      .card p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .meta {
+        color: var(--gold-deep);
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .chip {
+        padding: 12px 16px;
+        color: var(--gold-deep);
+        font-weight: 600;
+      }
+
+      .evidence-list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .evidence-item {
+        padding: 18px 20px;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .recommendation {
+        padding: 24px 26px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .recommendation strong {
+        color: var(--gold-deep);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 12px;
+      }
+
+      .recommendation p {
+        margin: 0;
+        line-height: 1.65;
+        color: var(--text);
+      }
+
+      @media (max-width: 700px) {
+        body {
+          padding: 14px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main id="artifactRoot"></main>
+    <script>
+      const STORAGE_KEY = "monday.dynamicArtifactPayload";
+
+      function loadPayload() {
+        try {
+          const raw = window.sessionStorage.getItem(STORAGE_KEY);
+          return raw ? JSON.parse(raw) : null;
+        } catch {
+          return null;
+        }
+      }
+
+      function create(tag, className, text) {
+        const element = document.createElement(tag);
+        if (className) element.className = className;
+        if (typeof text === "string") element.textContent = text;
+        return element;
+      }
+
+      function renderHero(root, payload) {
+        const hero = create("section", "hero");
+        hero.append(
+          create("div", "eyebrow", payload.eyebrow || "Monday model"),
+          create("h1", "", payload.title || "Structured model"),
+          create("p", "summary", payload.summary || "Monday is surfacing a structured view of the current thread.")
+        );
+        root.append(hero);
+      }
+
+      function renderMetricStrip(root, block) {
+        const section = create("section", "section");
+        if (block.title) section.append(create("h2", "section-title", block.title));
+        const strip = create("div", "metric-strip");
+        for (const metric of block.metrics || []) {
+          const card = create("article", "metric");
+          card.append(
+            create("div", "metric-value", metric.value || ""),
+            create("div", "metric-label", metric.label || "")
+          );
+          strip.append(card);
+        }
+        section.append(strip);
+        root.append(section);
+      }
+
+      function renderFocusGrid(root, block) {
+        const section = create("section", "section");
+        if (block.title) section.append(create("h2", "section-title", block.title));
+        const grid = create("div", "focus-grid");
+        for (const cardData of block.cards || []) {
+          const card = create("article", "card");
+          card.append(
+            create("h3", "", cardData.title || ""),
+            create("p", "", cardData.body || ""),
+          );
+          if (cardData.meta) {
+            card.append(create("div", "meta", cardData.meta));
+          }
+          grid.append(card);
+        }
+        section.append(grid);
+        root.append(section);
+      }
+
+      function renderInsightChips(root, block) {
+        const section = create("section", "section");
+        if (block.title) section.append(create("h2", "section-title", block.title));
+        const row = create("div", "chip-row");
+        for (const chip of block.chips || []) {
+          row.append(create("div", "chip", chip));
+        }
+        section.append(row);
+        root.append(section);
+      }
+
+      function renderEvidenceList(root, block) {
+        const section = create("section", "section");
+        if (block.title) section.append(create("h2", "section-title", block.title));
+        const list = create("div", "evidence-list");
+        for (const item of block.items || []) {
+          list.append(create("article", "evidence-item", item));
+        }
+        section.append(list);
+        root.append(section);
+      }
+
+      function renderRecommendation(root, block) {
+        const card = create("section", "recommendation");
+        card.append(
+          create("strong", "", block.title || "Recommendation"),
+          create("p", "", block.body || "")
+        );
+        root.append(card);
+      }
+
+      function renderPayload(payload) {
+        const root = document.getElementById("artifactRoot");
+        root.replaceChildren();
+        renderHero(root, payload);
+        for (const block of payload.blocks || []) {
+          if (block.type === "metric_strip") renderMetricStrip(root, block);
+          if (block.type === "focus_grid") renderFocusGrid(root, block);
+          if (block.type === "insight_chips") renderInsightChips(root, block);
+          if (block.type === "evidence_list") renderEvidenceList(root, block);
+          if (block.type === "recommendation") renderRecommendation(root, block);
+        }
+      }
+
+      const payload = loadPayload() || {
+        eyebrow: "Monday model",
+        title: "No artifact payload found",
+        summary: "The modal opened without a dynamic payload. Monday needs to provide a structured model payload first.",
+        blocks: [],
+      };
+
+      renderPayload(payload);
+    </script>
+  </body>
+</html>

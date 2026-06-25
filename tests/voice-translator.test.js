@@ -123,7 +123,25 @@ function main() {
   assert.equal(resolveVoiceMode(publishingState), "curious-companion");
   assert.equal(
     publishingVoice.text,
-    "That sounds worth taking seriously. Writing questions are rarely just about output. What makes this book feel alive again right now?"
+    "That doesn't sound like a project question yet. Writing questions are rarely just about output. My read is this is less about whether you can write another book and more about whether there's something left that needs to be said."
+  );
+
+  const genericWitnessVoice = translateMondayVoice({
+    engineState: { activeRole: "witness", recommendedOutcome: "explore_relationally" },
+    truth: {},
+  });
+  assert.equal(
+    genericWitnessVoice.text,
+    "I think something here matters. I don't want to fake clarity before it earns it."
+  );
+
+  const genericCompanionVoice = translateMondayVoice({
+    engineState: { activeRole: "companion", recommendedOutcome: "explore_relationally" },
+    truth: {},
+  });
+  assert.equal(
+    genericCompanionVoice.text,
+    "I think something here matters. My read is we don't have enough shape yet to name it cleanly."
   );
 
   console.log("Monday voice translator tests passed.");

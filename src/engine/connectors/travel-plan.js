@@ -6,6 +6,49 @@ const { readCalendarStore } = require("./calendar-context");
 const { runSpecialistAgent } = require("../council/convene");
 const { enqueueSurfacing } = require("../db/surfacing-store");
 const { sendViaiMessage, isConfigured } = require("../channels/imessage");
+const {
+  formatLocalDate,
+  normalizeUserFacingDate,
+  normalizeUserFacingTime,
+} = require("../utils/local-time");
+
+function canonicalTravelFacts(thread) {
+  const facts = Array.isArray(thread?.structuredFacts) ? thread.structuredFacts : [];
+  const pick = (type) => facts.find((fact) => fact.type === type)?.value || null;
+  return {
+    confirmationNumber: pick("confirmation_number"),
+    scheduledDate: normalizeUserFacingDate(pick("scheduled_date")),
+    scheduledTime: normalizeUserFacingTime(pick("scheduled_time")),
+    locationName: pick("location_name"),
+    locationAddress: pick("location_address"),
+    summary: pick("summary"),
+    artifactType: pick("artifact_type"),
+    title: pick("title"),
+    entryInstructions: facts
+      .filter((fact) => fact.type === "entry_instruction")
+      .map((fact) => fact.value)
+      .filter(Boolean),
+    hasCanonicalReservation:
+      Boolean(pick("confirmation_number")) &&
+      (Boolean(pick("scheduled_date")) || Boolean(pick("scheduled_time")) || Boolean(pick("location_name"))),
+  };
+}
+
+function formatCanonicalConfirmedItems(thread) {
+  const canonical = canonicalTravelFacts(thread);
+  const items = [];
+  if (canonical.title) items.push(`title: ${canonical.title}`);
+  if (canonical.summary) items.push(`summary: ${canonical.summary}`);
+  if (canonical.confirmationNumber) items.push(`confirmation_number: ${canonical.confirmationNumber}`);
+  if (canonical.scheduledDate) items.push(`scheduled_date: ${canonical.scheduledDate}`);
+  if (canonical.scheduledTime) items.push(`scheduled_time: ${canonical.scheduledTime}`);
+  if (canonical.locationName) items.push(`location_name: ${canonical.locationName}`);
+  if (canonical.locationAddress) items.push(`location_address: ${canonical.locationAddress}`);
+  for (const instruction of canonical.entryInstructions.slice(0, 2)) {
+    items.push(`entry_instruction: ${instruction}`);
+  }
+  return items;
+}
 
 function parseTravelWindow(query) {
   const now = new Date();
@@ -46,6 +89,8 @@ function filterCalendarForTrip(events, profile, window) {
 
 function hasDirectTicketEvidence(threads) {
   return (threads || []).some((thread) => {
+    const canonical = canonicalTravelFacts(thread);
+    if (canonical.hasCanonicalReservation) return true;
     const facts = thread.structuredFacts || [];
     return (
       facts.some((fact) => fact.type === "date") &&
@@ -109,6 +154,11 @@ function buildQueuedReply(assessment) {
 function fallbackPlan({ queryProfile, calendarEvents, emailThreads, noDirectTicketEvidence }) {
   const confirmedItems = [];
   for (const thread of emailThreads.slice(0, 6)) {
+    const canonicalItems = formatCanonicalConfirmedItems(thread);
+    if (canonicalItems.length > 0) {
+      confirmedItems.push(...canonicalItems);
+      continue;
+    }
     for (const fact of thread.structuredFacts || []) {
       if (["date", "time", "location", "reservation", "entry_instruction"].includes(fact.type)) {
         confirmedItems.push(`${fact.type}: ${fact.value}`);
@@ -117,7 +167,7 @@ function fallbackPlan({ queryProfile, calendarEvents, emailThreads, noDirectTick
   }
 
   const plan = calendarEvents.slice(0, 7).map((event) => ({
-    day: new Date(event.startAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }),
+    day: formatLocalDate(event.startAt, { weekday: "short", month: "short", day: "numeric" }) || "Upcoming",
     summary: event.title,
     steps: [
       event.location ? `Be at ${event.location}.` : "Use calendar timing as the current anchor.",
@@ -166,6 +216,7 @@ async function buildTripPlan({ assessment, liveProviderSearch = true }) {
       providerCategory: thread.providerCategory,
       threadType: thread.threadType,
       significanceScore: thread.significanceScore,
+      canonicalFacts: canonicalTravelFacts(thread),
       structuredFacts: thread.structuredFacts || [],
     })),
     calendarEvents: collectKnownConstraints(relevantCalendar),

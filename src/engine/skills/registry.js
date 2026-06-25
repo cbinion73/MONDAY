@@ -103,6 +103,17 @@ const SKILLS = {
     outputs: "{ title, data, wordCount, truncated, url }",
   },
 
+  "science-advisor": {
+    id: "science-advisor",
+    name: "Science Advisor",
+    description: "Consult Reed Richards inside the Baxter Building for scientific, engineering, medical, laboratory, and research questions. Uses the canonical Scientific CoPilot prompt in Thermo Fisher contexts.",
+    category: "research",
+    autonomyTier: 1,
+    trusted: true,
+    inputs: { query: "string (required)" },
+    outputs: "Structured scientific advisory reply with sources, confidence, and active mode",
+  },
+
   // ── Prepare (tier 2 — recommend first, user confirms) ────────────────────────
 
   "browser-open": {

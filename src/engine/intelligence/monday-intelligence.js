@@ -26,6 +26,12 @@ const { enrichPersonalContext } = require("../memory/personal-context");
 const { setWorkingTheory, getWorkingTheory } = require("../db/state-store");
 const { addDecision, addContradiction } = require("../db/knowledge-store");
 const { enqueueSurfacing, markSurfaced } = require("../db/surfacing-store");
+const { formatLocalTime } = require("../utils/local-time");
+const {
+  shouldUseFastEverydayLane,
+  buildFastEverydayReply,
+} = require("./fast-everyday-lane");
+const { buildFollowUpReply } = require("../conversation/follow-up-resolver");
 
 const DAILY_BRIEF_CACHE_TTL_MS = Number(
   process.env.MONDAY_DAILY_BRIEF_CACHE_TTL_MS || 18 * 60 * 60 * 1000
@@ -41,6 +47,45 @@ async function applyMondayIntelligence({
   history = [],
   personalContext = {},
 }) {
+  const fastEverydayReply =
+    shouldUseFastEverydayLane(input, result)
+      ? buildFastEverydayReply(input)
+      : null;
+
+  if (fastEverydayReply) {
+    const lines = splitReply(fastEverydayReply);
+    const modelDecision = routeModel({
+      domain: null,
+      significance: result.finalState?.significance || null,
+      identityProximity: result.finalState?.identityProximity || null,
+      woundRisk: result.finalState?.woundRisk || null,
+      classificationFallback: false,
+      intentType: "task_request",
+      input,
+    });
+    return {
+      ...attachIntelligence(
+        {
+          ...result,
+          voice: {
+            ...(result.voice || {}),
+            lines,
+            text: fastEverydayReply,
+            responseSource: "fast-everyday-lane",
+          },
+        },
+        {
+          enabled: true,
+          provider: activeProvider(),
+          used: false,
+          reason: "Fast everyday lane resolved this turn without model refinement.",
+        }
+      ),
+      workingTheory: personalContext.priorWorkingTheory || null,
+      modelDecision,
+    };
+  }
+
   // Enrich with vault memory recall before building the prompt.
   // Graceful — returns original personalContext if vault is unavailable or times out.
   personalContext = await enrichPersonalContext(input, personalContext, {
@@ -52,6 +97,46 @@ async function applyMondayIntelligence({
   // Always compute working theory so it persists regardless of Ollama availability.
   const promptPayload = buildConversationPayload({ result, input, history, personalContext });
   const workingTheory = extractWorkingTheory(promptPayload, priorWorkingTheory);
+  const followUpReply = buildFollowUpReply({
+    intent: personalContext.followUpIntent,
+    subject: personalContext.livingConversation?.subject || null,
+    conversation: personalContext.livingConversation?.conversation || null,
+    stageMode: personalContext.livingConversation?.stageMode || "resume",
+  });
+
+  if (followUpReply) {
+    const text = followUpReply.reply;
+    const lines = splitReply(text);
+    const attached = attachIntelligence(
+      {
+        ...result,
+        voice: {
+          ...(result.voice || {}),
+          lines,
+          text,
+          responseSource: "conversation-followup",
+        },
+      },
+      {
+        enabled: true,
+        provider: activeProvider(),
+        used: false,
+        reason: "Conversation follow-up resolved deterministically from living conversation state.",
+      }
+    );
+    return {
+      ...attached,
+      workingTheory,
+      modelDecision: {
+        tier: "conversation-followup",
+        model: null,
+      },
+      conversationTurn: {
+        intent: personalContext.followUpIntent,
+        update: followUpReply.update || null,
+      },
+    };
+  }
 
   // If engine couldn't classify, ask nano what type of message this is.
   // The intent type then feeds into routeModel so the right tier is selected.
@@ -272,6 +357,7 @@ function resolveTheoryDomain(result, parsed) {
 // Patterns that indicate a generic/boilerplate hypothesis — not worth persisting.
 const THEORY_JUNK_PATTERNS = [
   /^it sounds like the latest shift may be this:/i,
+  /^this turn adds:/i,
   /^treat this as an ongoing meaning thread/i,
   /^advancing the meaning of the current thread/i,
   /^the latest shift may be/i,
@@ -918,6 +1004,27 @@ function shouldAcceptRefinement({
     /\bone step at a time\b/i,
   ];
   if (genericCoachingPatterns.some((p) => p.test(reply)) && !hasThinkingPartnerMove(reply)) {
+    return false;
+  }
+
+  const genericTherapistPatterns = [
+    /\bwhat deeper feelings or changes\b/i,
+    /\bhow does that make you feel\b/i,
+    /\bcan you tell me more about that\b/i,
+    /\bcan you share more about\b/i,
+    /\bwhat are you noticing right now\b/i,
+    /\bwhat feels most significant about retirement\b/i,
+    /\bwhat other aspects of your life or identity might be influencing this decision now\b/i,
+  ];
+  if (genericTherapistPatterns.some((p) => p.test(reply)) && !hasNonObviousContribution(reply)) {
+    return false;
+  }
+
+  if (
+    significance === "future_life_transition" &&
+    genericTherapistPatterns.some((p) => p.test(reply)) &&
+    !hasRecommendationMove(reply)
+  ) {
     return false;
   }
 
@@ -1960,13 +2067,7 @@ function buildDeterministicProtection({ missions = [], calendar = null }) {
 
 function formatCalendarEvent(event) {
   if (!event) return "an upcoming event";
-  const date = new Date(event.startAt);
-  const time = Number.isNaN(date.getTime())
-    ? "later"
-    : date.toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-      });
+  const time = formatLocalTime(event.startAt) || "later";
   return `${event.title} at ${time}`;
 }
 

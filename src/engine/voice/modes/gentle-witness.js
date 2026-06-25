@@ -42,14 +42,14 @@ function renderGentleWitness({ truth }) {
   if (truth.domain === "family" && truth.value === "family_matters_most") {
     return [
       "I hear that.",
-      "The real question isn't whether family matters — you already know that.",
-      "The more interesting question is whether it's winning the competition for attention.",
+      "Family matters is not the part in doubt.",
+      "The part worth watching is whether it is winning the competition for attention.",
     ];
   }
 
   return [
-    "I've noticed something.",
-    "I think it may matter, even if I'm not sure what it means yet.",
+    "I think something here matters.",
+    "I don't want to fake clarity before it earns it.",
   ];
 }
 

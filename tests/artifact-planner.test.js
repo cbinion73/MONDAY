@@ -44,6 +44,15 @@ function main() {
   });
   assert.equal(websitePlan?.artifactKey, "website");
 
+  const modelPlan = buildArtifactPlan({
+    input: "Build me a model of my current finances and show it to me.",
+    domain: "Financial",
+    recommendedOutcome: "surface_then_advise",
+    skillResults: [{ skillId: "financial-read" }],
+  });
+  assert.equal(modelPlan?.artifactKey, "dynamic-model");
+  assert.equal(modelPlan?.artifactType, "model_display");
+
   console.log("Monday artifact planner tests passed.");
 }
 

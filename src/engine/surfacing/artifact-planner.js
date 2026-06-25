@@ -2,6 +2,7 @@
 
 const WEBSITE_HINTS = /\b(website|site|page|article|fox|iran|url|link|browser|web)\b/i;
 const DISPLAY_HINTS = /\b(show|display|surface|pull up|bring up|visualize|plot|graph|chart|dashboard|data)\b/i;
+const MODEL_HINTS = /\b(model|framework|map this out|mental model|system model|present the model|show me the model|visual model)\b/i;
 const HEALTH_HINTS = /\b(health|medical|record|a1c|blood pressure|bp|weight|steps|exercise|glucose|metabolic)\b/i;
 const FINANCIAL_HINTS = /\b(finance|financial|spending|balance|accounts?|budget|net worth|transactions?)\b/i;
 const CALENDAR_HINTS = /\b(calendar|schedule|meeting|events?)\b/i;
@@ -18,6 +19,7 @@ function buildArtifactPlan({ input = "", domain = null, recommendedOutcome = nul
   const skillIds = (skillResults || []).map((s) => s.skillId);
 
   const asksForDisplay = DISPLAY_HINTS.test(text);
+  const asksForModel = MODEL_HINTS.test(text);
   const leansWebsite = WEBSITE_HINTS.test(text) || skillIds.includes("browser-read") || skillIds.includes("browser-search");
   const leansHealth = HEALTH_HINTS.test(text) || String(domain || "").toLowerCase() === "health";
   const leansFinancial = FINANCIAL_HINTS.test(text) || skillIds.includes("financial-read");
@@ -30,6 +32,8 @@ function buildArtifactPlan({ input = "", domain = null, recommendedOutcome = nul
   const leansQuantum = QUANTUM_HINTS.test(text);
   const leansSurveyDocument = DOCUMENT_SURVEY_HINTS.test(text);
   const surfaceThenAdvise = recommendedOutcome === "surface_then_advise";
+  const needsDynamicModel =
+    asksForModel || leansFinancial || leansCalendar || leansEmail || leansDocuments;
 
   if (leansQuantum && (asksForDisplay || surfaceThenAdvise || leansDocuments || leansSurveyDocument)) {
     return {
@@ -131,16 +135,34 @@ function buildArtifactPlan({ input = "", domain = null, recommendedOutcome = nul
 
     return {
       shouldSurface: true,
-      artifactType: "data_display",
-      artifactKey: null,
+      artifactType: "model_display",
+      artifactKey: "dynamic-model",
       sourceDomain,
       displayStyle: "full_screen_modal",
-      narrativeMode: "source_signal_comparison_explanation",
+      narrativeMode: "structured_model_explanation",
       maxPanelsPerPage: 4,
+      layoutFamily: "adaptive_model",
       staging: "surface_before_explanation",
       voiceModeBehavior: "suppress_bubbles_if_speaking",
       sourceSkills: skillIds,
-      rationale: `The turn calls for structured ${sourceDomain} evidence that may be clearer as a graph, chart, or dashboard.`,
+      rationale: `The turn calls for structured ${sourceDomain} evidence that should be composed into a reusable model instead of only explained in prose.`,
+    };
+  }
+
+  if (needsDynamicModel && (asksForDisplay || surfaceThenAdvise || asksForModel || leansSurveyDocument)) {
+    return {
+      shouldSurface: true,
+      artifactType: "model_display",
+      artifactKey: "dynamic-model",
+      sourceDomain: String(domain || "general").toLowerCase(),
+      displayStyle: "full_screen_modal",
+      narrativeMode: "structured_model_explanation",
+      maxPanelsPerPage: 4,
+      layoutFamily: "adaptive_model",
+      staging: "surface_before_explanation",
+      voiceModeBehavior: "suppress_bubbles_if_speaking",
+      sourceSkills: skillIds,
+      rationale: "This thread calls for a structured visual model built from the relevant evidence and organized for explanation.",
     };
   }
 

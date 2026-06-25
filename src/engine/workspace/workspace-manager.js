@@ -18,6 +18,7 @@ const DEFAULT_SKILLS = [
   "financial-read",
   "browser-search",
   "browser-read",
+  "science-advisor",
   "summarize",
 ];
 

@@ -26,7 +26,12 @@ const discordAdapter = require("./adapters/discord");
 const slackAdapter = require("./adapters/slack");
 const { dispatch, replyViaiMessage, replyViaSlackResponseUrl } = require("./router");
 const { listSessions, clearSession } = require("./sessions");
+const {
+  hydratePresenceState,
+  advancePresenceState,
+} = require("./presence-engine");
 const { getVaultRoot } = require("../obsidian/vault-manager");
+const { initFromMissions } = require("../workspace/workspace-manager");
 
 const PORT = Number(process.env.MONDAY_GATEWAY_PORT || 4312);
 const GATEWAY_SECRET = process.env.MONDAY_GATEWAY_SECRET || "";
@@ -229,16 +234,18 @@ async function handlePresenceMessage(req, res, rawBody) {
   }
 
   try {
-    const { reply, surfacingPlan } = await dispatch({
+    const { reply, surfacingPlan, presence } = await dispatch({
       channel: "presence-web",
       senderId: PRESENCE_SENDER_ID,
       text,
       rawBody,
       reset: body.reset === true,
+      currentSubjectId: body.currentSubjectId || null,
     });
     sendJson(res, 200, {
       reply,
       surfacingPlan: surfacingPlan || null,
+      presence: presence || null,
       senderId: PRESENCE_SENDER_ID,
       channel: "presence-web",
     });
@@ -254,6 +261,36 @@ async function handlePresenceGraph(req, res) {
     sendJson(res, 200, payload);
   } catch (err) {
     console.error("[gateway] presence graph error:", err.message);
+    sendJson(res, 500, { error: err.message });
+  }
+}
+
+async function handlePresenceDaily(req, res) {
+  try {
+    const url = new URL(req.url, `http://localhost:${PORT}`);
+    const subjectId = url.searchParams.get("subject") || null;
+    sendJson(res, 200, hydratePresenceState({
+      channel: "presence-web",
+      senderId: PRESENCE_SENDER_ID,
+      requestedSubjectId: subjectId,
+    }));
+  } catch (err) {
+    console.error("[gateway] presence daily error:", err.message);
+    sendJson(res, 500, { error: err.message });
+  }
+}
+
+async function handlePresenceAdvance(req, res, rawBody) {
+  try {
+    const body = JSON.parse(rawBody || "{}");
+    sendJson(res, 200, advancePresenceState({
+      channel: "presence-web",
+      senderId: PRESENCE_SENDER_ID,
+      action: body.action || "continue",
+      subjectId: body.subjectId || null,
+    }));
+  } catch (err) {
+    console.error("[gateway] presence advance error:", err.message);
     sendJson(res, 500, { error: err.message });
   }
 }
@@ -415,6 +452,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && pathname === "/api/presence/message") {
       return handlePresenceMessage(req, res, rawBody);
     }
+    if (req.method === "GET" && pathname === "/api/presence/daily") {
+      return handlePresenceDaily(req, res);
+    }
+    if (req.method === "POST" && pathname === "/api/presence/advance") {
+      return handlePresenceAdvance(req, res, rawBody);
+    }
     if (req.method === "GET" && pathname === "/api/presence/graph") {
       return handlePresenceGraph(req, res);
     }
@@ -450,6 +493,11 @@ const server = http.createServer(async (req, res) => {
 });
 
 function start() {
+  try {
+    initFromMissions();
+  } catch (err) {
+    console.warn("[gateway] workspace init warning:", err.message);
+  }
   server.listen(PORT, () => {
     console.log(`[gateway] Monday Gateway listening on port ${PORT}`);
     console.log(`[gateway] routes: /gateway/message, /gateway/discord, /gateway/slack`);

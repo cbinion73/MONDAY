@@ -8,7 +8,7 @@ function renderProtectiveSteward({ truth }) {
 
   return [
     "Something important may be slipping.",
-    "Let's carry it intentionally before it becomes easier to lose.",
+    "Let's get in front of it before it becomes easier to lose than to keep.",
   ];
 }
 

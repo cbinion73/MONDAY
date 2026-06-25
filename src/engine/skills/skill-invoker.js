@@ -14,8 +14,9 @@ const { executeSkill } = require("./executor");
 const { normalizeSkillResult } = require("./skill-result-normalizer");
 const store = require("../workspace/workspace-store");
 const { buildArtifactPlan } = require("../surfacing/artifact-planner");
+const { attachArtifactPresentation } = require("../surfacing/artifact-factory");
 
-const SKILL_TIMEOUT_MS = 8000;
+const SKILL_TIMEOUT_MS = 20000;
 const MAX_SKILLS_PER_TURN = 3; // cap to keep latency predictable
 
 async function invokeSkillsForTurn(input, { workspaceId = null, domain = null, channel = "turn", senderId = null } = {}) {
@@ -28,7 +29,10 @@ async function invokeSkillsForTurn(input, { workspaceId = null, domain = null, c
       failed: [],
       detectedCount: 0,
       gatedCount: 0,
-      surfacingPlan: buildArtifactPlan({ input, domain, recommendedOutcome: null, skillResults: [] }),
+      surfacingPlan: attachArtifactPresentation(
+        buildArtifactPlan({ input, domain, recommendedOutcome: null, skillResults: [] }),
+        { input, domain, skillResults: [] }
+      ),
     };
   }
 
@@ -50,7 +54,10 @@ async function invokeSkillsForTurn(input, { workspaceId = null, domain = null, c
       detectedCount: intents.length,
       gatedCount: 0,
       gateBlocked: true,
-      surfacingPlan: buildArtifactPlan({ input, domain, recommendedOutcome: null, skillResults: [] }),
+      surfacingPlan: attachArtifactPresentation(
+        buildArtifactPlan({ input, domain, recommendedOutcome: null, skillResults: [] }),
+        { input, domain, skillResults: [] }
+      ),
     };
   }
 
@@ -122,12 +129,15 @@ async function invokeSkillsForTurn(input, { workspaceId = null, domain = null, c
     failed,
     detectedCount: intents.length,
     gatedCount: gated.length,
-    surfacingPlan: buildArtifactPlan({
-      input,
-      domain,
-      recommendedOutcome: null,
-      skillResults: skills,
-    }),
+    surfacingPlan: attachArtifactPresentation(
+      buildArtifactPlan({
+        input,
+        domain,
+        recommendedOutcome: null,
+        skillResults: skills,
+      }),
+      { input, domain, skillResults: skills }
+    ),
   };
 }
 

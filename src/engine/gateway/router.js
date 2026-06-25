@@ -38,10 +38,21 @@ const {
 } = require("../llm/expensive-model-approval");
 const sessions = require("./sessions");
 const { processAfterTurn } = require("../workspace/workspace-manager");
+const { getConversationTurnContext } = require("../conversation/conversation-engine");
+const { resolveFollowUpIntent } = require("../conversation/follow-up-resolver");
 const {
   findTravelPlanSkillResult,
   renderTravelPlanReply,
 } = require("../skills/travel-plan-renderer");
+const {
+  findEmailReadSkillResult,
+  renderEmailReadReply,
+} = require("../skills/email-read-renderer");
+const {
+  findScienceAdvisorSkillResult,
+  renderScienceAdvisorReply,
+} = require("../skills/science-advisor-renderer");
+const { isGreetingOnly, shouldAutoResetSession } = require("./session-reset");
 
 const CHANNEL_LABEL = {
   http: "HTTP",
@@ -49,6 +60,16 @@ const CHANNEL_LABEL = {
   slack: "Slack",
   imessage: "iMessage",
 };
+
+const HEALTH_SURFACE_RE = /\b(show|display|surface|pull|open|tell me about)\b.{0,40}\b(health|dashboard|medical record|a1c|blood pressure|bp|steps|weight)\b/i;
+
+function labelForSubjectId(subjectId) {
+  return String(subjectId || "")
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
 
 /**
  * Dispatch a normalized event through Monday's full turn pipeline.
@@ -61,7 +82,7 @@ const CHANNEL_LABEL = {
  * @returns {Promise<{ reply: string, session: object, truth: object }>}
  */
 async function dispatch(event) {
-  const { channel, senderId, text, reset = false } = event;
+  const { channel, senderId, text, reset = false, currentSubjectId = null } = event;
 
   console.log(`[gateway:router] ${CHANNEL_LABEL[channel] || channel} from ${senderId}: "${text.slice(0, 60)}${text.length > 60 ? "…" : ""}"`);
 
@@ -70,7 +91,21 @@ async function dispatch(event) {
     console.log(`[gateway:router] session reset for ${channel}:${senderId}`);
   }
 
-  const session = sessions.getOrCreateSession(channel, senderId);
+  let session = sessions.getOrCreateSession(channel, senderId);
+  if (!reset && shouldAutoResetSession(text, session)) {
+    sessions.clearSession(channel, senderId);
+    session = sessions.getOrCreateSession(channel, senderId);
+    console.log(`[gateway:router] auto-reset session for ${channel}:${senderId} due to fresh-start or topic shift`);
+  }
+
+  if (isGreetingOnly(text)) {
+    const reply = /^good morning/i.test(String(text || "").trim())
+      ? "Good morning. What's first?"
+      : "Hey. What's first?";
+    sessions.appendMessage(channel, senderId, { user: text, monday: reply });
+    return { reply, truth: null, domain: null, surfacingPlan: null, presence: null };
+  }
+
   const pendingApproval = session.context?.pendingExpensiveApproval || null;
   const approvalDecision = pendingApproval
     ? classifyApprovalInput(text)
@@ -84,7 +119,7 @@ async function dispatch(event) {
           pendingExpensiveApproval: null,
         },
       });
-      return { reply: buildDeclineMessage(), truth: null, domain: null };
+      return { reply: buildDeclineMessage(), truth: null, domain: null, presence: null };
     }
   }
 
@@ -100,6 +135,19 @@ async function dispatch(event) {
       : travelContinuation
         ? `${pendingTravelIntake.originalQuery}\nTrip details: ${text}`
         : text;
+  const subjectAnchoredInput =
+    currentSubjectId && currentSubjectId !== "daily"
+      ? `[Current Subject: ${labelForSubjectId(currentSubjectId)}]\n${effectiveInput}`
+      : effectiveInput;
+  const conversationTurnContext =
+    currentSubjectId && currentSubjectId !== "daily"
+      ? getConversationTurnContext({
+          channel,
+          senderId,
+          requestedSubjectId: currentSubjectId,
+        })
+      : null;
+  const followUpIntent = resolveFollowUpIntent(effectiveInput);
   const effectiveHistory =
     pendingApproval && approvalDecision === "approve"
       ? pendingApproval.historySnapshot || []
@@ -110,6 +158,7 @@ async function dispatch(event) {
     ...session.context,
     channel,
     senderId,
+    currentSubjectId,
   };
   delete mergedContext.pendingExpensiveApproval;
 
@@ -121,11 +170,14 @@ async function dispatch(event) {
     email: getEmailSummary({ limit: 4 }),
     finances: getFinancialSummary({ limit: 4 }),
     priorWorkingTheory: session.context?.workingTheory || null,
+    currentSubjectId,
+    followUpIntent,
+    livingConversation: conversationTurnContext,
   };
 
   // Run the Monday engine
   const result = await runMondayTurn({
-    input: effectiveInput,
+    input: subjectAnchoredInput,
     context: mergedContext,
     councilEnabled: false, // council reserved for sandbox dev; too slow for real-time channels
   });
@@ -136,7 +188,7 @@ async function dispatch(event) {
     identityProximity: result.finalState?.identityProximity || null,
     woundRisk: result.finalState?.woundRisk || null,
     classificationFallback: result.finalState?.classificationFallback || false,
-    input: effectiveInput,
+    input: subjectAnchoredInput,
   });
 
   if (approvalDecision !== "approve" && isExpensiveTier(preflightDecision.tier)) {
@@ -167,13 +219,14 @@ async function dispatch(event) {
   const { invokeSkillsForTurn } = require("../skills/skill-invoker");
   const { updateTheoryFromEvidence } = require("../skills/theory-from-evidence");
   const { buildArtifactPlan } = require("../surfacing/artifact-planner");
+  const { attachArtifactPresentation } = require("../surfacing/artifact-factory");
 
   const turnDomain = result.truth?.domain || result.finalState?.domain || null;
   const turnWorkspaceId = turnDomain ? turnDomain.toLowerCase() : null;
 
   let skillInvocation = { used: false, skills: [], failed: [] };
   try {
-    skillInvocation = await invokeSkillsForTurn(effectiveInput, {
+    skillInvocation = await invokeSkillsForTurn(subjectAnchoredInput, {
       workspaceId: turnWorkspaceId,
       domain: turnDomain,
       channel,
@@ -187,13 +240,21 @@ async function dispatch(event) {
     ? updateTheoryFromEvidence(personalContext.priorWorkingTheory, skillInvocation.skills)
     : null;
 
-  const surfacingPlan =
+  const surfacingPlan = attachArtifactPresentation(
     buildArtifactPlan({
       input: effectiveInput,
+      inputForReasoning: subjectAnchoredInput,
       domain: turnDomain,
       recommendedOutcome: result.finalState?.recommendedOutcome || null,
       skillResults: skillInvocation.skills,
-    }) || skillInvocation.surfacingPlan || null;
+    }) || skillInvocation.surfacingPlan || null,
+    {
+      input: effectiveInput,
+      inputForReasoning: subjectAnchoredInput,
+      domain: turnDomain,
+      skillResults: skillInvocation.skills,
+    }
+  );
 
   const finalPersonalContext = {
     ...enrichedPersonalContext,
@@ -203,16 +264,110 @@ async function dispatch(event) {
   };
   // ── end JARVIS loop ────────────────────────────────────────────────────────
 
+  const scienceAdvisorSkill = findScienceAdvisorSkillResult(skillInvocation.skills);
+  const travelPlanSkill = findTravelPlanSkillResult(skillInvocation.skills);
+  const emailReadSkill = findEmailReadSkillResult(skillInvocation.skills);
+  const travelPlanStatus = travelPlanSkill?.raw?.data?.status || null;
+
+  const immediateReply =
+    scienceAdvisorSkill ? renderScienceAdvisorReply(scienceAdvisorSkill)
+      : travelPlanSkill ? renderTravelPlanReply(travelPlanSkill)
+        : emailReadSkill ? renderEmailReadReply(emailReadSkill)
+          : surfacingPlan?.artifactKey === "health" && HEALTH_SURFACE_RE.test(effectiveInput)
+            ? "I surfaced your health dashboard. Start with the first sequence on screen: A1C, steps, weight, and blood pressure. Tell me which signal you want to inspect first."
+            : null;
+
+  if (immediateReply) {
+    const reply = immediateReply;
+    const domain = result.finalState?.domain || result.truth?.domain || null;
+
+    if (domain) {
+      try {
+        const { detectMissionOpportunity } = require("../missions/mission-engine");
+        const workspaceStore = require("../workspace/workspace-store");
+        const wsLog = workspaceStore.getLog(domain.toLowerCase(), { limit: 40 });
+        const suggestion = detectMissionOpportunity(domain, wsLog);
+        if (suggestion.suggested) {
+          console.log(`[gateway:router] mission suggestion: ${domain} — ${suggestion.reason}`);
+        }
+      } catch (err) {
+        console.warn("[gateway:router] mission detection error:", err.message);
+      }
+    }
+
+    processAfterTurn({
+      domain,
+      userText: effectiveInput,
+      mondayReply: reply,
+      workingTheory: session.context?.workingTheory || null,
+      skillsUsed: skillInvocation.skills.map((s) => s.skillId),
+      channel,
+    });
+
+    sessions.saveSession(channel, senderId, {
+      context: {
+        ...session.context,
+        ...result.nextContext,
+        workingTheory: session.context?.workingTheory || null,
+        pendingExpensiveApproval: null,
+        pendingTravelIntake: null,
+      },
+    });
+    sessions.appendMessage(channel, senderId, { user: effectiveInput, monday: reply });
+
+    recordTurnLearning({
+      input: effectiveInput,
+      sessionId: `${channel}:${senderId}`,
+      result: {
+        ...result,
+        voice: { ...(result.voice || {}), text: reply },
+      },
+    });
+    if (personalContext.captureIntent) {
+      recordCapture({
+        input: effectiveInput,
+        finalState: result.finalState,
+        truth: result.truth,
+        context: mergedContext,
+      });
+    }
+
+    let presence = null;
+    try {
+      const { syncPresenceAfterConversation, hydratePresenceState } = require("./presence-engine");
+      syncPresenceAfterConversation({
+        channel,
+        senderId,
+        currentSubjectId,
+        domain,
+        reply,
+        workingTheory: result.nextContext?.workingTheory || null,
+        userInput: effectiveInput,
+      });
+      if (channel === "presence-web") {
+        presence = hydratePresenceState({ channel, senderId });
+      }
+    } catch (err) {
+      console.warn("[gateway:router] presence sync error:", err.message);
+    }
+
+    return {
+      reply,
+      truth: result.truth,
+      domain: result.finalState.domain,
+      surfacingPlan,
+      presence,
+    };
+  }
+
   // Apply intelligence layer (Ollama/Claude refinement)
   const intelligentResult = await applyMondayIntelligence({
     result,
-    input: effectiveInput,
+    input: subjectAnchoredInput,
     history: effectiveHistory,
     personalContext: finalPersonalContext,
   });
 
-  const travelPlanSkill = findTravelPlanSkillResult(skillInvocation.skills);
-  const travelPlanStatus = travelPlanSkill?.raw?.data?.status || null;
   const reply = travelPlanSkill
     ? renderTravelPlanReply(travelPlanSkill)
     : intelligentResult.voice.text;
@@ -256,6 +411,7 @@ async function dispatch(event) {
   // Persist session
   sessions.saveSession(channel, senderId, {
     context: {
+      ...session.context,
       ...intelligentResult.nextContext,
       workingTheory: intelligentResult.workingTheory || null,
       pendingExpensiveApproval: null,
@@ -283,11 +439,32 @@ async function dispatch(event) {
     });
   }
 
+  let presence = null;
+  try {
+    const { syncPresenceAfterConversation, hydratePresenceState } = require("./presence-engine");
+    syncPresenceAfterConversation({
+      channel,
+      senderId,
+      currentSubjectId,
+      domain,
+      reply,
+      workingTheory: intelligentResult.workingTheory || null,
+      userInput: effectiveInput,
+      conversationTurn: intelligentResult.conversationTurn || null,
+    });
+    if (channel === "presence-web") {
+      presence = hydratePresenceState({ channel, senderId });
+    }
+  } catch (err) {
+    console.warn("[gateway:router] presence sync error:", err.message);
+  }
+
   return {
     reply,
     truth: intelligentResult.truth,
     domain: result.finalState.domain,
     surfacingPlan,
+    presence,
   };
 }
 

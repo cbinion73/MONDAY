@@ -4,6 +4,9 @@ const state = {
   context: {},
   lastReplyText: "",
   recognition: null,
+  currentAudio: null,
+  currentAudioUrl: null,
+  speaking: false,
   pendingReplyEl: null,
   review: null,
   learning: null,
@@ -1327,8 +1330,24 @@ function exportFieldNotes() {
 const VOICE_EXIT_PHRASES = /^(goodbye|that's all|thanks monday|stop listening|exit|never mind)/i;
 const WAKE_WORD = /^monday[,.]?\s*/i;
 const CONV_TIMEOUT_MS = 90_000;
+const CONV_ACK = "I'm here.";
 
 let _convTimeoutId = null;
+
+function stopCurrentAudio() {
+  if (state.currentAudio) {
+    try {
+      state.currentAudio.pause();
+      state.currentAudio.currentTime = 0;
+    } catch {}
+    state.currentAudio = null;
+  }
+  if (state.currentAudioUrl) {
+    try { URL.revokeObjectURL(state.currentAudioUrl); } catch {}
+    state.currentAudioUrl = null;
+  }
+  state.speaking = false;
+}
 
 function initSpeechRecognition() {
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1367,6 +1386,12 @@ function initSpeechRecognition() {
     console.warn("[voice] recognition error:", event.error);
   };
 
+  recognition.onspeechend = () => {
+    if (state.presenceMode === "conversation") {
+      try { recognition.stop(); } catch {}
+    }
+  };
+
   state.recognition = recognition;
   state.presenceMode = "off"; // "off" | "standby" | "conversation"
   state.voiceThread = null;   // { domain, topic, turnCount, startedAt }
@@ -1396,23 +1421,10 @@ function deactivateStandby() {
   state.recognition.onend = null;
 }
 
-function handleStandbyResult(event) {
-  const transcript = event.results[event.resultIndex]?.[0]?.transcript?.trim() || "";
-  if (!WAKE_WORD.test(transcript)) return;
-
-  const command = transcript.replace(WAKE_WORD, "").trim();
-  if (command) {
-    sendVoiceMessage(command);
-  } else {
-    // Wake word only — acknowledge and enter conversation
-    enterConversationMode("Monday?");
-  }
-}
-
-// ── Conversation mode (continuous back-and-forth) ─────────────────────────────
-
-function enterConversationMode(ack = null) {
+function promoteStandbyToConversation() {
   if (!state.recognition) return;
+  stopCurrentAudio();
+  clearTimeout(_convTimeoutId);
   state.presenceMode = "conversation";
   state.voiceThread = state.voiceThread || {
     topic: null,
@@ -1420,7 +1432,42 @@ function enterConversationMode(ack = null) {
     turnCount: 0,
     startedAt: Date.now(),
   };
+  state.recognition.continuous = false;
+  state.recognition.onend = null;
   updatePresenceUI();
+  try { state.recognition.stop(); } catch {}
+}
+
+function handleStandbyResult(event) {
+  const transcript = event.results[event.resultIndex]?.[0]?.transcript?.trim() || "";
+  if (!WAKE_WORD.test(transcript)) return;
+
+  const command = transcript.replace(WAKE_WORD, "").trim();
+  if (command) {
+    promoteStandbyToConversation();
+    sendVoiceMessage(command);
+  } else {
+    // Wake word only — acknowledge and enter conversation
+    promoteStandbyToConversation();
+    enterConversationMode(CONV_ACK);
+  }
+}
+
+// ── Conversation mode (continuous back-and-forth) ─────────────────────────────
+
+function enterConversationMode(ack = null) {
+  if (!state.recognition) return;
+  if (state.presenceMode !== "conversation") {
+    stopCurrentAudio();
+    state.presenceMode = "conversation";
+    state.voiceThread = state.voiceThread || {
+      topic: null,
+      domain: null,
+      turnCount: 0,
+      startedAt: Date.now(),
+    };
+    updatePresenceUI();
+  }
 
   if (ack) {
     addMessage(ack, "monday");
@@ -1432,6 +1479,7 @@ function enterConversationMode(ack = null) {
 
 function listenForConversationTurn() {
   if (!state.recognition || state.presenceMode !== "conversation") return;
+  stopCurrentAudio();
   state.recognition.continuous = false;
   state.recognition.onresult = handleConversationResult;
   state.recognition.onend = null;
@@ -1456,6 +1504,7 @@ function handleConversationResult(event) {
 function exitConversationMode() {
   clearTimeout(_convTimeoutId);
   const wasConversation = state.presenceMode === "conversation";
+  stopCurrentAudio();
   state.presenceMode = "off";
   state.voiceThread = null;
   updatePresenceUI();
@@ -1476,6 +1525,7 @@ async function sendVoiceMessage(text) {
 async function autoSpeakText(text) {
   if (!text) return;
   try {
+    stopCurrentAudio();
     const response = await fetch(`${API_BASE}/api/monday-sandbox/tts`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1485,7 +1535,23 @@ async function autoSpeakText(text) {
     const audioBlob = await response.blob();
     const audioUrl = URL.createObjectURL(audioBlob);
     const audio = new Audio(audioUrl);
-    await new Promise((resolve) => { audio.onended = resolve; audio.onerror = resolve; audio.play(); });
+    state.currentAudio = audio;
+    state.currentAudioUrl = audioUrl;
+    state.speaking = true;
+    await new Promise((resolve) => {
+      audio.onended = () => {
+        stopCurrentAudio();
+        resolve();
+      };
+      audio.onerror = () => {
+        stopCurrentAudio();
+        resolve();
+      };
+      audio.play().catch(() => {
+        stopCurrentAudio();
+        resolve();
+      });
+    });
   } catch {}
 }
 
@@ -1515,9 +1581,9 @@ function updatePresenceUI() {
     label.textContent = labels[mode] || mode;
   }
 
-  // Disable PTT/Mic buttons when in non-PTT modes (they'd conflict)
+  // PTT conflicts with always-on modes, but Mic doubles as conversation control.
   const pttBlocked = mode !== "off";
-  if (elements.micButton) elements.micButton.disabled = pttBlocked;
+  if (elements.micButton) elements.micButton.disabled = !state.recognition;
   if (elements.pttButton) elements.pttButton.disabled = pttBlocked;
 }
 
@@ -2396,7 +2462,18 @@ elements.toggleTriage.addEventListener("click", () => {
 });
 
 elements.micButton.addEventListener("click", () => {
-  state.recognition?.start();
+  if (!state.recognition) return;
+  if (state.presenceMode === "conversation") {
+    if (state.speaking) {
+      stopCurrentAudio();
+    }
+    listenForConversationTurn();
+    return;
+  }
+  if (state.presenceMode === "standby") {
+    deactivateStandby();
+  }
+  enterConversationMode(CONV_ACK);
 });
 
 elements.pttButton.addEventListener("mousedown", () => {

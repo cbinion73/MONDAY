@@ -133,6 +133,7 @@ The same artifact system should be reusable for:
 
 - graphs
 - charts
+- structured models
 - dashboards
 - tables
 - images
@@ -143,6 +144,33 @@ The same artifact system should be reusable for:
 
 The system is universal.
 The thing that changes is the surfaced content, not the interaction pattern.
+
+## Model Surfacing Rules
+
+Monday should also be able to surface a reusable model view when the truth is better explained as structure than as a website or a static document.
+
+Examples include:
+
+- financial state models
+- calendar pressure models
+- email triage models
+- research structure models
+- mixed-source reasoning models
+
+Model-style artifacts should be assembled from reusable panels rather than from topic-specific hard-coded pages.
+
+Useful model panels include:
+
+- source card
+- signal card
+- comparison card
+- decision card
+- metric strip
+- evidence list
+- recommendation callout
+
+The goal is not decorative dashboarding.
+The goal is to make the structure of Monday's reasoning visible.
 
 ## Document Surfacing Rules
 

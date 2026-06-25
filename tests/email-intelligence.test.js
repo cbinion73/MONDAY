@@ -17,7 +17,47 @@ function fresh(mod) {
 
 const llmRouterPath = "../src/engine/llm/llm-router";
 const llmRouter = fresh(llmRouterPath);
-llmRouter.chatWithLLM = async ({ messages }) => {
+llmRouter.chatWithLLM = async ({ messages, purpose }) => {
+  if (purpose === "email-intelligence-interpretation") {
+    const payload = JSON.parse(messages[1].content);
+    const text = `${payload.subject} ${payload.body}`;
+    if (/air and space museum/i.test(text)) {
+      return {
+        json: {
+          artifactType: "reservation_confirmation",
+          title: "National Air and Space Museum reservation",
+          summary: "Museum pass confirmation with QR-code entry instructions.",
+          facts: {
+            scheduled_date: "June 26, 2026",
+            scheduled_time: "10:00 AM",
+            location_name: "National Air and Space Museum",
+            location_address: "600 Independence Ave SW, Washington, DC 20560",
+            confirmation_number: "NASM12345",
+            entry_instruction: "Bring the QR code or digital pass for scanning at entry.",
+          },
+        },
+      };
+    }
+    if (/statue of liberty/i.test(text)) {
+      return {
+        json: {
+          artifactType: "reservation_confirmation",
+          title: "Statue of Liberty reservation",
+          summary: "Reserve ticket confirmation for the Statue of Liberty.",
+          facts: {
+            scheduled_date: "June 26, 2026",
+            scheduled_time: "10:00 AM",
+            location_name: "Statue of Liberty",
+            location_address: "Battery Park, New York, NY",
+            confirmation_number: "ABC12345",
+            entry_instruction: "Arrive 30 minutes early at Battery Park.",
+          },
+        },
+      };
+    }
+    return { json: { artifactType: "", title: "", summary: "", facts: {} } };
+  }
+
   const payload = JSON.parse(messages[1].content);
   const threads = payload.threads.map((thread) => ({
     id: thread.id,
@@ -41,6 +81,8 @@ const {
   retrieveIntelligentEmail,
   buildIntelligenceRecord,
   extractStructuredFacts,
+  interpretStructuredFactsLocally,
+  enrichFactsFromTrustedReservationLinks,
 } = fresh("../src/engine/connectors/email-intelligence");
 const { importEmailThreads } = fresh("../src/engine/connectors/email-context");
 const { getEmailThreadFacts } = fresh("../src/engine/db/email-intelligence-store");
@@ -133,6 +175,111 @@ test("extractStructuredFacts pulls travel details", () => {
   assert.ok(facts.some((fact) => fact.type === "date" && /June 26/i.test(fact.value)));
 });
 
+test("extractStructuredFacts parses Etix JSON-LD reservation details", () => {
+  const facts = extractStructuredFacts({
+    subject: "Thank You For Reserving Tickets to the Archives",
+    bodyText: `<!DOCTYPE html><html><head><script type="application/ld+json">{\n      "@context":"http://schema.org",\n      "@type":"EventReservation",\n      "reservationNumber":"458534353",\n      "reservationFor":{\n        "@type":"Event",\n        "name":"1:30pm - 1:45pm National Archives Museum Timed-Entry Ticket",\n        "startDate":"2026-07-04T13:30:00",\n        "location":{\n          "@type":"Place",\n          "name":"National Archives Museum - Timed-Entry",\n          "address":{\n            "@type":"PostalAddress",\n            "streetAddress":"701 Constitution Avenue Northwest",\n            "addressLocality":"Washington",\n            "addressRegion":"DC",\n            "postalCode":"20408"\n          }\n        }\n      }\n    }</script></head><body>Order ID: 458534353</body></html>`,
+  });
+
+  assert.ok(facts.some((fact) => fact.type === "confirmation_number" && fact.value === "458534353"));
+  assert.ok(facts.some((fact) => fact.type === "scheduled_date" && /Saturday, July 4, 2026/.test(fact.value)));
+  assert.ok(facts.some((fact) => fact.type === "scheduled_time" && /1:30 PM/.test(fact.value)));
+  assert.ok(facts.some((fact) => fact.type === "location_name" && /National Archives Museum/.test(fact.value)));
+  assert.ok(facts.some((fact) => fact.type === "location_address" && /701 Constitution Avenue Northwest, Washington, DC, 20408/.test(fact.value)));
+  assert.ok(!facts.some((fact) => fact.type === "reservation"), "canonical ticket facts should drop generic reservation aliases");
+  assert.ok(!facts.some((fact) => fact.type === "time" && fact.key === "scheduled"), "canonical ticket facts should drop scheduled time aliases");
+  assert.ok(!facts.some((fact) => fact.type === "location" && fact.key === "name"), "canonical ticket facts should drop location aliases");
+});
+
+test("extractStructuredFacts parses Smithsonian order metadata", () => {
+  const facts = extractStructuredFacts({
+    subject: "Your confirmation from National Air and Space Museum",
+    bodyText: "Order details Order code: 368-W3T-LVHD Reserved on: Sunday, Jun 14 2026 - 2:01pm Total: $0.00 Please have your pass available when you arrive.",
+  });
+
+  assert.ok(facts.some((fact) => fact.type === "confirmation_number" && fact.value === "368-W3T-LVHD"));
+  assert.ok(facts.some((fact) => fact.type === "email_received_at" && /Sunday, Jun 14 2026 - 2:01pm/.test(fact.value)));
+});
+
+testAsync("enrichFactsFromTrustedReservationLinks upgrades Smithsonian reservation page facts", async () => {
+  const https = require("node:https");
+  const originalGet = https.get;
+  https.get = (url, cb) => {
+    const { EventEmitter } = require("node:events");
+    const res = new EventEmitter();
+    res.statusCode = 200;
+    process.nextTick(() => {
+      cb(res);
+      res.emit("data", Buffer.from(`
+        <html><body>
+        Your Passes 3 x Individual Free Timed Entry Passes Friday, July 3, 2026
+        Entry Time: 10:00am - No Early Entry
+        Order # 368*W3TLVHD*
+        Plan Your Visit National Air and Space Museum
+        650 Jefferson Drive SW
+        Washington DC
+        20560
+        Entry is via the north side of the Museum only, at 650 Jefferson Drive, SW (the National Mall side of the building).
+        </body></html>
+      `));
+      res.emit("end");
+    });
+    return { setTimeout() {}, on() {}, destroy() {} };
+  };
+
+  try {
+    const facts = await enrichFactsFromTrustedReservationLinks([
+      { type: "link", value: "https://tickets.si.edu/ticket_order/abc-123", confidence: 0.72 },
+    ]);
+    assert.ok(facts.some((fact) => fact.type === "scheduled_date" && /Friday, July 3, 2026/.test(fact.value)));
+    assert.ok(facts.some((fact) => fact.type === "scheduled_time" && /10:00 AM/.test(fact.value)));
+    assert.ok(facts.some((fact) => fact.type === "location_name" && /National Air and Space Museum/.test(fact.value)));
+    assert.ok(facts.some((fact) => fact.type === "location_address" && /650 Jefferson Drive SW, Washington, DC 20560/.test(fact.value)));
+    assert.ok(facts.some((fact) => fact.type === "confirmation_number" && /368-W3TLVHD/.test(fact.value)));
+  } finally {
+    https.get = originalGet;
+  }
+});
+
+testAsync("enrichFactsFromTrustedReservationLinks still sanitizes canonical facts without trusted links", async () => {
+  const facts = await enrichFactsFromTrustedReservationLinks([
+    { type: "confirmation_number", value: "458534353", confidence: 0.96 },
+    { type: "reservation", key: "confirmation_number", value: "458534353", confidence: 0.96 },
+    { type: "scheduled_date", value: "Saturday, July 4, 2026", confidence: 0.95 },
+    { type: "date", key: "scheduled", value: "Saturday, July 4, 2026", confidence: 0.95 },
+    { type: "scheduled_time", value: "1:30 PM", confidence: 0.95 },
+    { type: "time", key: "scheduled", value: "1:30 PM", confidence: 0.95 },
+    { type: "location_name", value: "National Archives Museum - Timed-Entry", confidence: 0.94 },
+    { type: "location", key: "name", value: "National Archives Museum - Timed-Entry", confidence: 0.94 },
+  ]);
+
+  assert.ok(facts.some((fact) => fact.type === "confirmation_number"));
+  assert.ok(facts.some((fact) => fact.type === "scheduled_date"));
+  assert.ok(facts.some((fact) => fact.type === "scheduled_time"));
+  assert.ok(facts.some((fact) => fact.type === "location_name"));
+  assert.ok(!facts.some((fact) => fact.type === "reservation"));
+  assert.ok(!facts.some((fact) => fact.type === "date"));
+  assert.ok(!facts.some((fact) => fact.type === "time"));
+  assert.ok(!facts.some((fact) => fact.type === "location"));
+});
+
+testAsync("interpretStructuredFactsLocally infers canonical reservation fields", async () => {
+  const facts = await interpretStructuredFactsLocally({
+    subject: "Your confirmation from National Air and Space Museum",
+    from: "National Air and Space Museum <airandspace@smithsonian.org>",
+    bodyText: "Your visit is on June 26, 2026 at 10:00 AM. Bring the QR code or digital pass for scanning at entry. Confirmation NASM12345.",
+    updatedAt: "2026-06-14T18:01:41.000Z",
+  }, []);
+
+  assert.ok(facts.some((fact) => fact.type === "scheduled_date" && /June 26, 2026/i.test(fact.value)));
+  assert.ok(facts.some((fact) => fact.type === "scheduled_time" && /10:00 AM/i.test(fact.value)));
+  assert.ok(facts.some((fact) => fact.type === "location_name" && /National Air and Space Museum/i.test(fact.value)));
+  assert.ok(facts.some((fact) => fact.type === "location_address" && /Independence Ave/i.test(fact.value)));
+  assert.ok(facts.some((fact) => fact.type === "confirmation_number" && /NASM12345/i.test(fact.value)));
+  assert.ok(facts.some((fact) => fact.type === "summary"));
+  assert.ok(facts.some((fact) => fact.type === "email_received_at"));
+});
+
 testAsync("retrieveIntelligentEmail suppresses promos and ranks travel email first", async () => {
   const result = await retrieveIntelligentEmail({
     query: "plan my trip next week to Philadelphia, the Statue of Liberty, and Washington, DC. I have tickets in my email.",
@@ -144,7 +291,8 @@ testAsync("retrieveIntelligentEmail suppresses promos and ranks travel email fir
   assert.ok(result.data.every((thread) => thread.id !== "promo-1"), "promo thread should have been filtered");
   assert.ok(result.data.every((thread) => thread.id !== "false-travel-1"), "travel-shaped campaign email should have been filtered");
   const facts = getEmailThreadFacts("travel-1");
-  assert.ok(facts.some((fact) => fact.type === "reservation"), "expected reservation fact written to sqlite");
+  assert.ok(facts.some((fact) => fact.type === "confirmation_number"), "expected canonical confirmation_number fact written to sqlite");
+  assert.ok(!facts.some((fact) => fact.type === "reservation"), "expected stale reservation aliases to be pruned from sqlite");
   const memoryRecord = getEmailMemoryRecord("travel-1");
   assert.ok(memoryRecord, "expected preserved correspondence record");
   assert.ok(memoryRecord.vectorDocId, "expected vector correspondence record");

@@ -5,8 +5,8 @@ function renderOrientation({ truth }) {
   ) {
     return [
       "Summer Camp is in good shape.",
-      "I think the real question is transportation — that's the only thing still open.",
-      "My read is if we close that, the mission is ready.",
+      "Transportation is the only thing I'd still worry about.",
+      "If we close that, I'd consider the mission ready.",
     ];
   }
 

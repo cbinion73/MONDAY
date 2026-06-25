@@ -7,6 +7,22 @@ const TIER_CONCISENESS = {
 };
 const DEFAULT_CONCISENESS = TIER_CONCISENESS.conversation;
 
+function selectRelevantSurfacingItem(surfacingItem, result) {
+  if (!surfacingItem) return null;
+
+  const liveDomain = String(
+    result.truth?.domain ||
+    result.finalState?.domain ||
+    result.finalState?.candidateDomain ||
+    ""
+  ).toLowerCase();
+  const surfacingDomain = String(surfacingItem.domain || "").toLowerCase();
+
+  if (!liveDomain || !surfacingDomain) return null;
+  if (liveDomain !== surfacingDomain) return null;
+  return surfacingItem;
+}
+
 function buildConversationPrompt({ result, input, history, personalContext = {}, tier = null }) {
   const userPayload = buildConversationPayload({
     result,
@@ -100,10 +116,13 @@ function buildConversationPrompt({ result, input, history, personalContext = {},
     "Avoid replies that stop at 'Want me to...' when the user has already asked you to do the thing.",
     "When trusted data sources are relevant, think in this order: source -> signal -> comparison -> display -> explanation.",
     "When the best surface is a document rather than a graph, think in this order: source -> structure -> blocks -> display -> explanation.",
+    "When the best surface is a model rather than a document, think in this order: source -> signal -> structure -> panels -> explanation.",
     "Do not surface a graph just because data exists. Surface a graph when trend, comparison, correlation, anomaly, or baseline change would make the truth easier to see.",
     "If a single number is enough, do not force a chart. If a chart makes the pattern immediate, prefer the chart.",
     "For document-style artifacts, compose only the blocks needed for the moment: hero, executive summary, map or route, comparison table, pricing options, timeline, image cards, recommendation callout, next steps.",
+    "For model-style artifacts, reuse only the panels needed for the truth: source card, signal card, comparison card, decision card, metric strip, evidence list, and recommendation callout.",
     "Do not force every document into the same template. Reuse the modal system, but let the block composition match the topic.",
+    "Do not force every model into the same shape either. The reusable system is the modal and block grammar; the composition should follow the topic and evidence.",
     "When multiple visuals are needed, introduce them in explanatory order rather than all at once: primary signal first, then likely driver, then wider context, then final completing factor.",
     "If a visual display is being discussed, Monday should briefly name what she is pulling onto the screen and why it matters before or as it appears.",
     "When multiple data sources are involved, prefer direct trusted sources over inferred summaries. If the data is partial, say it is partial. If the signal is weak, say it is weak. Never invent data to complete a display.",
@@ -115,6 +134,11 @@ function buildConversationPrompt({ result, input, history, personalContext = {},
     "Standing authority exists only in explicitly pre-approved domains. Never self-promote into autonomy.",
     "If the level is ambiguous, drop one level and make the recommendation instead of acting.",
     "Use the conversationSynthesis block as the current best model of what the full conversation may be exploring across turns.",
+    "Use livingConversation as the current runtime state of the active Subject's ongoing conversation.",
+    "If followUpIntent is present, answer that exact follow-up from the living conversation instead of restarting the topic.",
+    "For 'what_changed', answer with a theory delta in this order: before, now, because.",
+    "For 'why_it_matters', explain why the newer read changes the kind of decision or tension this actually is.",
+    "For 'recommendation' or 'next_move', give a concrete recommendation instead of another broad question.",
     "By later turns, prefer connecting the thread over responding only to the latest sentence.",
     "If family, children, marriage, attention, or hours-worked enters a work or retirement thread, test whether the real issue is no longer freedom in general but the allocation of attention toward what matters most.",
     "Do not default to counseling-intake language like 'can you tell me more', 'can you share more', or 'help me understand' unless the conversation is genuinely unclassified.",
@@ -344,6 +368,7 @@ function buildConversationPayload({ result, input, history, personalContext = {}
     result,
     conversationHypothesis,
     theoryRevision,
+    followUpIntent: personalContext.followUpIntent || null,
   });
 
   return {
@@ -388,6 +413,8 @@ function buildConversationPayload({ result, input, history, personalContext = {}
       progressionContext,
     }),
     roleGuidance,
+    followUpIntent: personalContext.followUpIntent || null,
+    livingConversation: buildLivingConversationContext(personalContext.livingConversation),
     captureIntent: personalContext.captureIntent || false,
     relevantThread: personalContext.relevantThread || null,
     missionThreads: personalContext.missionThreads || [],
@@ -395,7 +422,7 @@ function buildConversationPayload({ result, input, history, personalContext = {}
     priorWorkingTheory: priorWorkingTheory || null,
     workingTheories: _formatWorkingTheories(personalContext.workingTheories),
     recentDecisions: _formatRecentDecisions(personalContext.recentDecisions),
-    surfacingItem: personalContext.surfacingItem || null,
+    surfacingItem: selectRelevantSurfacingItem(personalContext.surfacingItem, result),
     skillContext: buildSkillContext(
       personalContext.skillResults || [],
       personalContext.theoryEvidence || null,
@@ -404,6 +431,58 @@ function buildConversationPayload({ result, input, history, personalContext = {}
     memoryRecall: (personalContext.memoryRecall && personalContext.memoryRecall.length > 0)
       ? personalContext.memoryRecall
       : null,
+  };
+}
+
+function buildLivingConversationContext(livingConversation) {
+  if (!livingConversation?.subject || !livingConversation?.conversation) return null;
+  const { subject, conversation, phase, stageMode, pendingSurfacing } = livingConversation;
+  return {
+    activeSubject: {
+      id: subject.id,
+      name: subject.name,
+      domain: subject.domain,
+      summary: subject.summary || "",
+    },
+    status: conversation.status,
+    stageMode: stageMode || null,
+    phase: phase || null,
+    currentRead: conversation.currentRead || null,
+    whatIThink: conversation.whatIThink || conversation.currentRead || null,
+    whatChangedMyMind: conversation.whatChangedMyMind || null,
+    whatIAmStillChecking: conversation.whatIAmStillChecking || null,
+    currentThought: conversation.currentThought || null,
+    currentHypothesis: conversation.currentHypothesis || null,
+    previousHypothesis: conversation.previousHypothesis || null,
+    currentTheory: conversation.currentConversationSummary || null,
+    currentConcern: conversation.currentConcern || null,
+    currentOpportunity: conversation.currentOpportunity || null,
+    currentQuestion:
+      conversation.currentQuestion ||
+      conversation.unresolvedQuestion ||
+      conversation.currentOpenQuestion ||
+      null,
+    currentReadStale: Boolean(conversation.currentReadStale),
+    currentReadConfidence: conversation.currentReadConfidence ?? null,
+    currentReadDecision: conversation.currentReadDecision || null,
+    currentReadLabels: conversation.currentReadLabels || [],
+    currentReadEvidence: conversation.currentReadEvidence || null,
+    supportingSignals: conversation.currentReadSupportingSignals || [],
+    opposingSignals: conversation.currentReadOpposingSignals || [],
+    driftMemory: conversation.driftMemory || null,
+    revealedProp: conversation.pendingReveal || null,
+    pendingEvidence: conversation.pendingReveal || null,
+    latestWorkforceSignal: conversation.latestWorkforceSignal || pendingSurfacing || null,
+    unresolvedQuestion:
+      conversation.unresolvedQuestion ||
+      conversation.currentOpenQuestion ||
+      null,
+    recommendedNextMove:
+      conversation.currentRecommendation ||
+      conversation.pendingRecommendation ||
+      null,
+    lastUserAsk: conversation.lastUserAsk || null,
+    lastMondayConclusion: conversation.lastMondayConclusion || null,
   };
 }
 
@@ -703,7 +782,7 @@ function buildConversationHypothesis({
   }
 
   if (progressionContext?.newInformation) {
-    return `It sounds like the latest shift may be this: ${progressionContext.newInformation}`;
+    return `This turn adds: ${progressionContext.newInformation}`;
   }
 
   if (priorWorkingTheory?.statement) {
@@ -839,10 +918,17 @@ function buildTheoryRevision({
   };
 }
 
-function buildRecommendationMode({ result, conversationHypothesis, theoryRevision }) {
+function buildRecommendationMode({ result, conversationHypothesis, theoryRevision, followUpIntent = null }) {
   const activeRole = result.finalState?.activeRole;
   const recommendedOutcome = result.finalState?.recommendedOutcome;
   const significance = result.finalState?.significance;
+
+  if (followUpIntent === "recommendation" || followUpIntent === "next_move") {
+    return {
+      stage: "recommend",
+      guidance: "The user explicitly asked for a recommendation. Give the next move directly.",
+    };
+  }
 
   if (!conversationHypothesis) {
     return {

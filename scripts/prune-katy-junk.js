@@ -16,11 +16,10 @@ const {
 
 async function main() {
   const limit = Number(process.argv[2] || 500);
-  const records = listEmailMemoryRecords({ limit });
+  const records = listEmailMemoryRecords({ limit, preserveState: "preserved" });
   const toDrop = [];
 
   for (const record of records) {
-    if (record.preserveState !== "preserved") continue;
     const thread = getEmailThread(record.threadId);
     if (!thread) continue;
     const verdict = shouldPreserveCorrespondence({

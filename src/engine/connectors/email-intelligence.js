@@ -1,6 +1,7 @@
 "use strict";
 
 const crypto = require("node:crypto");
+const https = require("node:https");
 const { readEmailStore } = require("./email-context");
 const { chatWithLLM } = require("../llm/llm-router");
 const {
@@ -13,10 +14,13 @@ const {
 } = require("../correspondence/katy-stampwhistle");
 const { searchGmailThreads } = require("./gmail-sync");
 const { searchOutlookMessages } = require("./outlook-sync");
+const { normalizeUserFacingDate, normalizeUserFacingTime } = require("../utils/local-time");
 
 const INTERNAL_MAX_CLASSIFY = Number(process.env.MONDAY_EMAIL_CLASSIFY_LIMIT || 12);
 const INTERNAL_MAX_RETURN = Number(process.env.MONDAY_EMAIL_INTEL_RETURN_LIMIT || 6);
 const LOCAL_CLASSIFY_TIMEOUT_MS = Number(process.env.MONDAY_EMAIL_CLASSIFY_TIMEOUT_MS || 15000);
+const LOCAL_INTERPRET_TIMEOUT_MS = Number(process.env.MONDAY_EMAIL_INTERPRET_TIMEOUT_MS || 120000);
+const LOCAL_INTERPRET_MODEL = process.env.MONDAY_EMAIL_INTERPRET_MODEL || "qwen3:14b";
 
 const JUNK_SENDERS = /(?:no-?reply|do-?not-?reply|noreply|newsletter|news@|updates@|offers@|deals@|marketing|mailer-daemon)/i;
 const MARKETING_KW = /\b(sale|discount|offer|offers|member only|member benefits|webinar|survey|promo|promotion|shop now|today only|last chance|save|savings)\b/i;
@@ -35,6 +39,10 @@ const URL_KW = /https?:\/\/[^\s)>"']+/g;
 const DATE_KW = /\b(?:mon|tues|wed|thu|fri|sat|sun)?\.?,?\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2}(?:,\s*\d{4})?|\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/ig;
 const TIME_KW = /\b\d{1,2}:\d{2}\s?(?:AM|PM|am|pm)\b|\b\d{1,2}\s?(?:AM|PM|am|pm)\b/g;
 const CONFIRMATION_KW = /\b(?:confirmation|reservation|booking|order|ticket)\s*(?:number|#|no\.?)?\s*[:#]?\s*([A-Z0-9-]{5,})\b/ig;
+const ORDER_CODE_KW = /\b(?:order code|order id|confirmation code|reservation code)\s*:\s*([A-Z0-9-]{5,})\b/ig;
+const RESERVED_ON_KW = /\breserved on:\s*([^\n\r]+?)\b(?:total:|$)/i;
+const INTERPRET_THREAD_KW = /\b(ticket|tickets|reservation|booking|itinerary|museum|admission|pass|qr code|entry|arrival|tour|visitor|trip|travel|confirmation)\b/i;
+const TRUSTED_RESERVATION_PAGE_RE = /^https:\/\/tickets\.si\.edu\/ticket_order\/[A-Za-z0-9-]+/i;
 
 function hashThread(thread) {
   return crypto
@@ -183,6 +191,179 @@ function flattenThread(thread) {
   return [thread.subject, thread.from, thread.snippet, thread.bodyText].filter(Boolean).join(" ");
 }
 
+function cleanEmailBodyForInterpretation(value) {
+  return String(value || "")
+    .replace(/<!DOCTYPE[\s\S]*?>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function safeJsonParse(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function fetchText(url, timeoutMs = 20000) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, (res) => {
+      if (res.statusCode && res.statusCode >= 400) {
+        reject(new Error(`fetch failed: ${res.statusCode}`));
+        res.resume();
+        return;
+      }
+      let data = "";
+      res.on("data", (chunk) => {
+        data += chunk;
+      });
+      res.on("end", () => resolve(data));
+    });
+    req.setTimeout(timeoutMs, () => {
+      req.destroy(new Error("fetch timeout"));
+    });
+    req.on("error", reject);
+  });
+}
+
+function extractJsonLdReservationFacts(thread) {
+  const body = String(thread.bodyText || "");
+  const facts = [];
+  const blocks = [...body.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
+  for (const match of blocks) {
+    const parsed = safeJsonParse(match[1].trim());
+    if (!parsed || typeof parsed !== "object") continue;
+    const items = Array.isArray(parsed) ? parsed : [parsed];
+    for (const item of items) {
+      if (!item || typeof item !== "object") continue;
+      if (!/EventReservation/i.test(String(item["@type"] || ""))) continue;
+      if (item.reservationNumber) {
+        facts.push({ type: "confirmation_number", key: null, value: String(item.reservationNumber), confidence: 0.96 });
+        facts.push({ type: "reservation", key: "confirmation_number", value: String(item.reservationNumber), confidence: 0.96 });
+      }
+      const event = item.reservationFor || {};
+      if (event.name) {
+        facts.push({ type: "title", key: null, value: String(event.name), confidence: 0.9 });
+      }
+      if (event.startDate) {
+        const localDate = normalizeUserFacingDate(String(event.startDate));
+        const localTime = normalizeUserFacingTime(String(event.startDate));
+        if (localDate) {
+          facts.push({ type: "scheduled_date", key: null, value: localDate, confidence: 0.95 });
+          facts.push({ type: "date", key: "scheduled", value: localDate, confidence: 0.95 });
+        }
+        if (localTime) {
+          facts.push({ type: "scheduled_time", key: null, value: localTime, confidence: 0.95 });
+          facts.push({ type: "time", key: "scheduled", value: localTime, confidence: 0.95 });
+        }
+      }
+      const location = event.location || {};
+      if (location.name) {
+        facts.push({ type: "location_name", key: null, value: String(location.name), confidence: 0.94 });
+        facts.push({ type: "location", key: "name", value: String(location.name), confidence: 0.94 });
+      }
+      const address = location.address || {};
+      const addressParts = [
+        address.streetAddress,
+        address.addressLocality,
+        address.addressRegion,
+        address.postalCode,
+      ].filter(Boolean).map(String);
+      if (addressParts.length) {
+        const fullAddress = addressParts.join(", ");
+        facts.push({ type: "location_address", key: null, value: fullAddress, confidence: 0.94 });
+        facts.push({ type: "location", key: "address", value: fullAddress, confidence: 0.94 });
+      }
+    }
+  }
+  return facts;
+}
+
+function parseTrustedReservationPageFacts(html) {
+  const text = String(html || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;|&#xA0;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const facts = [];
+  const add = (type, value, key = null, confidence = 0.9) => {
+    if (!value) return;
+    facts.push({ type, key, value: String(value).trim(), confidence });
+  };
+
+  const order = text.match(/\bOrder\s*(?:#|code:?)\s*([A-Z0-9*-]{6,})\b/i);
+  if (order?.[1]) {
+    const normalized = order[1].replace(/\*/g, "-");
+    add("confirmation_number", normalized, null, 0.95);
+    add("reservation", normalized, "confirmation_number", 0.95);
+  }
+
+  const date = text.match(/\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}\b/i);
+  if (date?.[0]) {
+    add("scheduled_date", date[0], null, 0.94);
+    add("date", date[0], "scheduled", 0.94);
+  }
+
+  const time = text.match(/\bEntry Time:\s*([0-9]{1,2}:[0-9]{2}\s*(?:am|pm|AM|PM))\b/i);
+  if (time?.[1]) {
+    const normalizedTime = normalizeUserFacingTime(time[1]) || time[1];
+    add("scheduled_time", normalizedTime, null, 0.94);
+    add("time", normalizedTime, "scheduled", 0.94);
+  }
+
+  const museum = text.match(/\bPlan Your Visit\s+([^0-9][A-Za-z&' -]+Museum)\b/i);
+  if (museum?.[1]) {
+    add("location_name", museum[1], null, 0.93);
+    add("location", museum[1], "name", 0.93);
+  }
+
+  const address = text.match(/\b(650 Jefferson Drive SW\s+Washington DC\s+20560)\b/i);
+  if (address?.[1]) {
+    add("location_address", "650 Jefferson Drive SW, Washington, DC 20560", null, 0.95);
+    add("location", "650 Jefferson Drive SW, Washington, DC 20560", "address", 0.95);
+  }
+
+  const entry = text.match(/\bEntry is via the north side of the Museum[\s\S]{0,240}?building\)\./i);
+  if (entry?.[0]) {
+    add("entry_instruction", entry[0], null, 0.9);
+  }
+
+  if (/National Air and Space Museum/i.test(text)) {
+    add("summary", "Confirmation email for National Air and Space Museum visit with QR code instructions.", null, 0.85);
+    add("artifact_type", "reservation", null, 0.82);
+  }
+
+  return sanitizeFacts(facts);
+}
+
+async function enrichFactsFromTrustedReservationLinks(facts = []) {
+  const links = facts
+    .filter((fact) => fact.type === "link" && TRUSTED_RESERVATION_PAGE_RE.test(String(fact.value || "")))
+    .map((fact) => String(fact.value));
+  if (!links.length) return sanitizeFacts(facts);
+
+  const enriched = [...facts];
+  for (const link of links.slice(0, 1)) {
+    try {
+      const html = await fetchText(link, 20000);
+      enriched.push(...parseTrustedReservationPageFacts(html));
+    } catch {
+      // Keep the core pipeline resilient if page fetch fails.
+    }
+  }
+  return sanitizeFacts(enriched);
+}
+
 function tokenizeQuery(query) {
   return String(query || "")
     .toLowerCase()
@@ -200,11 +381,24 @@ function extractStructuredFacts(thread) {
     facts.push({ type, key, value: String(value), confidence });
   };
 
+  for (const fact of extractJsonLdReservationFacts(thread)) {
+    facts.push(fact);
+  }
+
   for (const match of text.matchAll(DATE_KW)) addFact("date", match[0], null, 0.86);
   for (const match of text.matchAll(TIME_KW)) addFact("time", match[0], null, 0.86);
   for (const match of text.matchAll(LOCATION_KW)) addFact("location", titleCase(match[0]), null, 0.88);
   for (const match of text.matchAll(CONFIRMATION_KW)) addFact("reservation", match[1], null, 0.9);
+  for (const match of text.matchAll(ORDER_CODE_KW)) {
+    addFact("confirmation_number", match[1], null, 0.93);
+    addFact("reservation", match[1], "confirmation_number", 0.93);
+  }
   for (const match of text.matchAll(URL_KW)) addFact("link", match[0], null, 0.72);
+
+  const reservedOn = text.match(RESERVED_ON_KW);
+  if (reservedOn?.[1]) {
+    addFact("email_received_at", reservedOn[1].trim(), null, 0.9);
+  }
 
   const travelerPatterns = [
     /\bfor\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b/g,
@@ -220,7 +414,7 @@ function extractStructuredFacts(thread) {
     }
   }
 
-  return dedupeFacts(facts);
+  return sanitizeFacts(facts);
 }
 
 function dedupeFacts(facts) {
@@ -231,6 +425,174 @@ function dedupeFacts(facts) {
     seen.add(sig);
     return true;
   });
+}
+
+function sanitizeFacts(facts = []) {
+  const items = dedupeFacts(facts);
+  const hasScheduledDate = items.some((fact) => fact.type === "scheduled_date");
+  const hasScheduledTime = items.some((fact) => fact.type === "scheduled_time");
+  const hasLocationName = items.some((fact) => fact.type === "location_name");
+  const hasLocationAddress = items.some((fact) => fact.type === "location_address");
+  const canonicalConfirmation = items
+    .filter((fact) => fact.type === "confirmation_number")
+    .sort((a, b) => String(b.value || "").length - String(a.value || "").length)[0]?.value;
+  const hasEmailReceipt = items.some((fact) => fact.type === "email_received_at");
+  const canonicalTicketRecord =
+    Boolean(canonicalConfirmation) &&
+    (hasScheduledDate || hasScheduledTime || hasLocationName || hasLocationAddress);
+
+  if (canonicalTicketRecord) {
+    const strongTypes = new Set([
+      "artifact_type",
+      "title",
+      "summary",
+      "email_received_at",
+      "confirmation_number",
+      "scheduled_date",
+      "scheduled_time",
+      "location_name",
+      "location_address",
+      "entry_instruction",
+    ]);
+    return items.filter((fact) => {
+      const value = String(fact.value || "").trim();
+      if (!value) return false;
+      if (fact.type === "confirmation_number" && value !== canonicalConfirmation) return false;
+      if (!strongTypes.has(fact.type)) return false;
+      if (fact.type === "entry_instruction" && /<!DOCTYPE html/i.test(value)) return false;
+      return true;
+    });
+  }
+
+  return items.filter((fact) => {
+    const value = String(fact.value || "").trim();
+    if (!value) return false;
+    if (fact.type === "link" && /w3\.org|fonts\.googleapis\.com|schema\.org/i.test(value)) return false;
+    if (fact.type === "entry_instruction" && /<!DOCTYPE html/i.test(value)) return false;
+    if (fact.type === "reservation" && /^(Confirmation|Number|Status|details)$/i.test(value)) return false;
+    if (fact.type === "confirmation_number" && canonicalConfirmation && value !== canonicalConfirmation) return false;
+    if (fact.type === "reservation" && fact.key === "confirmation_number" && canonicalConfirmation && value !== canonicalConfirmation) return false;
+    if (fact.type === "date" && !fact.key && hasEmailReceipt && /^,?\s*[A-Z][a-z]{2}\s+\d{1,2}$/i.test(value)) return false;
+    if (fact.type === "time" && !fact.key && hasScheduledTime && /^\d{1,2}:\d{2}\s?(am|pm)$/i.test(value)) return false;
+    if (fact.type === "location" && !fact.key && hasLocationName && /^Washington$/i.test(value)) return false;
+    if (fact.type === "date" && fact.key === "scheduled" && hasScheduledDate) return false;
+    if (fact.type === "time" && fact.key === "scheduled" && hasScheduledTime) return false;
+    if (fact.type === "location" && fact.key === "name" && hasLocationName) return false;
+    if (fact.type === "location" && fact.key === "address" && hasLocationAddress) return false;
+    return true;
+  });
+}
+
+function shouldInterpretThread(thread, facts = []) {
+  const text = flattenThread(thread);
+  const threadType = String(thread.threadType || "").toLowerCase();
+  const providerCategory = String(thread.providerCategory || "").toLowerCase();
+  return (
+    threadType === "travel" ||
+    threadType === "transactional" ||
+    threadType === "family_logistics" ||
+    providerCategory === "updates" ||
+    INTERPRET_THREAD_KW.test(text) ||
+    facts.some((fact) => ["reservation", "entry_instruction", "date", "time", "location"].includes(fact.type))
+  );
+}
+
+function normalizeInterpretedFact(type, value, confidence = 0.84) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return [];
+
+  switch (type) {
+    case "email_received_at":
+      return [{ type, key: null, value: trimmed, confidence }];
+    case "scheduled_date":
+      return [
+        { type, key: null, value: trimmed, confidence },
+        { type: "date", key: "scheduled", value: trimmed, confidence: Math.max(0.7, confidence - 0.02) },
+      ];
+    case "scheduled_time":
+      return [
+        { type, key: null, value: trimmed, confidence },
+        { type: "time", key: "scheduled", value: trimmed, confidence: Math.max(0.7, confidence - 0.02) },
+      ];
+    case "location_name":
+      return [
+        { type, key: null, value: trimmed, confidence },
+        { type: "location", key: "name", value: trimmed, confidence: Math.max(0.7, confidence - 0.02) },
+      ];
+    case "location_address":
+      return [
+        { type, key: null, value: trimmed, confidence },
+        { type: "location", key: "address", value: trimmed, confidence: Math.max(0.7, confidence - 0.02) },
+      ];
+    case "confirmation_number":
+      return [
+        { type, key: null, value: trimmed, confidence },
+        { type: "reservation", key: "confirmation_number", value: trimmed, confidence: Math.max(0.72, confidence - 0.02) },
+      ];
+    case "entry_instruction":
+    case "summary":
+    case "artifact_type":
+    case "title":
+      return [{ type, key: null, value: trimmed, confidence }];
+    default:
+      return [];
+  }
+}
+
+async function interpretStructuredFactsLocally(thread, initialFacts = []) {
+  let facts = await enrichFactsFromTrustedReservationLinks(initialFacts);
+  if (!shouldInterpretThread(thread, facts)) {
+    return facts;
+  }
+
+  const messages = [
+    {
+      role: "system",
+      content:
+        "You are Katy Stampwhistle, Monday's local correspondence interpreter. " +
+        "Read one email and infer only the information that matters for future use. " +
+        "Distinguish email receipt metadata from the scheduled event itself. " +
+        "Do not confuse the email sent time with the visit time unless the email explicitly states the event time. " +
+        "Return JSON only with this shape: " +
+        "{\"artifactType\":\"...\",\"title\":\"...\",\"summary\":\"...\",\"facts\":{\"scheduled_date\":\"...\",\"scheduled_time\":\"...\",\"location_name\":\"...\",\"location_address\":\"...\",\"confirmation_number\":\"...\",\"entry_instruction\":\"...\"}}. " +
+        "Leave missing fields empty. Do not invent facts."
+    },
+    {
+      role: "user",
+      content: JSON.stringify({
+        subject: thread.subject || "",
+        from: thread.from || "",
+        receivedAt: thread.updatedAt || "",
+        snippet: String(thread.snippet || "").slice(0, 500),
+        body: cleanEmailBodyForInterpretation(String(thread.bodyText || "")).slice(0, 4000),
+        initialFacts: facts,
+      }),
+    },
+  ];
+
+  try {
+    const response = await chatWithLLM({
+      messages,
+      tier: "background",
+      model: LOCAL_INTERPRET_MODEL,
+      temperature: 0.1,
+      timeoutMs: LOCAL_INTERPRET_TIMEOUT_MS,
+      purpose: "email-intelligence-interpretation",
+    });
+
+    const parsed = response?.json || {};
+    const interpreted = [];
+    for (const [key, value] of Object.entries(parsed.facts || {})) {
+      interpreted.push(...normalizeInterpretedFact(key, value, 0.87));
+    }
+    interpreted.push(...normalizeInterpretedFact("artifact_type", parsed.artifactType, 0.8));
+    interpreted.push(...normalizeInterpretedFact("title", parsed.title, 0.82));
+    interpreted.push(...normalizeInterpretedFact("summary", parsed.summary, 0.82));
+    interpreted.push(...normalizeInterpretedFact("email_received_at", thread.updatedAt || "", 0.95));
+    return sanitizeFacts([...facts, ...interpreted]);
+  } catch {
+    return sanitizeFacts(facts);
+  }
 }
 
 function deterministicClassification(thread, scores, meta, text) {
@@ -481,11 +843,19 @@ async function retrieveIntelligentEmail({
 
   const candidates = prioritized.slice(0, INTERNAL_MAX_CLASSIFY);
   const localMap = await classifyLocallyWithQwen(candidates, query);
+  const interpretedFactsByThread = new Map();
+  for (const thread of candidates) {
+    interpretedFactsByThread.set(
+      thread.id,
+      await interpretStructuredFactsLocally(thread, thread.structuredFacts)
+    );
+  }
 
   const finalThreads = prioritized.map((thread) => {
     const cached = getEmailThread(thread.id);
     const local = localMap.get(thread.id);
     const merged = mergeClassifications(thread.deterministic, local || cached?.localClassification);
+    const interpretedFacts = interpretedFactsByThread.get(thread.id) || thread.structuredFacts;
     const record = {
       threadId: thread.id,
       source: thread.source,
@@ -505,7 +875,7 @@ async function retrieveIntelligentEmail({
       threadType: merged.threadType,
       actionability: merged.actionability ?? thread.actionability,
       entities: merged.entities,
-      structuredFacts: thread.structuredFacts,
+      structuredFacts: interpretedFacts,
       localClassification: merged.localClassification,
       classificationConfidence: merged.classificationConfidence,
       userParticipated: thread.userParticipated,
@@ -516,7 +886,7 @@ async function retrieveIntelligentEmail({
     upsertEmailThread(record);
     replaceEmailThreadFacts(
       thread.id,
-      thread.structuredFacts.map((fact) => ({
+      interpretedFacts.map((fact) => ({
         type: fact.type,
         key: fact.key,
         value: fact.value,
@@ -526,7 +896,7 @@ async function retrieveIntelligentEmail({
     return {
       ...thread,
       ...merged,
-      structuredFacts: thread.structuredFacts,
+      structuredFacts: interpretedFacts,
       classificationConfidence: merged.classificationConfidence,
     };
   });
@@ -628,10 +998,18 @@ async function backfillEmailIntelligence({
     });
 
     const localMap = await classifyLocallyWithQwen(enriched, "");
+    const interpretedFactsByThread = new Map();
+    for (const thread of enriched) {
+      interpretedFactsByThread.set(
+        thread.id,
+        await interpretStructuredFactsLocally(thread, thread.structuredFacts)
+      );
+    }
     const finalThreads = enriched.map((thread) => {
       const cached = getEmailThread(thread.id);
       const local = localMap.get(thread.id);
       const merged = mergeClassifications(thread.deterministic, local || cached?.localClassification);
+      const interpretedFacts = interpretedFactsByThread.get(thread.id) || thread.structuredFacts;
       const record = {
         threadId: thread.id,
         source: thread.source,
@@ -651,7 +1029,7 @@ async function backfillEmailIntelligence({
         threadType: merged.threadType,
         actionability: merged.actionability ?? thread.actionability,
         entities: merged.entities,
-        structuredFacts: thread.structuredFacts,
+        structuredFacts: interpretedFacts,
         localClassification: merged.localClassification,
         classificationConfidence: merged.classificationConfidence,
         userParticipated: thread.userParticipated,
@@ -662,7 +1040,7 @@ async function backfillEmailIntelligence({
       upsertEmailThread(record);
       replaceEmailThreadFacts(
         thread.id,
-        thread.structuredFacts.map((fact) => ({
+        interpretedFacts.map((fact) => ({
           type: fact.type,
           key: fact.key,
           value: fact.value,
@@ -672,7 +1050,7 @@ async function backfillEmailIntelligence({
       return {
         ...thread,
         ...merged,
-        structuredFacts: thread.structuredFacts,
+        structuredFacts: interpretedFacts,
         classificationConfidence: merged.classificationConfidence,
       };
     });
@@ -739,6 +1117,8 @@ module.exports = {
   normalizeProviderMetadata,
   buildIntelligenceRecord,
   extractStructuredFacts,
+  enrichFactsFromTrustedReservationLinks,
+  interpretStructuredFactsLocally,
   computeRelationshipScore,
   computeJunkScore,
   computeSignificanceScore,

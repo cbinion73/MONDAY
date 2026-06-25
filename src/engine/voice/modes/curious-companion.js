@@ -42,8 +42,8 @@ function renderCuriousCompanion({ truth }) {
 
   if (truth.domain === "faith" && truth.concern === "spiritual_drift") {
     return [
-      "Something in your faith feels quieter right now.",
-      "I don't want to jump past that too quickly.",
+      "Something in your faith has gone quiet.",
+      "I don't want to rush past that and call it a discipline problem.",
       "What feels most true about this season?",
     ];
   }
@@ -52,23 +52,23 @@ function renderCuriousCompanion({ truth }) {
     if (truth.pattern === "daily_distance") {
       return [
         "That sounds less like conflict and more like slow distance built by the rhythm of the day.",
-        "When you mostly pass each other at the edges, connection usually gets whatever energy is left.",
+        "When you mostly pass each other at the edges, connection gets whatever energy is left.",
         "Where do you most feel that distance right now?",
       ];
     }
 
     return [
-      "I think the relationship matters enough to take this seriously.",
-      "The real question isn't what's happening — you already know that.",
-      "My read is the more useful question is what's been making that distance feel normal.",
+      "I think this matters more than the current pattern is admitting.",
+      "You already know something is off.",
+      "My read is the useful question is what has made that distance start to feel normal.",
     ];
   }
 
   if (truth.domain === "family" && truth.concern === "family_time_tension") {
     return [
-      "It sounds like family and attention are pulling against each other.",
-      "I don't think the first question is efficiency.",
-      "I think it's what kind of tension you're actually carrying.",
+      "Family and attention are pulling against each other again.",
+      "I don't think this is an efficiency problem yet.",
+      "My read is the real issue is what keeps winning when the two collide.",
     ];
   }
 
@@ -76,30 +76,30 @@ function renderCuriousCompanion({ truth }) {
     if (truth.pattern === "avoidance_refuge") {
       return [
         "I think work is doing more than giving you something to build.",
-        "The real question is what it's protecting you from.",
-        "My read is we're no longer talking about how to work less.",
+        "It may also be protecting you from something harder to face.",
+        "My read is we're no longer talking about workload. We're talking about refuge.",
       ];
     }
 
     if (truth.pattern === "control_refuge") {
       return [
         "That sense of usefulness and control matters.",
-        "I think the real question is what work gives you that you can't find anywhere else.",
+        "Work may be carrying jobs for you that nothing else is carrying right now.",
         "My read is this isn't really about hours.",
       ];
     }
 
     return [
       "Work appears to be winning the competition for time right now.",
-      "I think the real question isn't how many hours — it's what those hours are doing for you.",
-      "My read is there's more here than a schedule problem.",
+      "I don't think the issue is the number by itself.",
+      "My read is those hours are doing something for you besides getting work done.",
     ];
   }
 
   if (truth.domain === "work" && truth.concern === "burnout_risk") {
     return [
       "I don't think this is something to push past casually.",
-      "Burnout usually means something important has been under strain for a while.",
+      "Burnout usually means something important has been under strain for longer than you've wanted to admit.",
       "What feels most depleted right now?",
     ];
   }
@@ -107,7 +107,7 @@ function renderCuriousCompanion({ truth }) {
   if (truth.domain === "faith" && truth.concern === "calling_question") {
     return [
       "That sounds bigger than a simple decision.",
-      "Calling questions usually need understanding before direction.",
+      "Calling questions usually need clarity before direction.",
       "What keeps returning about it for you?",
     ];
   }
@@ -116,7 +116,7 @@ function renderCuriousCompanion({ truth }) {
     if (truth.pattern === "family_relief") {
       return [
         "That sounds like retirement may be pointing less to escape and more to relief.",
-        "More time with family and less pressure suggests you may be craving a different way of carrying life.",
+        "More time with family and less pressure sounds like a different way of carrying life, not an exit from usefulness.",
         "Where do you feel that pressure most right now?",
       ];
     }
@@ -132,15 +132,15 @@ function renderCuriousCompanion({ truth }) {
   if (truth.domain === "retirement" && truth.concern === "identity_transition") {
     return [
       "I think that changes something.",
-      "The real question isn't whether to retire — it's what you want work to stop being.",
-      "My read is 'I still want to build' and 'I want to retire' aren't the same conversation.",
+      "This sounds less like retiring from work and more like retiring from what work has become.",
+      "My read is 'I still want to build' and 'I want to retire' are not actually in conflict.",
     ];
   }
 
   if (truth.domain === "retirement" && truth.concern === "legacy_question") {
     return [
       "If retirement keeps returning, I think it's worth listening to.",
-      "Recurring questions usually mean something underneath them is asking for attention.",
+      "Questions that keep resurfacing usually aren't random.",
       "What do you think retirement is pointing to for you?",
     ];
   }
@@ -148,7 +148,7 @@ function renderCuriousCompanion({ truth }) {
   if (truth.domain === "work" && truth.decision === "career_decision") {
     return [
       "That sounds like more than a career move question.",
-      "Before we jump to yes or no, I want to understand what leaving would be trying to protect or restore.",
+      "Before we jump to yes or no, I want to know what leaving would be trying to protect or restore.",
       "What feels most significant about it right now?",
     ];
   }
@@ -179,8 +179,8 @@ function renderCuriousCompanion({ truth }) {
   }
 
   return [
-    "Help me understand a little more.",
-    "I don't think I understand this fully yet.",
+    "I think something here matters.",
+    "My read is we don't have enough shape yet to name it cleanly.",
   ];
 }
 

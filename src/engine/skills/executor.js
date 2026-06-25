@@ -24,6 +24,7 @@ const HANDLERS = {
   "web-fetch":         (p) => require("../connectors/web").fetchUrl(p),
   "browser-search":    (p) => require("../connectors/browser-search").search(p),
   "browser-read":      (p) => require("../connectors/browser-read").readUrl(p),
+  "science-advisor":   (p) => require("../connectors/science-advisor").advise(p),
   "browser-open":      (p) => require("../connectors/browser-open").openUrl(p),
   "summarize":         (p) => require("../connectors/llm-connector").summarize(p),
   "draft-reply":       (p) => require("../connectors/llm-connector").draftReply(p),

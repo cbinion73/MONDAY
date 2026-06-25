@@ -2,6 +2,7 @@ const { chatWithOllama, DEFAULT_MODEL, DEFAULT_BASE_URL } = require("./ollama-cl
 const { classifySituation } = require("../resolvers/situation-classifier");
 const { resolvePosture } = require("../resolvers/posture-resolver");
 const { getLearnedClassificationHints } = require("../learning/closed-loop-learning");
+const { shouldUseFastEverydayLane } = require("./fast-everyday-lane");
 
 function classificationAssistEnabled() {
   return process.env.MONDAY_OLLAMA_CLASSIFICATION_ASSIST !== "false";
@@ -21,6 +22,14 @@ async function applyClassificationAssist({ input, context = {}, engineState }) {
       used: false,
       enabled: true,
       reason: "Deterministic classification already resolved.",
+    });
+  }
+
+  if (shouldUseFastEverydayLane(input, { finalState: engineState, truth: null })) {
+    return attachAssist(engineState, {
+      used: false,
+      enabled: true,
+      reason: "Fast everyday lane bypassed classification assist.",
     });
   }
 

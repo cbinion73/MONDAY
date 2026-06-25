@@ -355,6 +355,38 @@ function normalizeTravelPlan(raw) {
   };
 }
 
+function normalizeScienceAdvisor(raw) {
+  const data = raw?.data || {};
+  const observations = [];
+  const patterns = [];
+
+  if (data.mode) observations.push(`Scientific mode: ${data.mode}`);
+  if (data.confidence) observations.push(`Scientific confidence: ${data.confidence}`);
+  if (data.reply) observations.push(`Reed advisory: ${String(data.reply).slice(0, 240)}`);
+
+  const sources = Array.isArray(data.sources) ? data.sources : [];
+  if (sources.length > 0) {
+    observations.push(`${sources.length} scientific source${sources.length === 1 ? "" : "s"} gathered`);
+    for (const source of sources.slice(0, 4)) {
+      observations.push(`[${source.label}] ${source.title} — ${source.url}`);
+    }
+    patterns.push("scientific response grounded in gathered sources");
+  }
+
+  if (data.mode === "thermo_fisher") {
+    patterns.push("thermo fisher scientific mode activated");
+  }
+
+  return {
+    observations,
+    patterns,
+    summary: data.reply ? String(data.reply).slice(0, 200) : "Scientific advisory returned",
+    confidence:
+      data.confidence === "high" ? 0.92 : data.confidence === "medium" ? 0.78 : 0.58,
+    source: "science-advisor",
+  };
+}
+
 function normalizeDefault(raw, skillId) {
   return {
     observations: [`${skillId} returned data`],
@@ -376,6 +408,7 @@ const NORMALIZERS = {
   "browser-search":  normalizeBrowserSearch,
   "browser-read":    normalizeBrowserRead,
   "travel-plan":     normalizeTravelPlan,
+  "science-advisor": normalizeScienceAdvisor,
   "summarize":       (r) => normalizeLlm(r, "summarize"),
   "draft-reply":     (r) => normalizeLlm(r, "draft-reply"),
 };
