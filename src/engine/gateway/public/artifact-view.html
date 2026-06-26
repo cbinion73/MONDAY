@@ -165,6 +165,51 @@
         gap: 12px;
       }
 
+      .source-list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .source-card {
+        padding: 18px 20px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .source-card h3 {
+        margin: 0;
+        font-size: 18px;
+      }
+
+      .source-card p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .source-link {
+        color: var(--gold-deep);
+        text-decoration: none;
+        font-weight: 600;
+        word-break: break-word;
+      }
+
+      .source-link:hover {
+        text-decoration: underline;
+      }
+
+      .text-block {
+        padding: 22px 24px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .text-block p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.65;
+      }
+
       .evidence-item {
         padding: 18px 20px;
         color: var(--muted);
@@ -285,6 +330,28 @@
         root.append(section);
       }
 
+      function renderSourceList(root, block) {
+        const section = create("section", "section");
+        if (block.title) section.append(create("h2", "section-title", block.title));
+        const list = create("div", "source-list");
+        for (const item of block.items || []) {
+          const card = create("article", "card source-card");
+          card.append(create("h3", "", item.title || item.url || "Source"));
+          if (item.snippet) card.append(create("p", "", item.snippet));
+          if (item.source) card.append(create("div", "meta", item.source));
+          if (item.url) {
+            const link = create("a", "source-link", item.url);
+            link.href = item.url;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            card.append(link);
+          }
+          list.append(card);
+        }
+        section.append(list);
+        root.append(section);
+      }
+
       function renderRecommendation(root, block) {
         const card = create("section", "recommendation");
         card.append(
@@ -292,6 +359,15 @@
           create("p", "", block.body || "")
         );
         root.append(card);
+      }
+
+      function renderTextBlock(root, block) {
+        const section = create("section", "section");
+        if (block.title) section.append(create("h2", "section-title", block.title));
+        const card = create("article", "card text-block");
+        card.append(create("p", "", block.body || ""));
+        section.append(card);
+        root.append(section);
       }
 
       function renderPayload(payload) {
@@ -303,6 +379,8 @@
           if (block.type === "focus_grid") renderFocusGrid(root, block);
           if (block.type === "insight_chips") renderInsightChips(root, block);
           if (block.type === "evidence_list") renderEvidenceList(root, block);
+          if (block.type === "source_list") renderSourceList(root, block);
+          if (block.type === "text_block") renderTextBlock(root, block);
           if (block.type === "recommendation") renderRecommendation(root, block);
         }
       }

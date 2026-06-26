@@ -29,23 +29,48 @@
                 <p id="artifactEyebrow" class="artifact-eyebrow">Supporting Brief</p>
                 <h2 id="artifactTitle" class="artifact-title">Monday found something worth opening.</h2>
               </div>
-              <button
-                id="closeModalButton"
-                class="close-modal-button"
-                type="button"
-                aria-label="Close supporting information"
-              >
-                Close
-              </button>
+              <div class="artifact-toolbar-actions">
+                <a
+                  id="artifactExternalLink"
+                  class="artifact-external-link"
+                  href="#"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  hidden
+                >
+                  Open in browser
+                </a>
+                <button
+                  id="closeModalButton"
+                  class="close-modal-button"
+                  type="button"
+                  aria-label="Close supporting information"
+                >
+                  Close
+                </button>
+              </div>
             </div>
-            <iframe
-              id="artifactFrame"
-              class="artifact-frame"
-              src="about:blank"
-              title="Monday supporting information"
-              loading="eager"
-              referrerpolicy="no-referrer"
-            ></iframe>
+            <div id="artifactMeta" class="artifact-meta" hidden>
+              <p id="artifactReason" class="artifact-reason"></p>
+              <p id="artifactSummary" class="artifact-summary" hidden></p>
+              <p id="artifactNextAction" class="artifact-next-action" hidden></p>
+            </div>
+            <div id="artifactFallback" class="artifact-fallback" hidden>
+              <p class="artifact-fallback-title">This site may not allow embedding here.</p>
+              <p id="artifactFallbackBody" class="artifact-fallback-body">
+                Monday can still open it directly in your browser.
+              </p>
+            </div>
+            <div class="artifact-content">
+              <iframe
+                id="artifactFrame"
+                class="artifact-frame"
+                src="about:blank"
+                title="Monday supporting information"
+                loading="eager"
+                referrerpolicy="no-referrer"
+              ></iframe>
+            </div>
           </div>
         </article>
 

@@ -134,6 +134,12 @@ body {
   border-bottom: 1px solid rgba(151, 124, 78, 0.12);
 }
 
+.artifact-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .artifact-heading {
   min-width: 0;
 }
@@ -153,12 +159,92 @@ body {
   color: #2e271f;
 }
 
+.artifact-meta {
+  display: grid;
+  gap: 10px;
+  padding: 16px 22px 0;
+}
+
+.artifact-reason,
+.artifact-summary,
+.artifact-next-action,
+.artifact-fallback-title,
+.artifact-fallback-body {
+  margin: 0;
+}
+
+.artifact-reason,
+.artifact-summary,
+.artifact-fallback-body {
+  color: #665a4c;
+  line-height: 1.58;
+}
+
+.artifact-next-action {
+  color: #7a6038;
+  font-size: 0.93rem;
+  line-height: 1.55;
+}
+
+.artifact-next-action strong {
+  color: #614924;
+}
+
+.artifact-fallback {
+  margin: 16px 22px 0;
+  padding: 18px 20px;
+  border-radius: 20px;
+  background: rgba(248, 243, 235, 0.92);
+  border: 1px solid rgba(151, 124, 78, 0.16);
+}
+
+.artifact-fallback-title {
+  color: #6f5430;
+  font-size: 0.92rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.artifact-content {
+  min-height: 0;
+  padding: 16px 20px 20px;
+  display: flex;
+  flex-direction: column;
+}
+
 .artifact-frame {
   width: 100%;
   height: 100%;
   display: block;
   border: 0;
   background: #fff;
+  border-radius: 22px;
+  box-shadow: inset 0 0 0 1px rgba(151, 124, 78, 0.08);
+}
+
+.artifact-frame.is-hidden {
+  display: none;
+}
+
+.artifact-external-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(151, 124, 78, 0.14);
+  background: rgba(255, 255, 255, 0.82);
+  color: #6f5430;
+  text-decoration: none;
+  font-size: 0.86rem;
+  box-shadow: var(--shadow-soft);
+}
+
+.artifact-external-link:hover {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 16px 34px rgba(119, 132, 150, 0.14);
 }
 
 .presence-center {
@@ -478,6 +564,15 @@ body {
 
   .artifact-toolbar {
     padding: 14px 16px 10px;
+  }
+
+  .artifact-toolbar-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .artifact-content {
+    padding: 12px 14px 14px;
   }
 
   .close-modal-button,

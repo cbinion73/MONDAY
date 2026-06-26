@@ -5,6 +5,24 @@ const PRESET_KEYS = new Set(["website", "health", "travel", "denver", "transport
 function attachArtifactPresentation(plan, { input = "", domain = null, skillResults = [] } = {}) {
   if (!plan?.shouldSurface) return plan;
 
+  if (plan.artifactKey === "website") {
+    const websitePayload = buildWebsitePayload({ plan, input, domain, skillResults });
+    if (!websitePayload) {
+      return {
+        ...plan,
+        artifactRuntime: null,
+      };
+    }
+    return {
+      ...plan,
+      artifactRuntime: {
+        mode: "dynamic",
+        key: "website",
+        payload: websitePayload,
+      },
+    };
+  }
+
   if (PRESET_KEYS.has(plan.artifactKey)) {
     return {
       ...plan,
@@ -33,53 +51,125 @@ function buildDynamicArtifactPayload({ plan, input = "", domain = null, skillRes
   const insights = collectInsights(skillResults, plan);
   const focusCards = buildFocusCards(skillResults, sourceDomain);
   const metricCards = buildMetricCards(skillResults);
+  const sources = collectResearchSources(skillResults);
+  const confidence = summarizeConfidence(skillResults);
+  const recommendation = buildRecommendation(plan, skillResults, sourceDomain);
+  const kind = inferDynamicKind({ sourceDomain, skillResults, sources, plan });
 
   const blocks = [];
 
-  if (metricCards.length > 0) {
+  if (kind === "research") {
+    if (sources.length > 0) {
+      blocks.push({
+        type: "source_list",
+        title: "Sources",
+        items: sources.slice(0, 6),
+      });
+    }
+    if (insights.length > 0) {
+      blocks.push({
+        type: "insight_chips",
+        title: "What surfaced",
+        chips: insights.slice(0, 6),
+      });
+    }
+    if (evidence.length > 0) {
+      blocks.push({
+        type: "evidence_list",
+        title: "Supporting evidence",
+        items: evidence.slice(0, 8),
+      });
+    }
     blocks.push({
-      type: "metric_strip",
-      metrics: metricCards.slice(0, 4),
+      type: "recommendation",
+      title: "Recommendation",
+      body: recommendation,
+    });
+  } else {
+    if (metricCards.length > 0) {
+      blocks.push({
+        type: "metric_strip",
+        metrics: metricCards.slice(0, 4),
+      });
+    }
+
+    blocks.push({
+      type: "focus_grid",
+      title: focusCards.length > 0 ? "Model Structure" : "What Monday Is Showing",
+      cards: (focusCards.length > 0 ? focusCards : fallbackCards(sourceDomain, topic)).slice(0, 4),
+    });
+
+    if (insights.length > 0) {
+      blocks.push({
+        type: "insight_chips",
+        title: "Key Insights",
+        chips: insights.slice(0, 6),
+      });
+    }
+
+    if (evidence.length > 0) {
+      blocks.push({
+        type: "evidence_list",
+        title: "Source Evidence",
+        items: evidence.slice(0, 8),
+      });
+    }
+
+    blocks.push({
+      type: "recommendation",
+      title: kind === "deliverable" ? "Why this brief" : "Why This Surface",
+      body: recommendation,
     });
   }
-
-  blocks.push({
-    type: "focus_grid",
-    title: focusCards.length > 0 ? "Model Structure" : "What Monday Is Showing",
-    cards: (focusCards.length > 0 ? focusCards : fallbackCards(sourceDomain, topic)).slice(0, 4),
-  });
-
-  if (insights.length > 0) {
-    blocks.push({
-      type: "insight_chips",
-      title: "Key Insights",
-      chips: insights.slice(0, 6),
-    });
-  }
-
-  if (evidence.length > 0) {
-    blocks.push({
-      type: "evidence_list",
-      title: "Source Evidence",
-      items: evidence.slice(0, 8),
-    });
-  }
-
-  blocks.push({
-    type: "recommendation",
-    title: "Why This Surface",
-    body: plan.rationale || "Monday surfaced this because the structure makes the signal easier to see than prose alone.",
-  });
 
   return {
     version: 1,
-    kind: "adaptive-model",
+    kind,
     theme: "gold",
     title: titleCase(topic),
-    eyebrow: `${titleCase(sourceDomain)} model`,
+    eyebrow: `${titleCase(sourceDomain)} ${kind === "research" ? "research" : "model"}`,
     summary: buildSummary(plan, sourceDomain, insights, skillResults),
+    confidence,
+    recommendation,
+    sources,
     layout: "stack",
     blocks,
+  };
+}
+
+function buildWebsitePayload({ plan, input = "", domain = null, skillResults = [] } = {}) {
+  const browserRead = skillResults.find((skill) => skill.skillId === "browser-read" && skill.raw?.ok && skill.raw?.url);
+  const browserSearch = skillResults.find(
+    (skill) => skill.skillId === "browser-search" && skill.raw?.ok && Array.isArray(skill.raw?.data) && skill.raw.data.length > 0
+  );
+
+  const primary =
+    (browserRead
+      ? {
+          title: browserRead.raw.title || browserRead.summary || "Surfaced website",
+          url: browserRead.raw.url,
+          snippet: browserRead.summary || truncateText(browserRead.raw.data, 220),
+        }
+      : null) ||
+    (browserSearch
+      ? {
+          title: browserSearch.raw.data[0].title || "Surfaced website",
+          url: browserSearch.raw.data[0].url,
+          snippet: browserSearch.raw.data[0].snippet || browserSearch.summary || "",
+        }
+      : null);
+
+  if (!primary?.url) return null;
+
+  return {
+    version: 1,
+    kind: "website",
+    title: primary.title,
+    url: primary.url,
+    reason: plan?.rationale || "Monday found a live source worth putting on the table.",
+    summary: cleanLine(primary.snippet || ""),
+    nextAction: buildWebsiteNextAction(input, domain),
+    sources: collectResearchSources(skillResults).slice(0, 4),
   };
 }
 
@@ -101,6 +191,43 @@ function buildSummary(plan, sourceDomain, insights, skillResults) {
   return `Monday assembled a reusable ${sourceDomain} surface from the available evidence so the structure can be seen before it is explained.`;
 }
 
+function inferDynamicKind({ sourceDomain, skillResults, sources, plan }) {
+  const skillIds = new Set((skillResults || []).map((skill) => skill.skillId));
+  if (sources.length > 0 || skillIds.has("browser-search") || skillIds.has("browser-read")) return "research";
+  if (sourceDomain === "documents" || sourceDomain === "travel") return "deliverable";
+  if (plan?.artifactType === "model_display") return "evidence";
+  return "adaptive-model";
+}
+
+function summarizeConfidence(skillResults) {
+  const values = (skillResults || [])
+    .map((skill) => Number(skill.confidence || skill.resultConfidence || 0))
+    .filter(Boolean);
+  if (values.length === 0) return null;
+  return Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 100) / 100;
+}
+
+function buildRecommendation(plan, skillResults, sourceDomain) {
+  const bestPattern = (skillResults || []).flatMap((skill) => skill.patterns || []).find(Boolean);
+  const bestSummary = (skillResults || []).map((skill) => skill.summary).find(Boolean);
+  if (plan?.rationale && bestPattern) return `${cleanLine(bestPattern)} ${cleanLine(plan.rationale)}`;
+  if (plan?.rationale) return cleanLine(plan.rationale);
+  if (bestPattern) return cleanLine(bestPattern);
+  if (bestSummary) return cleanLine(bestSummary);
+  return `Monday surfaced this ${sourceDomain} material because the evidence is easier to judge when it is visible.`;
+}
+
+function buildWebsiteNextAction(input = "", domain = null) {
+  const text = `${input} ${domain || ""}`.toLowerCase();
+  if (/\b(book|reserve|buy|rent|checkout|vendor|compare)\b/.test(text)) {
+    return "Check the details, then decide whether Monday should help you act on it.";
+  }
+  if (/\b(map|route|travel|trip|itinerary)\b/.test(text)) {
+    return "Confirm the relevant details, then fold them into the live plan.";
+  }
+  return "Review the source directly, then decide whether it changes the next move.";
+}
+
 function collectEvidence(skillResults) {
   const lines = [];
   for (const skill of skillResults || []) {
@@ -120,6 +247,40 @@ function collectInsights(skillResults, plan) {
   }
   if (plan?.rationale) lines.push(cleanLine(plan.rationale));
   return unique(lines).filter(Boolean);
+}
+
+function collectResearchSources(skillResults) {
+  const items = [];
+  for (const skill of skillResults || []) {
+    if (skill.skillId === "browser-search" && Array.isArray(skill.raw?.data)) {
+      for (const result of skill.raw.data) {
+        if (!result?.url) continue;
+        items.push({
+          title: result.title || result.url,
+          url: result.url,
+          snippet: cleanLine(result.snippet || ""),
+          source: "Search result",
+        });
+      }
+    }
+
+    if (skill.skillId === "browser-read" && skill.raw?.url) {
+      items.push({
+        title: skill.raw.title || skill.raw.url,
+        url: skill.raw.url,
+        snippet: cleanLine(skill.summary || truncateText(skill.raw.data, 220)),
+        source: "Read source",
+      });
+    }
+  }
+
+  const seen = new Set();
+  return items.filter((item) => {
+    const key = `${item.url}|${item.title}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function buildFocusCards(skillResults, sourceDomain) {
@@ -215,6 +376,12 @@ function humanizeSkillId(value) {
 
 function cleanLine(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function truncateText(value, limit = 220) {
+  const text = cleanLine(value);
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit - 1).trim()}…`;
 }
 
 function unique(items) {

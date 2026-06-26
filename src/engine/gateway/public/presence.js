@@ -18,6 +18,13 @@ const artifactSurface = document.getElementById("artifactSurface");
 const artifactFrame = document.getElementById("artifactFrame");
 const artifactEyebrow = document.getElementById("artifactEyebrow");
 const artifactTitle = document.getElementById("artifactTitle");
+const artifactMeta = document.getElementById("artifactMeta");
+const artifactReason = document.getElementById("artifactReason");
+const artifactSummary = document.getElementById("artifactSummary");
+const artifactNextAction = document.getElementById("artifactNextAction");
+const artifactExternalLink = document.getElementById("artifactExternalLink");
+const artifactFallback = document.getElementById("artifactFallback");
+const artifactFallbackBody = document.getElementById("artifactFallbackBody");
 const greetingLine = document.getElementById("greetingLine");
 const subjectBadge = document.getElementById("subjectBadge");
 const stageSubheading = document.getElementById("stageSubheading");
@@ -30,6 +37,11 @@ const state = {
   listening: false,
   speaking: false,
   currentArtifactKey: null,
+  dismissedArtifactKey: null,
+  currentPresentation: null,
+  lastPresentation: null,
+  presentationsByType: {},
+  iframeFallbackTimer: null,
   floatingTimer: null,
 };
 
@@ -47,6 +59,16 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function normalizeText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function titleCase(value) {
+  return String(value || "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function autosizeComposer() {
@@ -177,6 +199,8 @@ function propPayloadToArtifact(prop) {
   const opposing = (evidence.opposingEvidence || []).slice(0, 2).map((item) => item.statement);
 
   const base = {
+    version: 1,
+    kind: "evidence",
     eyebrow: state.presence?.stage?.eyebrow || "Monday found",
     title: prop?.title || state.presence?.stage?.title || "Supporting information",
     summary: prop?.body || prop?.summary || conversation.read || state.presence?.stage?.body || "",
@@ -201,6 +225,12 @@ function propPayloadToArtifact(prop) {
       ],
     });
   } else if (prop?.type === "timeline") {
+    base.kind = "timeline";
+    base.blocks.push({
+      type: "text_block",
+      title: "Why this matters",
+      body: prop.body || state.presence?.stage?.body || conversation.whatChangedMyMind || "",
+    });
     base.blocks.push({
       type: "evidence_list",
       title: "Movement",
@@ -209,6 +239,7 @@ function propPayloadToArtifact(prop) {
       ),
     });
   } else if (prop?.type === "deliverable") {
+    base.kind = "deliverable";
     base.blocks.push({
       type: "focus_grid",
       title: "Supporting Deliverable",
@@ -220,7 +251,15 @@ function propPayloadToArtifact(prop) {
         },
       ],
     });
+    if (prop.summary) {
+      base.blocks.push({
+        type: "text_block",
+        title: "Deliverable summary",
+        body: prop.summary,
+      });
+    }
   } else if (prop?.type === "opportunity") {
+    base.kind = "recommendation";
     base.blocks.push({
       type: "recommendation",
       title: prop.title || "Opportunity",
@@ -272,45 +311,370 @@ function propPayloadToArtifact(prop) {
   return base;
 }
 
-function buildArtifactKey(prop) {
+function buildEvidenceArtifactFromConversation() {
+  const conversation = state.presence?.conversation || {};
+  const evidence = conversation.evidence || {};
+  const supporting = (evidence.supportingEvidence || []).map((item) => item.statement).filter(Boolean);
+  const opposing = (evidence.opposingEvidence || []).map((item) => item.statement).filter(Boolean);
+  if (!supporting.length && !opposing.length && !conversation.whatWouldChangeMyMind) return null;
+
+  const blocks = [];
+  if (supporting.length) {
+    blocks.push({
+      type: "evidence_list",
+      title: "Supporting evidence",
+      items: supporting.slice(0, 6),
+    });
+  }
+  if (opposing.length) {
+    blocks.push({
+      type: "evidence_list",
+      title: "What is still resisting the read",
+      items: opposing.slice(0, 4),
+    });
+  }
+  if (conversation.whatWouldChangeMyMind) {
+    blocks.push({
+      type: "text_block",
+      title: "What would change my mind",
+      body: conversation.whatWouldChangeMyMind,
+    });
+  }
+  if (conversation.recommendation) {
+    blocks.push({
+      type: "recommendation",
+      title: "What I would do next",
+      body: conversation.recommendation,
+    });
+  }
+
+  return {
+    version: 1,
+    kind: "evidence",
+    eyebrow: "Evidence",
+    title: `${state.presence?.subject?.name || "This subject"} evidence`,
+    summary: conversation.whatChangedMyMind || conversation.read || conversation.thought || "",
+    confidence: conversation.confidence || null,
+    blocks,
+  };
+}
+
+function buildResearchArtifactFromPresentation(presentation) {
+  const sources = Array.isArray(presentation?.sources) ? presentation.sources.filter((item) => item?.url) : [];
+  if (!sources.length) return null;
+  return {
+    version: 1,
+    kind: "research",
+    eyebrow: "Research",
+    title: `${state.presence?.subject?.name || "Current"} research`,
+    summary: presentation.summary || "Monday gathered a small set of sources worth comparing.",
+    recommendation: presentation.nextAction || presentation.reason || "",
+    blocks: [
+      {
+        type: "source_list",
+        title: "Sources",
+        items: sources.slice(0, 6),
+      },
+      presentation.summary
+        ? {
+            type: "text_block",
+            title: "Monday's read",
+            body: presentation.summary,
+          }
+        : null,
+      presentation.nextAction
+        ? {
+            type: "recommendation",
+            title: "Recommendation",
+            body: presentation.nextAction,
+          }
+        : null,
+    ].filter(Boolean),
+  };
+}
+
+function presetPresentation(key) {
+  const presets = {
+    health: {
+      type: "work_surface",
+      eyebrow: "Work Surface",
+      title: "Health dashboard",
+      reason: "Monday placed the relevant health surface on the table.",
+      summary: "Use the sequence on screen to inspect the current health read.",
+      embedUrl: "/health-dashboard.html",
+      nextAction: "Start with the first signal Monday surfaced.",
+    },
+    travel: {
+      type: "deliverable",
+      eyebrow: "Deliverable",
+      title: "Travel itinerary",
+      reason: "Monday prepared a structured itinerary surface for this trip.",
+      embedUrl: "/travel-itinerary.html",
+      nextAction: "Review the trip shape, then decide what needs to change.",
+    },
+    denver: {
+      type: "recommendation",
+      eyebrow: "Recommendation",
+      title: "Denver travel suggestion",
+      reason: "Monday surfaced the current destination recommendation in one place.",
+      embedUrl: "/denver-suggestion.html",
+      nextAction: "Check whether the suggested shape still fits the trip.",
+    },
+    transport: {
+      type: "work_surface",
+      eyebrow: "Work Surface",
+      title: "Transport recommendation",
+      reason: "Monday brought the mode comparison forward because the decision is easier to judge visually.",
+      embedUrl: "/transport-options.html",
+      nextAction: "Compare the options, then choose the mode that best fits the trip.",
+    },
+    quantum: {
+      type: "research",
+      eyebrow: "Research",
+      title: "Quantum survey",
+      reason: "Monday assembled the research briefing into a readable survey surface.",
+      embedUrl: "/quantum-survey.html",
+      nextAction: "Read the market read first, then decide what deserves deeper follow-up.",
+    },
+  };
+  return presets[key] || null;
+}
+
+function normalizePresentationPayload({ presence = state.presence, surfacingPlan = null, trigger = null } = {}) {
+  const conversation = presence?.conversation || {};
+  const stage = presence?.stage || {};
+
+  if (surfacingPlan?.artifactRuntime?.payload) {
+    const payload = surfacingPlan.artifactRuntime.payload;
+    if (payload.kind === "website" && payload.url) {
+      return {
+        type: "website",
+        eyebrow: "Website",
+        title: payload.title || "Surfaced website",
+        reason: payload.reason || "Monday found a live source worth opening.",
+        summary: payload.summary || "",
+        nextAction: payload.nextAction || "",
+        sources: Array.isArray(payload.sources) ? payload.sources : [],
+        externalUrl: payload.url,
+        embedUrl: payload.url,
+        fallbackBody: "This site may block embedding here. Monday can still open it directly in your browser.",
+      };
+    }
+
+    return {
+      type: payload.kind || "artifact",
+      eyebrow: stage.eyebrow || titleCase(payload.kind || "supporting brief"),
+      title: payload.title || stage.title || "Supporting information",
+      reason: stage.arrivalReason || surfacingPlan.rationale || "",
+      summary: payload.summary || "",
+      nextAction: payload.recommendation || "",
+      artifactPayload: payload,
+    };
+  }
+
+  if (surfacingPlan?.artifactRuntime?.mode === "preset") {
+    return presetPresentation(surfacingPlan.artifactRuntime.key);
+  }
+
+  if (trigger === "evidence") {
+    const evidencePayload = buildEvidenceArtifactFromConversation();
+    if (evidencePayload) {
+      return {
+        type: "evidence",
+        eyebrow: "Evidence",
+        title: `${presence?.subject?.name || "This subject"} evidence`,
+        reason: "This is the evidence Monday is currently leaning on.",
+        summary: evidencePayload.summary || "",
+        nextAction: conversation.recommendation || "",
+        artifactPayload: evidencePayload,
+      };
+    }
+  }
+
+  const propState = stage.prop;
+  if (propState?.visible && propState?.payload) {
+    const artifactPayload = propPayloadToArtifact(propState.payload);
+    return {
+      type: artifactPayload.kind || propState.payload.type || "artifact",
+      eyebrow: stage.eyebrow || artifactPayload.eyebrow || "Supporting Brief",
+      title: propState.payload.title || stage.title || "Supporting information",
+      reason: stage.body || "",
+      summary: artifactPayload.summary || "",
+      nextAction: conversation.recommendation || "",
+      artifactPayload,
+    };
+  }
+
+  return null;
+}
+
+function buildArtifactKey(presentation) {
   return JSON.stringify([
     currentSubjectId(),
-    prop?.type || "",
-    prop?.title || "",
-    prop?.body || prop?.summary || "",
+    presentation?.type || "",
+    presentation?.title || "",
+    presentation?.summary || "",
+    presentation?.externalUrl || "",
+    JSON.stringify(presentation?.artifactPayload?.blocks || []),
   ]);
 }
 
-function openArtifactModal(force = false) {
-  const propState = state.presence?.stage?.prop;
-  if (!propState?.visible || !propState?.payload) return;
+function clearIframeFallbackTimer() {
+  if (state.iframeFallbackTimer) {
+    window.clearTimeout(state.iframeFallbackTimer);
+    state.iframeFallbackTimer = null;
+  }
+}
 
-  const artifactPayload = propPayloadToArtifact(propState.payload);
-  const artifactKey = buildArtifactKey(propState.payload);
+function applyModalMeta(presentation) {
+  artifactEyebrow.textContent = presentation.eyebrow || "Supporting Brief";
+  artifactTitle.textContent = presentation.title || "Monday found something worth opening.";
+
+  const reason = normalizeText(presentation.reason);
+  const summary = normalizeText(presentation.summary);
+  const nextAction = normalizeText(presentation.nextAction);
+
+  artifactMeta.hidden = !(reason || summary || nextAction);
+  artifactReason.textContent = reason;
+  artifactReason.hidden = !reason;
+  artifactSummary.textContent = summary;
+  artifactSummary.hidden = !summary;
+  artifactNextAction.innerHTML = nextAction ? `<strong>Next action:</strong> ${escapeHtml(nextAction)}` : "";
+  artifactNextAction.hidden = !nextAction;
+
+  if (presentation.externalUrl) {
+    artifactExternalLink.href = presentation.externalUrl;
+    artifactExternalLink.hidden = false;
+  } else {
+    artifactExternalLink.hidden = true;
+    artifactExternalLink.removeAttribute("href");
+  }
+}
+
+function revealIframePresentation(presentation) {
+  artifactFallback.hidden = true;
+  artifactFrame.classList.remove("is-hidden");
+  artifactFrame.onload = null;
+  clearIframeFallbackTimer();
+
+  artifactFrame.onload = () => {
+    clearIframeFallbackTimer();
+    artifactFallback.hidden = true;
+    artifactFrame.classList.remove("is-hidden");
+  };
+
+  artifactFrame.src = presentation.embedUrl;
+
+  if (presentation.type === "website" && presentation.externalUrl) {
+    state.iframeFallbackTimer = window.setTimeout(() => {
+      artifactFallback.hidden = false;
+      artifactFallbackBody.textContent =
+        presentation.fallbackBody || "This site may block embedding here. Monday can still open it directly in your browser.";
+      artifactFrame.classList.add("is-hidden");
+    }, 2800);
+  }
+}
+
+function revealArtifactPayload(presentation) {
+  artifactFallback.hidden = true;
+  artifactFrame.classList.remove("is-hidden");
+  clearIframeFallbackTimer();
+  window.sessionStorage.setItem(ARTIFACT_STORAGE_KEY, JSON.stringify(presentation.artifactPayload));
+  artifactFrame.src = `/artifact-view.html?ts=${Date.now()}`;
+}
+
+function openArtifactModal(presentation = state.currentPresentation, { force = false } = {}) {
+  if (!presentation) return;
+
+  const artifactKey = buildArtifactKey(presentation);
   if (!force && artifactKey === state.currentArtifactKey && artifactSurface.dataset.state === "visible") {
     return;
   }
 
+  state.currentPresentation = presentation;
+  state.lastPresentation = presentation;
+  state.presentationsByType[presentation.type] = presentation;
   state.currentArtifactKey = artifactKey;
-  artifactEyebrow.textContent = state.presence?.stage?.eyebrow || "Supporting Brief";
-  artifactTitle.textContent = propState.payload.title || "Monday found something worth opening.";
-  window.sessionStorage.setItem(ARTIFACT_STORAGE_KEY, JSON.stringify(artifactPayload));
-  artifactFrame.src = `/artifact-view.html?ts=${Date.now()}`;
+  state.dismissedArtifactKey = null;
+
+  applyModalMeta(presentation);
+
+  if (presentation.embedUrl) {
+    revealIframePresentation(presentation);
+  } else if (presentation.artifactPayload) {
+    revealArtifactPayload(presentation);
+  } else {
+    artifactFallback.hidden = false;
+    artifactFallbackBody.textContent = "Monday does not have anything concrete to open for this yet.";
+    artifactFrame.classList.add("is-hidden");
+  }
+
   artifactSurface.dataset.state = "visible";
   setBrainState();
 }
 
 function closeArtifactModal() {
+  clearIframeFallbackTimer();
+  state.dismissedArtifactKey = state.currentArtifactKey;
   artifactSurface.dataset.state = "hidden";
   setBrainState();
 }
 
-function maybeRevealArtifact() {
-  const propState = state.presence?.stage?.prop;
-  if (!propState?.visible || !propState?.payload) return;
-  const nextKey = buildArtifactKey(propState.payload);
+function maybeRevealArtifact(surfacingPlan = null) {
+  const presentation = normalizePresentationPayload({ presence: state.presence, surfacingPlan });
+  if (!presentation) return;
+  state.currentPresentation = presentation;
+  state.presentationsByType[presentation.type] = presentation;
+  const nextKey = buildArtifactKey(presentation);
+  if (!surfacingPlan && artifactSurface.dataset.state !== "visible" && nextKey === state.dismissedArtifactKey) {
+    return;
+  }
   if (nextKey === state.currentArtifactKey && artifactSurface.dataset.state === "visible") return;
-  window.setTimeout(() => openArtifactModal(), state.presence?.stage?.pauseSuggestedMs || 800);
+  window.setTimeout(() => openArtifactModal(presentation), state.presence?.stage?.pauseSuggestedMs || 800);
+}
+
+function resolveTriggerIntent(text) {
+  const normalized = normalizeText(text).toLowerCase();
+  if (!normalized) return null;
+  if (/\bshow (?:the )?website\b|\bopen (?:that|the website|the site)\b|\bpull it up\b|\bshow the site\b/.test(normalized)) return "website";
+  if (/\bshow (?:the )?sources\b|\bshow research\b|\bopen research\b/.test(normalized)) return "research";
+  if (/\bshow (?:the )?plan\b|\bbring up the itinerary\b|\bshow (?:the )?itinerary\b|\bshow (?:the )?checklist\b/.test(normalized)) return "deliverable";
+  if (/\bshow (?:the )?recommendation\b|\bopen (?:the )?recommendation\b/.test(normalized)) return "recommendation";
+  if (/\bshow evidence\b|\bopen evidence\b/.test(normalized)) return "evidence";
+  if (/^(show me|open that|pull it up|bring it up|show that)$/i.test(normalized)) return "current";
+  return null;
+}
+
+function handleLocalPresentationTrigger(text) {
+  const trigger = resolveTriggerIntent(text);
+  if (!trigger) return false;
+
+  const active = normalizePresentationPayload({
+    presence: state.presence,
+    trigger: trigger === "current" ? null : trigger,
+  });
+  const byType = trigger === "current" ? state.currentPresentation || state.lastPresentation : state.presentationsByType[trigger];
+  let presentation = byType || active || state.currentPresentation || state.lastPresentation;
+
+  if (trigger === "research" && presentation?.sources?.length) {
+    presentation = {
+      type: "research",
+      eyebrow: "Research",
+      title: `${state.presence?.subject?.name || "Current"} sources`,
+      reason: "Monday gathered these sources behind the current read.",
+      summary: presentation.summary || "",
+      nextAction: presentation.nextAction || "",
+      artifactPayload: buildResearchArtifactFromPresentation(presentation),
+    };
+  }
+
+  if (!presentation) {
+    addThreadMessage("I do not have supporting material on the table for that yet.", "monday");
+    return true;
+  }
+
+  openArtifactModal(presentation, { force: true });
+  return true;
 }
 
 function renderFloatingThought() {
@@ -376,6 +740,12 @@ async function advancePresence(action = "continue") {
 async function sendPresenceMessage(text, options = {}) {
   const cleaned = String(text || "").trim();
   if (!cleaned || state.sendLock) return;
+  if (handleLocalPresentationTrigger(cleaned)) {
+    inputEl.value = "";
+    autosizeComposer();
+    inputEl.focus();
+    return;
+  }
 
   setBusy(true);
   addThreadMessage(cleaned, "user");
@@ -403,7 +773,21 @@ async function sendPresenceMessage(text, options = {}) {
 
     if (payload.presence) {
       state.presence = payload.presence;
+      const trigger = /\bwhy do you think that\b/i.test(cleaned) ? "evidence" : null;
+      const surfaced = normalizePresentationPayload({
+        presence: payload.presence,
+        surfacingPlan: payload.surfacingPlan || null,
+        trigger,
+      });
+      if (surfaced) {
+        state.currentPresentation = surfaced;
+        state.lastPresentation = surfaced;
+        state.presentationsByType[surfaced.type] = surfaced;
+      }
       renderPresence();
+      if (surfaced && (payload.surfacingPlan || trigger === "evidence")) {
+        window.setTimeout(() => openArtifactModal(surfaced), payload.presence?.stage?.pauseSuggestedMs || 700);
+      }
     } else {
       addThreadMessage(payload.reply || "Monday replied without text.", "monday");
       await loadPresenceState(currentSubjectId());
@@ -471,8 +855,8 @@ function attachEvents() {
   });
 
   askAboutButton.addEventListener("click", () => {
-    if (state.presence?.stage?.prop?.visible) {
-      openArtifactModal(true);
+    if (state.currentPresentation || state.presence?.stage?.prop?.visible) {
+      openArtifactModal(state.currentPresentation || normalizePresentationPayload(), { force: true });
       return;
     }
     inputEl.value = "Tell me about this.";
