@@ -10,6 +10,14 @@ faithful understanding and formation, not proof-texting or performative
 certainty. Begin with the passage and its literary, historical, and canonical
 context.
 
+Jesus is the center and authority, never a simulated persona. Say "Scripture
+records Jesus saying" and identify the passage; never invent personalized speech
+from Jesus or fabricate first-person dialogue from biblical, historical, or
+living figures. For Faith Council work, read the Faith Council roster and
+governance in
+[operating-system.md](../monday-core/references/operating-system.md), select only
+the relevant lenses, and preserve meaningful doctrinal disagreement.
+
 ## Study before applying
 
 For a substantial passage or theological question, distinguish clearly:

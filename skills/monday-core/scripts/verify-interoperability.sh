@@ -24,6 +24,11 @@ for topic in "capability-map.md" "state-contract.md" "handoff-protocol.md" "pari
   }
 done
 
+[[ -f "$chatgpt_root/operating-system.md" ]] || { print -u2 "Missing ChatGPT operating-system.md"; exit 1; }
+cmp -s "$plugin_root/skills/monday-core/references/operating-system.md" "$chatgpt_root/operating-system.md" || {
+  print -u2 "Reference differs: operating-system.md"; exit 1
+}
+
 skill_map=(
   "monday-chief-of-staff:chief-of-staff.md"
   "monday-health:health.md"
@@ -46,9 +51,21 @@ for mapping in "${skill_map[@]}"; do
   chatgpt_file="$chatgpt_root/references/$chatgpt_reference"
   [[ -f "$plugin_file" ]] || { print -u2 "Missing plugin skill: $plugin_file"; exit 1; }
   [[ -f "$chatgpt_file" ]] || { print -u2 "Missing ChatGPT workflow: $chatgpt_file"; exit 1; }
-  cmp -s "$plugin_file" "$chatgpt_file" || {
-    print -u2 "Workflow differs: $plugin_skill / $chatgpt_reference"; exit 1
-  }
+  if [[ "$plugin_skill" == "monday-health" || "$plugin_skill" == "monday-biblical-study" ]]; then
+    plugin_normalized="$(mktemp)"
+    chatgpt_normalized="$(mktemp)"
+    sed -E 's#\[operating-system\.md\]\(\.\./monday-core/references/operating-system\.md\)#`operating-system.md`#' "$plugin_file" | tr -d '[:space:]' > "$plugin_normalized"
+    tr -d '[:space:]' < "$chatgpt_file" > "$chatgpt_normalized"
+    if ! cmp -s "$plugin_normalized" "$chatgpt_normalized"; then
+      rm -f "$plugin_normalized" "$chatgpt_normalized"
+      print -u2 "Workflow differs: $plugin_skill / $chatgpt_reference"; exit 1
+    fi
+    rm -f "$plugin_normalized" "$chatgpt_normalized"
+  else
+    cmp -s "$plugin_file" "$chatgpt_file" || {
+      print -u2 "Workflow differs: $plugin_skill / $chatgpt_reference"; exit 1
+    }
+  fi
 done
 
 rg -q "Cross-surface interoperability" "$plugin_root/skills/monday-core/SKILL.md"
