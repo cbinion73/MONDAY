@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday Research and Evidence"
+  short_description: "Turn credible evidence into clear judgment."
+  default_prompt: "Use $monday-research-evidence to investigate this question and give me a source-backed conclusion."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday Family and Household"
+  short_description: "Coordinate family and household logistics with care."
+  default_prompt: "Help me see the family and household commitments that need attention this week."

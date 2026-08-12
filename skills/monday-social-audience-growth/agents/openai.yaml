@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday Social and Audience Growth"
+  short_description: "Plan, create, learn from, and grow social content."
+  default_prompt: "Build a focused social and audience-growth plan around my current publishing priorities."

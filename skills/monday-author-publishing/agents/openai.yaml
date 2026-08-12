@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday Author and Publishing"
+  short_description: "Shape, finish, and publish meaningful books."
+  default_prompt: "Use $monday-author-publishing to decide the next best move for this book or publishing project."

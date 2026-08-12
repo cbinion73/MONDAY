@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday Legacy"
+  short_description: "Decide and build durable freedom and legacy."
+  default_prompt: "Use $monday-legacy to assess this opportunity against my freedom and legacy goals."

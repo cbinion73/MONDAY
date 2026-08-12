@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday Business Partner"
+  short_description: "Make an approved venture succeed."
+  default_prompt: "Use $monday-business-partner to make this approved venture more likely to succeed."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday Biblical Study"
+  short_description: "Study Scripture with context and humility."
+  default_prompt: "Use $monday-biblical-study to study this passage carefully and apply it faithfully."

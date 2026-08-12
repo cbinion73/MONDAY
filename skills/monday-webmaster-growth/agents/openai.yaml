@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday Webmaster & Growth"
+  short_description: "Grow profitable, trustworthy websites"
+  default_prompt: "Help me improve this website’s traffic, conversion, content, and search performance."

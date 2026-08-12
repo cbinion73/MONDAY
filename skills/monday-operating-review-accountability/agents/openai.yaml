@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday Operating Review"
+  short_description: "Review commitments, priorities, and follow-through."
+  default_prompt: "Run my Monday operating review and recommend the few decisions that matter most."

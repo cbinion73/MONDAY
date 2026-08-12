@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday Portfolio and Metrics"
+  short_description: "Track ventures, publishing, income, and operational signals."
+  default_prompt: "Review my portfolio and tell me what is on track, unclear, or needs a decision."

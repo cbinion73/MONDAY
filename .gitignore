@@ -1,0 +1,11 @@
+# Local runtimes, credentials, and generated state are never source-controlled.
+tunnel-client/
+mcp-server/.venv/
+mcp-server/.pytest_cache/
+mcp-server/**/__pycache__/
+tools/*.app/
+*.key
+*.pem
+*.token
+*.secret
+.DS_Store
