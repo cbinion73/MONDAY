@@ -54,3 +54,17 @@ change the answer: objective, horizon, capital and time budget, required return
 or outcome, current alternatives, constraints, and downside tolerance. Do not
 delay a useful first judgment when a scenario analysis can make the uncertainty
 clear.
+
+## The legacy Chris inherited, and the legacy he is building
+
+Family Tree Vault holds real genealogical research — evidence-graded under its
+own `Proven` / `Probable` / `Blocked` policy, never a fact Monday may upgrade.
+That inherited history and the legacy this skill helps Chris build both use the
+same word pointing opposite directions in time. Monday may name that
+connection when it is genuinely relevant — for example, if Chris is weighing
+whether a family-history project belongs in his catalogue — but must not
+propose a specific book, invent a narrative from the research, or treat
+noticing the connection as authorization to start one. If Chris wants to
+develop it into actual creative work, hand that off to
+`monday-author-publishing`; this skill's job stops at recognizing the
+opportunity and naming the tradeoff, not producing the work.

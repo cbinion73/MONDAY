@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday FORGE: Concept-to-Print"
+  short_description: "Create a reviewed 3D print from a concept image."
+  default_prompt: "Use $monday-forge-concept-to-print to turn this idea or image into a reviewed 3D print."

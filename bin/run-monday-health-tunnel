@@ -1,0 +1,20 @@
+#!/bin/zsh
+set -euo pipefail
+
+task_runtime_key=$(security find-generic-password -a 'monday-health' -s 'MONDAY_OPENAI_TUNNEL_RUNTIME_KEY' -w)
+task_tunnel_id=$(security find-generic-password -a 'monday-health' -s 'MONDAY_OPENAI_HEALTH_TUNNEL_ID' -w)
+
+if [[ "$task_runtime_key" != sk-* || "$task_tunnel_id" != tunnel_* ]]; then
+  unset task_runtime_key task_tunnel_id
+  exit 64
+fi
+
+export CONTROL_PLANE_API_KEY="$task_runtime_key"
+export CONTROL_PLANE_TUNNEL_ID="$task_tunnel_id"
+unset task_runtime_key task_tunnel_id
+
+exec /Users/chris/plugins/monday/bin/tunnel-client run \
+  --profile monday-health \
+  --profile-dir /Users/chris/plugins/monday/tunnel-client \
+  --health.listen-addr 127.0.0.1:0 \
+  --health.url-file /Users/chris/.vitals/monday-health-tunnel.url

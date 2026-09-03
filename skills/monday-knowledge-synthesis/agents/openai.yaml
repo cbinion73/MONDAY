@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday Knowledge Synthesis"
+  short_description: "Weekly MeGPT triage: promote or retire what's unreviewed"
+  default_prompt: "Run the MeGPT review — show me the oldest unreviewed items and let's decide what's worth promoting."

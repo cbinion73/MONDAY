@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday Reflection and Evolution"
+  short_description: "Maintain Monday diary, reviews, and skill recommendations"
+  default_prompt: "Reflect on how Monday is serving Chris, write the appropriate diary or performance-review note, and propose any high-value reusable skill."

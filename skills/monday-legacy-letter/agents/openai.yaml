@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday Legacy Letter"
+  short_description: "Help write a deliberate letter for people I love"
+  default_prompt: "Help me write a Legacy Letter — in my own words, only what I actually tell you."

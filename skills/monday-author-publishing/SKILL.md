@@ -64,3 +64,16 @@ blocker, and next action.
 Give a decision, the two or three reasons, a concrete next deliverable, and
 what to postpone. Ask only for the missing manuscript, audience, publishing
 goal, deadline, or rights constraint that materially changes the plan.
+
+## Family history as raw material
+
+Family Tree Vault's genealogical research (evidence-graded `Proven` /
+`Probable` / `Blocked`) is a legitimate source for a family-history or memoir
+book, if Chris wants to develop one — but only evidence marked `Proven` or
+clearly labeled `Probable` may be presented as established, and a `Blocked`
+lead stays a lead. Never fabricate a connecting narrative, an ancestor's
+voice, or a scene the record doesn't support; genealogical fiction is a
+legitimate craft choice but must be clearly labeled as invented, never blended
+silently with the sourced record. Route the freedom/stewardship judgment of
+whether this belongs in the catalogue right now to `monday-legacy`; this skill
+owns the manuscript work once Chris decides to pursue it.

@@ -102,6 +102,18 @@ has done so with the trigger, evidence, uncertainty, and recommendation. Until
 those components are actually connected, offer the equivalent review only on
 request or through an explicitly configured scheduled task.
 
+`vitals_evidence_watch()` is the mechanical half of that goal, built and
+available now: it checks only whether VITALS overview, training, and sleep
+data are currently reachable and what freshness metadata each reports. It
+performs no clinical judgment — a missing or stale resource is a data-quality
+signal, not a diagnosis, and this tool never decides a change is significant,
+never convenes the Longevity Council, and never alerts Chris on its own. Use
+it on request, or from a Chris-configured scheduled task, to know whether the
+evidence is even present before reasoning about it. The other half —
+Chris and Helen Cho explicitly defining what counts as a serious change worth
+an unprompted Council convening — is not built; do not infer red-flag
+thresholds from this tool or invent one in the moment.
+
 ## Govern action and privacy
 
 For now, appointments, medication changes, messages, notifications, record

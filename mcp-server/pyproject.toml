@@ -1,0 +1,15 @@
+[project]
+name = "monday-health-mcp"
+version = "0.1.0"
+description = "Private read-only MCP bridge from ChatGPT to VITALS."
+requires-python = ">=3.11"
+dependencies = [
+  "httpx>=0.27,<1",
+  "mcp>=1.0,<2",
+]
+
+[project.scripts]
+monday-health-mcp = "monday_health_mcp.server:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday Contradiction Audit"
+  short_description: "Notice tension between what I've said over time"
+  default_prompt: "Check this against what I've actually recorded before — is there a real tension worth naming?"

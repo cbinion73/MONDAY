@@ -19,6 +19,11 @@ it and whether it still deserves commitment; MONDAY synthesizes.
 2. Gather only relevant operational state: calendar/reminders for **when**;
    Monday operational vault for **what / why / next**; durable sources for
    background; approved live data only if it materially changes the judgment.
+   For a weekly reset, start from `get_weekly_digest()` — it mechanically
+   surfaces stale Parking-Lot/Follow-Ups items, open tasks, and the coming
+   week's family calendar (see
+   [operating-vault.md](../monday-chief-of-staff/references/operating-vault.md)).
+   It is a candidate list, not a finished review.
 3. Separate commitments, decisions, follow-ups, waiting-on items, and parking
    lot ideas. Identify duplicates, vague dates, stale assumptions, and work
    with no owner or next move.

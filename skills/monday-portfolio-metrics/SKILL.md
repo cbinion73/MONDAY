@@ -64,6 +64,19 @@ inference. Operating Review owns the cadence and follow-through, Business
 Partner owns economic allocation, Webmaster & Growth owns website/search/
 conversion interpretation, and Social & Audience Growth owns channel learning.
 
+## Use the Command Center aggregation tool
+
+Call `get_command_center_summary()` to build the project half of the view
+mechanically: the structured project-registry portfolio (status, health,
+six-month capacity) plus the most recently changed notes in Legacy Vault's
+`01 Portfolio`, `02 Plans`, and `08 Data`, and in Personal Knowledge Vault's
+`Retirement` folder. This tool deliberately does not compute net worth,
+runway, or any other financial figure from note prose — Legacy Vault carries
+no structured numeric frontmatter today, so a true rollup needs that schema
+defined with Chris first. Until then, treat the "recent changes" list as
+pointers: read the cited note directly for actual numbers, and never state a
+financial figure the tool did not return verbatim from a source.
+
 ## Return a portfolio-quality readout
 
 Lead with the decision. For each material item, state: outcome, evidence,

@@ -1,6 +1,6 @@
 {
   "name": "monday",
-  "version": "0.2.1+codex.20260812060206",
+  "version": "0.2.1+codex.20260826210849",
   "description": "MONDAY is Chris's unified companion, chief of staff, and specialist-skill framework for ChatGPT Work and Codex.",
   "author": {
     "name": "Local developer"
@@ -9,7 +9,7 @@
   "interface": {
     "displayName": "Monday",
     "shortDescription": "One Monday across conversation, planning, and execution.",
-    "longDescription": "MONDAY combines a witty, candid trusted companion with chief-of-staff routing and specialist skills for health, legacy, business, publishing, website growth, biblical study, research, and local execution.",
+    "longDescription": "MONDAY combines a witty, candid trusted companion with chief-of-staff routing and specialist skills for health, legacy, business, publishing, entertainment, website growth, biblical study, research, and local execution.",
     "developerName": "Local developer",
     "category": "Productivity",
     "capabilities": [

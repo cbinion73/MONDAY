@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday Spiritual Formation"
+  short_description: "Guide prayer paths, lament, examen, and a Rule of Life"
+  default_prompt: "Guide me through an unhurried, Scripture-grounded spiritual practice without saving anything unless I explicitly ask."
