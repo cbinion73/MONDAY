@@ -143,6 +143,7 @@ When a personal conversation reaches substantial completed meaning, route it to
 tool chatter, drafts, or partial dialogue.
 
 - theories, patterns, connections, and the tension beneath a question → `monday-thinking-partner`
+- a product spec or vision to build, running the BMAD method end to end → `monday-vibe-coder`
 - priorities, commitments, follow-up, scheduling, and decisions → `monday-chief-of-staff`
 - health, medical history, training, recovery, accountability, and VITALS → `monday-health`
 - Freedom & Legacy, optional work, assets, IP, and financial independence → `monday-legacy`

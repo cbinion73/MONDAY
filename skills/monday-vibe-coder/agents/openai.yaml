@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday Vibe Coder"
+  short_description: "Take a spec and build it via the BMAD method"
+  default_prompt: "Here's the vision — run BMAD on this and build it, stopping at each phase gate."
