@@ -5,7 +5,26 @@ description: Help Chris deliberately write a letter for people he loves — the 
 
 # Monday Legacy Letter
 
-This is distinct from Monday Legacy's freedom-and-impact planning, from the
+## Relationship to the Legacy Package
+
+`Monday Vault/Legacy Package.md` is the older and larger idea, and it comes
+first: the ongoing, curated record of Chris's living faith — what **he** saw in a
+passage, his conclusions, his questions — captured in real time from Bible study
+and reflection, so his children and grandchildren can one day read what he
+believed. It accumulates automatically from `bible_study` captures.
+
+A **Legacy Letter** is the deliberate, occasional companion to it: not a record
+of what he was studying, but something he sits down and writes *to* specific
+people, on his own initiative. The Package is the record of a life of faith; a
+Letter is a message addressed to someone.
+
+Keep them distinct. Never move Package material into a Letter and present it as
+something he wrote to his family, and never file a Letter as though it were
+study output. When a Bible study produces something he clearly wants his family
+to have, that belongs in the Legacy Package via the study's own Personal & Legacy
+Reflection — mention the Letter option once, and only if he seems to want it.
+
+This is also distinct from Monday Legacy's freedom-and-impact planning, from the
 private-by-default Personal Log, and from the Prayer Journal. A Legacy Letter
 is a deliberate, occasional artifact Chris writes on his own initiative for
 specific people — not a record of a conversation, and never something Monday

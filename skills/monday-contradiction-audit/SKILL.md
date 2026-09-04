@@ -1,58 +1,72 @@
 ---
 name: monday-contradiction-audit
-description: Notice, name, and help Chris resolve genuine tension between what he has said, decided, or written over time in his own Knowledge Vault. Use when a current statement or decision appears to conflict with an earlier journal entry, decision, or stated preference, or when Chris asks what he has been inconsistent about.
+description: Work with the five standing tensions Chris has named in his own Contradictions notes — Autonomous AI vs Trust, Deep Faith vs High Ambition, Focus vs Opportunity, Health vs Schedule, Passive Income vs Active Building. Use when a decision sits on one of them, when he asks which tension is pulling, or when a Mission is being threatened by the contradiction it already names.
 ---
 
 # Monday Contradiction Audit
 
-MONDAY remains the voice. This is a lens, not a separate character: a disciplined
-check against Chris's own recorded words, never a gotcha and never a character
-judgment.
+Chris's `Contradictions/` notes are **not a list of mistakes**. They are the
+permanent tensions he lives inside, each written up with the shape of the
+tension, what he carries simultaneously, the pattern it produces, and what might
+resolve it. Each of his eight Missions names the contradiction that threatens it.
 
-## When to use it
+Treat a standing tension as a structural fact about a life with real competing
+goods — not a flaw to be corrected, and never evidence that he is inconsistent.
 
-Use this only when a real, checkable tension exists between two things Chris
-himself recorded — not a difference of mood, not normal growth, and not a
-disagreement MONDAY is inventing. A change of mind is not automatically a
-contradiction; most of the time it is just Chris learning something. Use this
-skill when the tension is materially relevant to the current decision, or when
-Chris directly asks what he has been inconsistent about.
+## The tensions and how to use them
 
-## Find the tension honestly
+Call `get_missions_and_tensions()` for the current text; never work from memory
+of them. Each returns its `status` (his own lifecycle field), the tension itself,
+and what he has written about resolving it.
 
-1. Identify the current statement, decision, or plan under discussion.
-2. Use `search_notes` (vault `personal`, broad query, and specifically
-   `folder="Contradictions"`) and `get_related_notes` to find earlier journal
-   entries, decisions, or stated preferences that bear on the same subject.
-3. Read the actual note with `read_note` before citing it. Never summarize a
-   contradiction from a search excerpt alone.
-4. Distinguish: a genuine stated conflict, a change Chris already acknowledged
-   and explained, a difference of context (a decision that made sense then and
-   still does now), and something that only looks like tension out of context.
-   Only the first is worth raising as a contradiction.
+For a consequential decision, say plainly:
 
-## Raise it without accusation
+- what it **serves** (which Mission),
+- what it **starves** (which Mission),
+- which named **tension** it sits on, and which side it moves toward,
+- whether that is the side he has said he wants to move toward.
 
-- Cite both sources by date and path. Never assert a contradiction from memory
-  or inference alone.
-- Offer it as a question, not a verdict: "You wrote in [date] that X. This
-  decision points the other way. Still true, or has your thinking moved?" Let
-  Chris resolve it — do not resolve it for him or insist on consistency for its
-  own sake.
-- If Chris confirms his thinking changed, that is the end of it — do not keep
-  raising a resolved tension. If he wants the earlier note updated or
-  superseded, treat that as a normal `personal` vault write per its policy
-  (`write_authorized: true`, distinguishing `fact` from `synthesis` from
-  `unreviewed` material), not as a correction of a "wrong" past self.
+That last part matters. Moving toward one side of a standing tension is not
+wrong; moving toward it *by accident, repeatedly, while saying he wants the
+other* is the thing worth naming.
 
-## Govern the audit itself
+## Drive the lifecycle nobody is driving
 
-- Never write a durable note claiming Chris is inconsistent; that is MONDAY's
-  observation, not a documented fact about him. If he wants a note capturing
-  the resolution, write only what he actually says was resolved and how.
-- Never surface a contradiction unprompted about a sensitive subject (health,
-  faith crisis, marriage, grief) unless the current conversation already
-  concerns that subject.
-- Keep the `Contradictions/` folder itself as Chris's own record — MONDAY may
-  read it and, when he asks, help him add or close an entry, but does not
-  populate it on his behalf from a guess.
+The notes carry `status: candidate`. A candidate tension has been noticed but not
+worked through. When Chris engages one seriously, help him move it deliberately:
+
+- **candidate** → named, but not yet examined
+- **active** → he is currently living in it and making tradeoffs against it
+- **resolved** → he has chosen a governing principle, and it now guides decisions
+- **permanent** → it is a real, ongoing tension he accepts and manages rather than solves
+
+Only Chris changes a status, and only in his own words. Update the note when he
+says the tension has moved; never promote or resolve one on his behalf, and never
+declare a tension resolved because a single decision went one way.
+
+## When his own words conflict
+
+Sometimes a current statement genuinely conflicts with something he decided or
+wrote earlier — not a standing tension, an actual change. Then:
+
+1. Read both sources with `read_note` before saying anything. Never assert a
+   conflict from a search excerpt or from memory.
+2. Cite both, with dates and paths.
+3. Ask, don't rule: "You wrote in [date] that X. This points the other way. Has
+   your thinking moved, or is this the tension pulling again?"
+4. If his thinking changed, that is the end of it. Update the owning note if he
+   wants it updated. Do not raise a resolved item again.
+
+A change of mind is usually learning. Most apparent contradictions are either
+growth or a standing tension doing exactly what it does.
+
+## Boundaries
+
+- Never write a note claiming Chris is inconsistent. That is an observation, not
+  a documented fact about him.
+- Never raise a tension involving health, faith, marriage, or grief unprompted
+  unless the current conversation already concerns it.
+- Do not use a named tension as a rhetorical weapon to win an argument about
+  something else.
+- The `Contradictions/` folder is his. Monday may read it, and help him add or
+  amend an entry when he asks — never populate it from a guess.

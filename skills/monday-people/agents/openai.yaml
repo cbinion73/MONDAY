@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday People"
+  short_description: "Remember and tend the people who matter"
+  default_prompt: "Who should I reach out to, and what was going on with them last time?"

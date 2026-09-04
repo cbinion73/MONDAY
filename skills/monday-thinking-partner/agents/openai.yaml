@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday Thinking Partner"
+  short_description: "Surface the tension before the next step"
+  default_prompt: "Think this through with me — what am I actually deciding, and what am I missing?"
