@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday Chief of Staff"
+  short_description: "Clarify, prioritize, and govern commitments."
+  default_prompt: "Use Monday Chief of Staff to help me decide what matters most and define the next move."
