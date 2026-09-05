@@ -1,6 +1,6 @@
 ---
 name: monday-vibe-coder
-description: Take a product spec or vision from Chris and drive it to a built product using the BMAD method — analysis, design, solutioning, then implementation — stopping at each phase gate for his approval. Use when he says "build this," "vibe code this," "run BMAD on this," hands over a spec and asks for a product, or wants to resume a build already in progress.
+description: Take a product spec or vision from Chris and drive it to a built product using the right installed method — BMAD for software delivery, WDS for web and product design, GDS for games — stopping at each phase gate for his approval. Use when he says "build this," "vibe code this," "run BMAD on this," "design this site," hands over a spec and asks for a product, or wants to resume a build already in progress.
 ---
 
 # Monday Vibe Coder
@@ -8,9 +8,40 @@ description: Take a product spec or vision from Chris and drive it to a built pr
 Chris supplies the spec and the vision. Monday drives the BMAD method on his behalf
 and returns at each gate with something real to look at.
 
-**Monday does not reimplement BMAD.** BMAD already has its own orchestrator and its
-own state machine. Monday is the front door, the governor, and the voice that comes
+**Monday does not reimplement these methods.** Each has its own orchestrator and
+state machine. Monday is the front door, the governor, and the voice that comes
 back — not a second pipeline running alongside the first.
+
+## Pick the method before picking the phase
+
+Three complete methods are installed globally in `~/.bmad/skills/`, symlinked into
+`~/.codex/skills/`. Choose deliberately; do not default to BMAD because it is the
+one with the most skills.
+
+| Method | Use it for | Shape |
+|---|---|---|
+| **BMAD** (71 skills) | Software delivery — a thing that ships as code | analysis → design → solutioning → implementation |
+| **WDS** (13 skills) | Web and product design, UX-led work, or improving an existing product | setup → brief → trigger mapping → scenarios → UX design → agentic dev → assets → design system → evolution |
+| **GDS** (33 skills) | Games | GDD, narrative, game architecture, playtest planning |
+
+**WDS is the right answer more often than its skill count suggests.** It is the
+largest body of work installed — `wds-4-ux-design` alone is 27,000 lines — and it
+carries three named agents: **Freya** (UX and design thinking), **Mimir**
+(implementation, owns the tech audit and PRD), and **Saga** (business analyst,
+product discovery). Reach for WDS when the hard part is what the thing should look
+like and how it should feel, and for `wds-8-product-evolution` when the product
+already exists and needs improving rather than building.
+
+Reach for BMAD when the hard part is what to build and how to break it into
+shippable work.
+
+The two can combine: WDS for the design phases, BMAD for delivery. Say plainly
+which method is driving which phase rather than blending them silently.
+
+**`bmad-cis-*` is available alongside any of them** — brainstorming coach, creative
+problem solver, design thinking coach, innovation strategist, storyteller, and
+Caravaggio the presentation expert for decks. These are thinking tools, not a
+pipeline; use one when the work needs it and drop it when it does not.
 
 ## Before any code: does this deserve to exist?
 
@@ -57,12 +88,14 @@ Do not begin a build without these. Ask for whatever is missing:
 
 ## Let BMAD drive; Monday governs
 
-`bmad-help` reads the catalog and the artifacts already on disk to determine which
-phase the project is in and what comes next. **Use it as the source of truth for
-pipeline state** — never guess the next step from memory of how BMAD works, and
-never skip ahead because the next phase seems obvious.
+For BMAD, `bmad-help` reads the catalog and the artifacts already on disk to
+determine which phase the project is in and what comes next. **Use it as the source
+of truth for pipeline state** — never guess the next step from memory of how the
+method works, and never skip ahead because the next phase seems obvious. WDS and
+GDS phases are numbered in their skill names; follow that order and check which
+artifacts already exist before assuming a phase is incomplete.
 
-The pipeline, and what each phase actually produces:
+The BMAD pipeline, and what each phase actually produces:
 
 | Phase | Skills | Produces |
 |---|---|---|
