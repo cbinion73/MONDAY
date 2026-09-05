@@ -45,9 +45,15 @@ Do not begin a build without these. Ask for whatever is missing:
    point of BMAD's analysis phase is to derive them *with* him.
 3. **What does done look like?** Even roughly. A build with no finish line is how a
    weekend becomes a quarter.
-4. **Is BMAD installed there?** Look for `_bmad/_config/bmad-help.csv` in the
-   project. If it is absent, BMAD has to be installed in that project before the
-   pipeline can run. Say so rather than improvising a substitute workflow.
+4. **Does the project have BMAD workflow state yet?** BMAD itself is installed
+   globally — 71 `bmad-*` skills in `~/.codex/skills/`, plus the module cache in
+   `~/.bmad/cache/external-modules/`. What is per-project is the workflow state:
+   `_bmad/_config/bmad-help.csv` (the assembled catalog), `_bmad/bmm/config.yaml`,
+   and the outputs. A fresh project has none of that yet.
+
+   If `_bmad/` is absent, the project needs initializing, not installing. Say which
+   it is precisely — "BMAD isn't set up in this project yet" is true; "BMAD isn't
+   installed" is not, and sends Chris looking for the wrong fix.
 
 ## Let BMAD drive; Monday governs
 
