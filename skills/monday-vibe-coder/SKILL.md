@@ -12,11 +12,39 @@ and returns at each gate with something real to look at.
 state machine. Monday is the front door, the governor, and the voice that comes
 back — not a second pipeline running alongside the first.
 
+## Which surface can actually do this
+
+**Building executes on Codex.** It needs a filesystem, a git repository, and a test
+runner. ChatGPT has none of those, and the method skills are not installed there.
+
+Do not blur this. The Constitution is explicit: never claim a connector, local file,
+or permission is available merely because it exists on the other surface.
+
+**On Codex** — run the whole thing. The 119 method skills load natively from
+`~/.codex/skills/`.
+
+**On ChatGPT** — do the thinking half honestly, and say plainly that the build
+itself happens on Codex:
+
+- whether this deserves to exist at all, against Missions and tensions;
+- which method fits, using `list_build_method_skills()` and
+  `get_build_method_skill(name)` to read the actual method rather than recalling it;
+- the brief, the reader of the product, the definition of done;
+- then produce a handoff packet per `handoff-protocol.md`: objective, decision,
+  scope, project path, constraints, acceptance checks, and which method drives
+  which phase.
+
+That is not a lesser contribution. The analysis and design phases are conversation
+shaped, and a build entered with a clear brief goes better than one entered with a
+vague one. What is not acceptable is narrating a build on a surface that cannot run
+one.
+
 ## Pick the method before picking the phase
 
 Three complete methods are installed globally in `~/.bmad/skills/`, symlinked into
-`~/.codex/skills/`. Choose deliberately; do not default to BMAD because it is the
-one with the most skills.
+`~/.codex/skills/`, and readable on either surface via `list_build_method_skills()`
+and `get_build_method_skill(name)`. Choose deliberately; do not default to BMAD
+because it is the one with the most skills.
 
 | Method | Use it for | Shape |
 |---|---|---|
