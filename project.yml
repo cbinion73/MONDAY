@@ -1,0 +1,142 @@
+name: MONDAY
+options:
+  bundleIdPrefix: com.chris.monday
+  deploymentTarget:
+    macOS: "15.0"
+    iOS: "18.0"
+    watchOS: "11.0"
+packages:
+  MONDAYCore:
+    path: .
+targets:
+  MONDAY:
+    type: application
+    platform: macOS
+    sources:
+      - path: apps/MondayMac
+      - path: apps/SharedUI
+      - path: apps/SharedIntelligence
+      - path: apps/SharedSpecialists
+      - path: apps/SharedSiri
+    dependencies:
+      - package: MONDAYCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.chris.monday.mac
+        PRODUCT_NAME: MONDAY
+        SWIFT_VERSION: 6.0
+        GENERATE_INFOPLIST_FILE: false
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: LGNJ56Y22G
+        ENABLE_HARDENED_RUNTIME: true
+        OTHER_LDFLAGS: "$(inherited) -lsqlite3"
+        CODE_SIGN_ENTITLEMENTS: apps/MondayMac/MONDAY.entitlements
+    info:
+      path: apps/MondayMac/Info.plist
+      properties:
+        CFBundleDisplayName: MONDAY
+        CFBundleName: MONDAY
+        CFBundleShortVersionString: "0.1"
+        CFBundleVersion: "1"
+        LSMinimumSystemVersion: "15.0"
+        NSCalendarsFullAccessUsageDescription: MONDAY reads your schedule and, only after explicit approval, creates calendar events for you.
+        NSCalendarsWriteOnlyAccessUsageDescription: MONDAY creates calendar events only after showing you a preview and receiving explicit approval.
+        NSRemindersFullAccessUsageDescription: MONDAY can coordinate reminders when you explicitly authorize that capability.
+        NSAppleEventsUsageDescription: MONDAY sends a reply in Apple Messages only after you enable the Messages conversation bridge.
+        NSPrincipalClass: NSApplication
+        NSSupportsAutomaticTermination: true
+        NSSupportsSuddenTermination: true
+        NSUbiquitousContainers:
+          iCloud.com.chris.monday.knowledge:
+            NSUbiquitousContainerIsDocumentScopePublic: true
+            NSUbiquitousContainerName: Monday Knowledge
+            NSUbiquitousContainerSupportedFolderLevels: Any
+  MONDAYMobile:
+    type: application
+    platform: iOS
+    sources:
+      - path: apps/MondayMobile
+      - path: apps/SharedUI
+      - path: apps/SharedIntelligence
+      - path: apps/SharedSpecialists
+      - path: apps/SharedSiri
+    dependencies:
+      - package: MONDAYCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.chris.monday.iphone
+        PRODUCT_NAME: MONDAY
+        SWIFT_VERSION: 6.0
+        GENERATE_INFOPLIST_FILE: false
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: LGNJ56Y22G
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      configs:
+        Debug:
+          CODE_SIGN_ENTITLEMENTS: apps/MondayMobile/MONDAYMobileDebug.entitlements
+        Release:
+          CODE_SIGN_ENTITLEMENTS: apps/MondayMobile/MONDAYMobile.entitlements
+    info:
+      path: apps/MondayMobile/Info.plist
+      properties:
+        CFBundleDisplayName: MONDAY
+        CFBundleShortVersionString: "0.1"
+        CFBundleVersion: "35"
+        UILaunchScreen: {}
+        NSCalendarsFullAccessUsageDescription: MONDAY reads your schedule and, only after explicit approval, creates calendar events for you.
+        NSCalendarsWriteOnlyAccessUsageDescription: MONDAY creates calendar events only after showing you a preview and receiving explicit approval.
+        NSRemindersFullAccessUsageDescription: MONDAY reads reminders and creates a reminder only after showing you a preview and receiving explicit approval.
+        NSSpeechRecognitionUsageDescription: MONDAY transcribes speech only while you are actively speaking to it.
+        NSSiriUsageDescription: MONDAY provides explicit Siri shortcuts for opening your conversation and hearing what is waiting.
+        NSMicrophoneUsageDescription: MONDAY uses the microphone only for foreground voice conversation that you start.
+        NSLocalNetworkUsageDescription: MONDAY uses your local network only to show the read-only Codex activity feed from your own Mac.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        CodexActivityBridgeURL: $(CODEX_ACTIVITY_BRIDGE_URL)
+        CodexActivityBridgeToken: $(CODEX_ACTIVITY_BRIDGE_TOKEN)
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSUbiquitousContainers:
+          iCloud.com.chris.monday.knowledge:
+            NSUbiquitousContainerIsDocumentScopePublic: true
+            NSUbiquitousContainerName: Monday Knowledge
+            NSUbiquitousContainerSupportedFolderLevels: Any
+  MONDAYWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: apps/MondayWatch
+    dependencies:
+      - package: MONDAYCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.chris.monday.watch
+        PRODUCT_NAME: MONDAY
+        SWIFT_VERSION: 6.0
+        GENERATE_INFOPLIST_FILE: false
+    info:
+      path: apps/MondayWatch/Info.plist
+      properties:
+        CFBundleDisplayName: MONDAY
+        CFBundleShortVersionString: "0.1"
+        CFBundleVersion: "1"
+        WKApplication: true
+schemes:
+  MONDAY:
+    build:
+      targets:
+        MONDAY: all
+    run:
+      config: Debug
+  MONDAYMobile:
+    build:
+      targets:
+        MONDAYMobile: all
+    run:
+      config: Debug
+    test:
+      config: Debug
