@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://monday.local/schemas/trust-settings.v1.json",
+  "title": "MONDAY Trust Settings",
+  "type": "object",
+  "required": [
+    "version",
+    "awarenessEnabled",
+    "actionsEnabled",
+    "cloudIntelligenceEnabled",
+    "backgroundIntelligenceEnabled",
+    "onDeviceIntelligenceEnabled",
+    "localOnly",
+    "siriIntelligenceEnabled",
+    "siriKnowledgeIndexingEnabled",
+    "externalModelPolicy",
+    "domains"
+  ],
+  "properties": {
+    "version": { "const": 1 },
+    "awarenessEnabled": { "type": "boolean" },
+    "actionsEnabled": { "type": "boolean" },
+    "cloudIntelligenceEnabled": { "type": "boolean" },
+    "backgroundIntelligenceEnabled": { "type": "boolean" },
+    "onDeviceIntelligenceEnabled": { "type": "boolean" },
+    "localOnly": { "type": "boolean" },
+    "siriIntelligenceEnabled": { "type": "boolean" },
+    "siriKnowledgeIndexingEnabled": { "type": "boolean" },
+    "externalModelPolicy": {
+      "type": "object",
+      "required": [
+        "approvalMode",
+        "automaticMonthlyBudgetCents",
+        "automaticRequestClasses",
+        "allowedModelIDs",
+        "proAndMaxModesEnabled"
+      ],
+      "properties": {
+        "approvalMode": { "const": "everyRequest" },
+        "automaticMonthlyBudgetCents": { "type": "integer", "minimum": 0 },
+        "automaticRequestClasses": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "allowedModelIDs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "proAndMaxModesEnabled": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "domains": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["access", "observe", "act", "approval", "cloud", "audit"],
+        "properties": {
+          "access": { "type": "string" },
+          "observe": { "type": "boolean" },
+          "retainRawRecords": { "type": "boolean" },
+          "sync": { "type": "string" },
+          "infer": { "type": "boolean" },
+          "proactiveUse": { "type": "boolean" },
+          "suggest": { "type": "boolean" },
+          "draft": { "type": "boolean" },
+          "act": { "type": "boolean" },
+          "approval": { "type": "string" },
+          "cloud": { "type": "boolean" },
+          "spendLimitUSD": { "type": "number", "minimum": 0 },
+          "audit": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://monday.local/schemas/action.v1.json",
+  "title": "MONDAY Action Proposal",
+  "type": "object",
+  "required": [
+    "id",
+    "capabilityID",
+    "title",
+    "explanation",
+    "consequence",
+    "parameters",
+    "reversible",
+    "status",
+    "proposedAt"
+  ],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "capabilityID": { "type": "string", "minLength": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "explanation": { "type": "string", "minLength": 1 },
+    "consequence": {
+      "enum": ["observe", "low", "consequential", "high"]
+    },
+    "parameters": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "reversible": { "type": "boolean" },
+    "status": {
+      "enum": ["proposed", "approved", "executing", "verified", "failed", "declined"]
+    },
+    "proposedAt": { "type": "string", "format": "date-time" },
+    "completedAt": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "verification": {
+      "type": ["string", "null"]
+    }
+  },
+  "additionalProperties": false
+}

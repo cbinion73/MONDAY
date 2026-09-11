@@ -1,0 +1,51 @@
+{
+  "$schema": "../schemas/trust-settings.schema.json",
+  "version": 1,
+  "awarenessEnabled": true,
+  "actionsEnabled": true,
+  "cloudIntelligenceEnabled": false,
+  "backgroundIntelligenceEnabled": false,
+  "onDeviceIntelligenceEnabled": true,
+  "localOnly": true,
+  "siriIntelligenceEnabled": true,
+  "siriKnowledgeIndexingEnabled": true,
+  "externalModelPolicy": {
+    "approvalMode": "everyRequest",
+    "automaticMonthlyBudgetCents": 0,
+    "automaticRequestClasses": [],
+    "allowedModelIDs": ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"],
+    "proAndMaxModesEnabled": false
+  },
+  "domains": {
+    "calendar": {
+      "access": "request-when-needed",
+      "observe": true,
+      "retainRawRecords": false,
+      "sync": "canonical-outcomes-only",
+      "infer": true,
+      "proactiveUse": false,
+      "suggest": true,
+      "draft": true,
+      "act": true,
+      "approval": "every-consequential-action",
+      "cloud": false,
+      "spendLimitUSD": 0,
+      "audit": true
+    },
+    "reminders": {
+      "access": "request-when-needed",
+      "observe": true,
+      "retainRawRecords": false,
+      "sync": "canonical-outcomes-only",
+      "infer": true,
+      "proactiveUse": false,
+      "suggest": true,
+      "draft": true,
+      "act": true,
+      "approval": "every-consequential-action",
+      "cloud": false,
+      "spendLimitUSD": 0,
+      "audit": true
+    }
+  }
+}

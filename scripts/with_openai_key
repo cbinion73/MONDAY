@@ -1,0 +1,27 @@
+#!/bin/zsh
+set -euo pipefail
+
+readonly service="com.binion.monday.openai"
+readonly account="${USER:-monday-local}"
+
+if (( $# == 0 )); then
+  echo "Usage: scripts/with_openai_key <command> [arguments...]" >&2
+  exit 64
+fi
+
+if ! key="$(security find-generic-password -a "$account" -s "$service" -w 2>/dev/null)"; then
+  echo "No MONDAY OpenAI API key is configured. Run scripts/set_openai_key first." >&2
+  exit 1
+fi
+
+if [[ -z "$key" ]]; then
+  echo "The MONDAY OpenAI Keychain item is empty. Run scripts/set_openai_key again." >&2
+  exit 1
+fi
+
+# The secret exists only in this process and the explicitly requested child
+# process. It is never echoed, logged, or persisted by this wrapper.
+OPENAI_API_KEY="$key" "$@"
+status=$?
+unset key
+exit "$status"

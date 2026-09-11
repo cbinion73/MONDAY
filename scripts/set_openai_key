@@ -1,0 +1,26 @@
+#!/bin/zsh
+set -euo pipefail
+
+readonly service="com.binion.monday.openai"
+readonly account="${USER:-monday-local}"
+
+cat <<'MESSAGE'
+MONDAY will ask macOS Keychain to store your OpenAI API key.
+
+- The key will not be written to this repository.
+- The key will not be printed by this script.
+- Enter the key only in the Keychain password prompt that follows.
+MESSAGE
+
+# Keeping -w as the final option makes `security` request the secret through
+# its own hidden prompt instead of exposing it in this script's arguments.
+security add-generic-password \
+  -U \
+  -a "$account" \
+  -s "$service" \
+  -l "MONDAY OpenAI API Key" \
+  -D "application password" \
+  -j "Local MONDAY development credential. Never compiled into an Apple app." \
+  -w
+
+echo "OpenAI API key stored in macOS Keychain for MONDAY."

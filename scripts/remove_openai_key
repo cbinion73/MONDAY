@@ -1,0 +1,11 @@
+#!/bin/zsh
+set -euo pipefail
+
+readonly service="com.binion.monday.openai"
+readonly account="${USER:-monday-local}"
+
+if security delete-generic-password -a "$account" -s "$service" >/dev/null 2>&1; then
+  echo "MONDAY OpenAI API key removed from macOS Keychain."
+else
+  echo "No MONDAY OpenAI API key was stored."
+fi
