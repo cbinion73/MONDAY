@@ -82,7 +82,7 @@ targets:
       properties:
         CFBundleDisplayName: MONDAY
         CFBundleShortVersionString: "0.1"
-        CFBundleVersion: "35"
+        CFBundleVersion: "36"
         UILaunchScreen: {}
         NSCalendarsFullAccessUsageDescription: MONDAY reads your schedule and, only after explicit approval, creates calendar events for you.
         NSCalendarsWriteOnlyAccessUsageDescription: MONDAY creates calendar events only after showing you a preview and receiving explicit approval.

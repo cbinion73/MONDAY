@@ -284,16 +284,15 @@ private struct TomeDocumentView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text(document.title).font(.system(size: 31, weight: .semibold, design: .serif)).foregroundStyle(DeckPalette.ink)
-                    Text(document.updatedAt, style: .date).font(.system(size: 12, weight: .semibold)).foregroundStyle(DeckPalette.ink.opacity(0.65))
-                    Divider().overlay(DeckPalette.ink.opacity(0.25))
+                    Text(document.title).font(.system(size: 31, weight: .semibold, design: .serif)).foregroundStyle(JournalPalette.primary)
+                    Text(document.updatedAt, style: .date).font(.system(size: 12, weight: .semibold)).foregroundStyle(JournalPalette.muted)
                     MarkdownTomeText(source: document.body)
                 }
                 .padding(26)
-                .background(LinearGradient(colors: [Color(red: 0.97, green: 0.90, blue: 0.74), Color(red: 0.86, green: 0.75, blue: 0.56)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 8))
+                .background(JournalPalette.page, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .padding(16)
             }
-            .background(DeckPalette.tomeBackground.ignoresSafeArea())
+            .background(JournalPalette.background.ignoresSafeArea())
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
     }
@@ -307,11 +306,11 @@ private struct MarkdownTomeText: View {
             ForEach(Array(paragraphs.enumerated()), id: \.offset) { _, raw in
                 let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
                 if line.hasPrefix("#") {
-                    Text(line.trimmingCharacters(in: CharacterSet(charactersIn: "# "))).font(.system(size: 21, weight: .semibold, design: .serif)).foregroundStyle(DeckPalette.ink)
+                    Text(line.trimmingCharacters(in: CharacterSet(charactersIn: "# "))).font(.system(size: 21, weight: .semibold, design: .serif)).foregroundStyle(JournalPalette.primary)
                 } else if line.hasPrefix(">") {
-                    Text(line.dropFirst().trimmingCharacters(in: .whitespaces)).italic().font(.system(size: 17, design: .serif)).foregroundStyle(DeckPalette.ink.opacity(0.82)).padding(.leading, 12).overlay(alignment: .leading) { Rectangle().fill(DeckPalette.ink.opacity(0.35)).frame(width: 3) }
+                    Text(line.dropFirst().trimmingCharacters(in: .whitespaces)).italic().font(.system(size: 17, design: .serif)).foregroundStyle(JournalPalette.secondary).padding(.leading, 12).overlay(alignment: .leading) { Capsule().fill(JournalPalette.accent).frame(width: 3) }
                 } else {
-                    Text(markdown(line)).font(.system(size: 17, design: .serif)).foregroundStyle(DeckPalette.ink).lineSpacing(6)
+                    Text(markdown(line)).font(.system(size: 17, design: .serif)).foregroundStyle(JournalPalette.primary).lineSpacing(6)
                 }
             }
         }
@@ -578,4 +577,13 @@ private enum DeckPalette {
     static let gold = Color(red: 0.95, green: 0.78, blue: 0.48)
     static let ink = Color(red: 0.17, green: 0.11, blue: 0.065)
     static let tomeBackground = Color(red: 0.08, green: 0.052, blue: 0.03)
+}
+
+private enum JournalPalette {
+    static let background = LinearGradient(colors: [Color(red: 0.006, green: 0.014, blue: 0.028), Color(red: 0.012, green: 0.037, blue: 0.064)], startPoint: .topLeading, endPoint: .bottomTrailing)
+    static let page = Color(red: 0.018, green: 0.052, blue: 0.084)
+    static let primary = Color(red: 0.88, green: 0.95, blue: 1.0)
+    static let secondary = Color(red: 0.68, green: 0.80, blue: 0.89)
+    static let muted = Color(red: 0.42, green: 0.63, blue: 0.74)
+    static let accent = Color(red: 0.38, green: 0.81, blue: 0.94)
 }
