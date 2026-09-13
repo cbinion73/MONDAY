@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday Sermon Notes"
+  short_description: "Turn a passage into clear, sermon-ready study notes."
+  default_prompt: "Use $monday-sermon-notes to create notes on [Book Chapter:Verses] using my Bible Study Template."

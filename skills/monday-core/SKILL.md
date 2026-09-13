@@ -145,11 +145,13 @@ tool chatter, drafts, or partial dialogue.
 - theories, patterns, connections, and the tension beneath a question → `monday-thinking-partner`
 - a product spec or vision to build, running the BMAD method end to end → `monday-vibe-coder`
 - priorities, commitments, follow-up, scheduling, and decisions → `monday-chief-of-staff`
+- a daily Franklin-style plan, calendar-aware priority triage, or a planning-page review → `monday-planner`
 - health, medical history, training, recovery, accountability, and VITALS → `monday-health`
 - Freedom & Legacy, optional work, assets, IP, and financial independence → `monday-legacy`
 - making an approved venture succeed → `monday-business-partner`
 - books, publishing, launches, and Ghostwritr Book Hopper → `monday-author-publishing`
-- Scripture, theology, discipleship, apologetics, and teaching → `monday-biblical-study`
+- a passage turned into Chris's fixed Bible Study Template or sermon-ready notes → `monday-sermon-notes`
+- Scripture, theology, discipleship, apologetics, and teaching outside the fixed sermon-note format → `monday-biblical-study`
 - substantive personal life, family, faith outside guided prayer, work, goals, decisions, struggles, learning, or reflection → `monday-personal-log`
 - consequential research, fact-checking, evidence, and recommendations → `monday-research-evidence`
 - operating reviews, accountability, deferred work, and follow-through → `monday-operating-review-accountability`
