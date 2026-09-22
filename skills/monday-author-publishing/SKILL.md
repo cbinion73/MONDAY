@@ -67,8 +67,8 @@ goal, deadline, or rights constraint that materially changes the plan.
 
 ## Editorial review tools you already have
 
-Two installed skills do editorial work and have never been used, because their
-symlinks were broken until 2026-09-04:
+Two specialist skills can support editorial work; verify current availability
+before routing to them:
 
 - **`bmad-editorial-review-structure`** — a structural editor. Proposes cuts,
   reorganization, and simplification while preserving comprehension. Use it on a
@@ -86,16 +86,15 @@ promise, or his catalogue. Take their findings as input to an editorial judgment
 never as a verdict — and never let a structural suggestion flatten the voice into
 something more correct and less his.
 
-This matters more than it looks: five manuscripts currently sit in Written,
-Internal review, and Final review states, and the freedom plan runs through
-finishing them.
+Read current manuscript state from the owning source; do not treat a historical
+manuscript count or stage embedded in instructions as live portfolio evidence.
 
 ## Family history as raw material
 
 Family Tree Vault's genealogical research (evidence-graded `Proven` /
 `Probable` / `Blocked`) is a legitimate source for a family-history or memoir
-book, if Chris wants to develop one — but only evidence marked `Proven` or
-clearly labeled `Probable` may be presented as established, and a `Blocked`
+book, if Chris wants to develop one. Present `Proven` as supported by its cited
+records; keep `Probable` explicitly tentative rather than established. A `Blocked`
 lead stays a lead. Never fabricate a connecting narrative, an ancestor's
 voice, or a scene the record doesn't support; genealogical fiction is a
 legitimate craft choice but must be clearly labeled as invented, never blended

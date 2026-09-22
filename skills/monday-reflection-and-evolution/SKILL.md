@@ -16,6 +16,13 @@ Use this skill when Chris asks to read, write, review, improve, or evolve Monday
 
 ## Performance review
 
+For the weekly review, a reported regression, or material model/tool/instruction
+changes, read [drift-review.md](references/drift-review.md). Run its outcome-based
+sample review, isolated behavioral checks, source/configuration parity checks,
+and governed receipt. Distinguish artifact validation from behavior and scheduled
+execution. The existing briefing checks review freshness; missing evidence is
+not a pass. Use the scripts for repeatable checks, not a self-assigned score.
+
 - Write to `Monday Vault/Performance Reviews/` using the `performance_review` type.
 - Prepare a concise discussion document: what worked, what missed, what changed, what remains uncertain, and the few proposed improvements that could materially help Chris.
 - Do not change Monday's core values, authority, external-action boundaries, or durable working agreement through a review. Bring those changes to Chris explicitly.

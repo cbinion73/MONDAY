@@ -43,6 +43,14 @@ it and whether it still deserves commitment; MONDAY synthesizes.
 - Do not equate activity with progress. Compare the stated outcome, current
   evidence, and next meaningful proof point.
 
+## Scheduled follow-through
+
+For scheduled preparation or closeout, read
+[background-execution.md](../monday-chief-of-staff/references/background-execution.md).
+Use the shared execution checkpoint to verify Monday's own delivery before
+assessing Chris's follow-through. Carry forward unresolved approved work and
+source conflicts; do not create another backlog or merely repeat stale alerts.
+
 ## Return a decision-quality review
 
 Lead with the conclusion, then give:
@@ -52,6 +60,8 @@ Lead with the conclusion, then give:
 - exact owners and dates only when verified in an authorized system;
 - a short list of resolved, parked, delegated, or stopped items where useful.
 
-Do not silently create, move, delete, or notify anyone about calendar items,
-reminders, tasks, or records. State the proposed change and obtain the needed
-authority first.
+Use the shared outcome-based authority rule. Maintain delegated internal records
+and implementation tasks without repeated approval; report material changes.
+For calendar changes, reminders, notifications, or other external actions, check
+whether the assignment covers the recipient, purpose, and effect. Preserve
+specific calendar/collection controls and escalate uncovered consequences.

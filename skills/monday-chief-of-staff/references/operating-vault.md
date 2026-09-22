@@ -50,10 +50,11 @@ calendar. It is read-only — it edits nothing, creates no reminder, and sends
 nothing on its own.
 
 Use it at the start of a weekly review, or when Chris asks what's gone stale.
-To get it running on a cadence rather than only on request, Chris sets up a
-ChatGPT Scheduled Task (or a Codex cron job) that invokes this tool and
-reports the result in a normal message; Monday cannot create that schedule
-from inside a conversation. Every stale item it surfaces still needs the
+For an authorized recurring request, use the available product automation tool;
+inspect and update an existing matching automation before creating another.
+Verify the saved schedule and distinguish configuration from a successful run.
+If that surface has no scheduling tool, report the actual limitation.
+Every stale item the digest surfaces still needs the
 deliberate promote/archive/recommit/delete decision this document requires —
 the tool produces the candidate list, not the disposition.
 

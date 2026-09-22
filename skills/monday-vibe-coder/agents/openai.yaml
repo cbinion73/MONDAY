@@ -1,4 +1,4 @@
 interface:
   display_name: "Monday Vibe Coder"
-  short_description: "Take a spec and build it via the BMAD method"
-  default_prompt: "Here's the vision — run BMAD on this and build it, stopping at each phase gate."
+  short_description: "Carry an approved build through verified completion"
+  default_prompt: "Use $monday-vibe-coder to carry this approved build through implementation, testing, and verified completion; continue across phases without asking me to proceed again."

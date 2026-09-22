@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monday AetherTable DM"
+  short_description: "Run a private AetherTable campaign as your DM."
+  default_prompt: "Use $monday-aethertable-dm to run my AetherTable campaign from its current scene and state."

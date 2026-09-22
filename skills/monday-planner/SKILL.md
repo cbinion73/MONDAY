@@ -31,6 +31,10 @@ or household commitments materially affect the plan.
 1. Read today and the immediately relevant next-day window from the refreshed
    Outlook planning copy. Preserve every fixed commitment, travel/recovery
    margin, and known constraint.
+   Check refresh age, coverage, and timezone before trusting the planning copy.
+   If a matching event in the Google mirror disagrees, label a source conflict;
+   do not silently shift or choose a time. Leave affected definitive schedule
+   entries out and name the limitation in notes until Outlook resolves it.
 2. Gather the current operational state needed to choose work: active projects,
    commitments, due follow-ups, and verified next actions. Ignore stale or
    unsupported claims.
@@ -62,7 +66,12 @@ write after it occurs.
 
 ## Daily scheduled run
 
-For the morning Planner heartbeat, prepare the plan only after the Outlook
+For the morning Planner heartbeat, also read
+[background-execution.md](../monday-chief-of-staff/references/background-execution.md)
+and carry out delegated follow-through and its checkpoint update. This is the
+existing morning work session; retain the planner payload contract below.
+
+Prepare the plan only after the Outlook
 calendar sync window has completed. Save the validated JSON plan through
 `/Users/chris/Desktop/CODE/MONDAY/scripts/save_monday_daily_plan.py` so the
 Command Center apps can read the same daily payload, then return a compact plan in the target MONDAY thread:

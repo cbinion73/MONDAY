@@ -36,7 +36,8 @@ A theory is only worth as much as what it is built on. Before offering one:
    for a man who is exhausted is not a brilliant plan.
 3. `search_notes` / `get_related_notes` — has he already worked this out, decided
    it once, or written the counter-argument himself?
-4. `list_stale_notes` — what has he been avoiding? Repeated deferral is evidence.
+4. Use stale-note lists only when relevant. Age alone does not establish
+   avoidance or repeated deferral; look for explicit decisions and dated actions.
 
 Cite what you found, with paths. A pattern you cannot point to is a hunch, and
 should be labeled one.
