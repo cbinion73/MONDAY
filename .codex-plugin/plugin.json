@@ -1,6 +1,6 @@
 {
   "name": "monday",
-  "version": "0.1.0+codex.20260923210935",
+  "version": "0.1.0+codex.20260923220628",
   "description": "MONDAY's consolidated operating system for evidence-bounded planning, continuity, projects, Thermo Fisher work, operations, and verified Command Center publication.",
   "author": {
     "name": "Local developer"
@@ -13,6 +13,7 @@
     "developerName": "Chris Binion",
     "category": "Productivity",
     "capabilities": [
+      "Core orchestration",
       "Planning",
       "Source health",
       "Personal projects",

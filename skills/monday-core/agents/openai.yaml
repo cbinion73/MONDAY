@@ -1,4 +1,4 @@
 interface:
   display_name: "MONDAY Core"
   short_description: "Coordinate MONDAY's cross-domain operating system"
-  default_prompt: "Monday, reconcile the current evidence and tell me what deserves attention."
+  default_prompt: "Use $monday-core to reconcile the current evidence and tell me what deserves attention."
