@@ -1,0 +1,4 @@
+interface:
+  display_name: "Picard — Leadership Meetings"
+  short_description: "Prepares and closes consequential leadership meetings."
+  default_prompt: "Use $monday-thermo-leadership-meetings to help with this Thermo Fisher work."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Forge — Technical Delivery"
+  short_description: "Builds and verifies repositories, prototypes, and automations."
+  default_prompt: "Use $monday-thermo-forge to help with this Thermo Fisher work."

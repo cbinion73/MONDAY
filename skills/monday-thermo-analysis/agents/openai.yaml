@@ -1,0 +1,4 @@
+interface:
+  display_name: "Data — Analysis"
+  short_description: "Diagnoses data, operations, and project performance."
+  default_prompt: "Use $monday-thermo-analysis to help with this Thermo Fisher work."

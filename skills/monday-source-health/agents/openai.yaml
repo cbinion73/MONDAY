@@ -1,0 +1,4 @@
+interface:
+  display_name: "MONDAY Source Health"
+  short_description: "Verify source availability, freshness, and coverage"
+  default_prompt: "Monday, check source health before using this evidence."

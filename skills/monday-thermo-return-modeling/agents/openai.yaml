@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lando — Return Modeling"
+  short_description: "Builds defensible value, ROI, NPV, IRR, and payback models."
+  default_prompt: "Use $monday-thermo-return-modeling to help with this Thermo Fisher work."

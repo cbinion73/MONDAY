@@ -1,0 +1,4 @@
+interface:
+  display_name: "Dax — Knowledge Architecture"
+  short_description: "Designs durable, linked, searchable knowledge systems."
+  default_prompt: "Use $monday-thermo-knowledge-architecture to help with this Thermo Fisher work."

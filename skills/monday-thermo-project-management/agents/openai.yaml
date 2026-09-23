@@ -1,0 +1,4 @@
+interface:
+  display_name: "Kirk — Project Management"
+  short_description: "Turns approved outcomes into executable delivery plans."
+  default_prompt: "Use $monday-thermo-project-management to help with this Thermo Fisher work."

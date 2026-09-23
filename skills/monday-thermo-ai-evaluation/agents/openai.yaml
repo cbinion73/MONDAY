@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vision — AI Evaluation"
+  short_description: "Tests AI systems for capability, reliability, and fit."
+  default_prompt: "Use $monday-thermo-ai-evaluation to help with this Thermo Fisher work."

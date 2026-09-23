@@ -1,0 +1,4 @@
+interface:
+  display_name: "Spock — Quality Assurance"
+  short_description: "Independently audits consequential work before delivery."
+  default_prompt: "Use $monday-thermo-quality-assurance to help with this Thermo Fisher work."

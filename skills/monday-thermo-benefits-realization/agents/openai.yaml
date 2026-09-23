@@ -1,0 +1,4 @@
+interface:
+  display_name: "Rhodey — Benefits Realization"
+  short_description: "Validates outcomes and tracks benefits into operations."
+  default_prompt: "Use $monday-thermo-benefits-realization to help with this Thermo Fisher work."

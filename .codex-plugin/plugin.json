@@ -1,0 +1,29 @@
+{
+  "name": "monday",
+  "version": "0.1.0+codex.20260923190803",
+  "description": "MONDAY's consolidated operating system for evidence-bounded planning, continuity, projects, Thermo Fisher work, operations, and verified Command Center publication.",
+  "author": {
+    "name": "Local developer"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "MONDAY",
+    "shortDescription": "One governed MONDAY operating system.",
+    "longDescription": "The single primary MONDAY plugin for cross-domain orchestration, truthful source health, daily and sprint planning, activity and operations receipts, private personal-project stewardship, Captain's Log drafting, Research Chronicle, verified Command Center publication, and the complete work-only Thermo Fisher capability set. Professional and personal records remain isolated even though the capabilities are packaged together.",
+    "developerName": "Chris Binion",
+    "category": "Productivity",
+    "capabilities": [
+      "Planning",
+      "Source health",
+      "Personal projects",
+      "Journaling",
+      "Thermo Fisher work",
+      "Meeting continuity",
+      "Project intelligence",
+      "Activity and operations",
+      "Command Center",
+      "Local records"
+    ],
+    "defaultPrompt": "Monday, verify source health, reconcile my operating picture, and show me what deserves attention today."
+  }
+}

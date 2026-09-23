@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sam — Adoption & Change"
+  short_description: "Builds adoption, enablement, and capability plans."
+  default_prompt: "Use $monday-thermo-adoption-change to help with this Thermo Fisher work."

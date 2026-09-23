@@ -1,0 +1,4 @@
+interface:
+  display_name: "Shuri — Opportunity Discovery"
+  short_description: "Finds and shapes high-value problems worth solving."
+  default_prompt: "Use $monday-thermo-opportunity-discovery to help with this Thermo Fisher work."

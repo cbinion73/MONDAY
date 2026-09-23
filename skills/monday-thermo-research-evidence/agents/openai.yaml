@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reed — Research & Evidence"
+  short_description: "Builds rigorous evidence maps and research syntheses."
+  default_prompt: "Use $monday-thermo-research-evidence to help with this Thermo Fisher work."

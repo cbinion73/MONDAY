@@ -1,0 +1,4 @@
+interface:
+  display_name: "MONDAY — Skill Evolution"
+  short_description: "Proposes, builds, validates, and registers MONDAY skills."
+  default_prompt: "Monday, identify whether this recurring need warrants a new skill. If it does, ask only the material design questions and build the skill locally."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Seven — Process Improvement"
+  short_description: "Redesigns workflows and automation opportunities."
+  default_prompt: "Use $monday-thermo-process-improvement to help with this Thermo Fisher work."

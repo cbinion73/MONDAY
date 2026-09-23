@@ -1,0 +1,4 @@
+interface:
+  display_name: "Leia — Executive Communication"
+  short_description: "Creates clear executive narratives and named reports."
+  default_prompt: "Use $monday-thermo-executive-communication to help with this Thermo Fisher work."

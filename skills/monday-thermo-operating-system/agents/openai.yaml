@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pepper — Operating System"
+  short_description: "Runs Thermo priorities, capacity, and operating rhythm."
+  default_prompt: "Use $monday-thermo-operating-system to help with this Thermo Fisher work."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "MONDAY Personal Projects"
+  short_description: "Steward Chris's private personal-project portfolio"
+  default_prompt: "Monday, review my personal projects and show me the next honest moves."

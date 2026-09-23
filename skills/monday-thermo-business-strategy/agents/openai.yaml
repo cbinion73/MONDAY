@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tony — Business Strategy"
+  short_description: "Frames choices and produces strategic decision briefs."
+  default_prompt: "Use $monday-thermo-business-strategy to help with this Thermo Fisher work."

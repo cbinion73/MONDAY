@@ -1,0 +1,4 @@
+interface:
+  display_name: "MONDAY Core"
+  short_description: "Orchestrates Thermo work across all specialist skills."
+  default_prompt: "Use $monday-thermo-core to help with this Thermo Fisher work."

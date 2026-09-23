@@ -1,0 +1,4 @@
+interface:
+  display_name: "T’Challa — AI Governance"
+  short_description: "Applies responsible AI, data, quality, and policy controls."
+  default_prompt: "Use $monday-thermo-ai-governance to help with this Thermo Fisher work."

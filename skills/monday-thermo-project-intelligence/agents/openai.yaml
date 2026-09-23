@@ -1,0 +1,4 @@
+interface:
+  display_name: "Coulson — Project Intelligence"
+  short_description: "Builds evidence-linked Thermo project intelligence."
+  default_prompt: "Use $monday-thermo-project-intelligence to help with this Thermo Fisher work."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Steve — Decision Ledger"
+  short_description: "Tracks material decisions, commitments, and open loops."
+  default_prompt: "Use $monday-thermo-decision-ledger to help with this Thermo Fisher work."

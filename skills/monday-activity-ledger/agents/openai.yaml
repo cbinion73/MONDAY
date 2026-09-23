@@ -1,0 +1,4 @@
+interface:
+  display_name: "MONDAY Activity Ledger"
+  short_description: "Record inspectable, provenance-bound activity receipts"
+  default_prompt: "Monday, record an activity receipt for the work we just verified."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "MONDAY Operations"
+  short_description: "Record pipeline health, receipts, lessons, and open loops"
+  default_prompt: "Monday, record what this run did, what it could not verify, and what remains open."

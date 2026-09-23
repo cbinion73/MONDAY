@@ -1,0 +1,4 @@
+interface:
+  display_name: "MONDAY Command Center"
+  short_description: "Publish and verify the governed visual cockpit"
+  default_prompt: "Monday, refresh Command Center and verify that it consumed the current plan."
