@@ -1,43 +1,12 @@
 import Foundation
+import MONDAYCore
 import SwiftUI
 
-/// The validated daily-plan payload shared by the Mac and iOS planner surfaces.
-/// The payload is read-only here; MONDAY remains responsible for preparing it.
-struct PlannerPageData: Decodable, Sendable {
-    let date: String
-    let generatedAt: Date
-    let timezone: String
-    let sources: [PlannerPageSource]
-    let primaryFocus: String
-    let schedule: [PlannerPageScheduleItem]
-    let priorities: PlannerPagePriorities
-    let notes: [String]
-    let compass: [PlannerPageCompassItem]
-}
-
-struct PlannerPageSource: Decodable, Sendable {
-    let kind: String
-    let name: String
-    let status: String
-    let fetchedAt: Date
-}
-
-struct PlannerPageScheduleItem: Decodable, Sendable {
-    let time: String
-    let end: String
-    let title: String
-}
-
-struct PlannerPagePriorities: Decodable, Sendable {
-    let a: [String]
-    let b: [String]
-    let c: [String]
-}
-
-struct PlannerPageCompassItem: Decodable, Sendable {
-    let role: String
-    let goal: String
-}
+typealias PlannerPageData = CommandCenterPlan
+typealias PlannerPageSource = CommandCenterSource
+typealias PlannerPageScheduleItem = CommandCenterScheduleItem
+typealias PlannerPagePriorities = CommandCenterPriorities
+typealias PlannerPageCompassItem = CommandCenterCompassItem
 
 /// Shared Franklin-style planner rendering used by both Apple surfaces.
 struct MondayPlannerPageView: View {
@@ -51,6 +20,11 @@ struct MondayPlannerPageView: View {
             ScrollView {
                 VStack(spacing: 18) {
                     plannerHeader
+
+                    if let plan {
+                        PlannerSourceHealthStrip(plan: plan)
+                            .padding(.horizontal, 16)
+                    }
 
                     // Keep the two-column paper composition where there is room,
                     // then stack it on iPhone so text never becomes artificially narrow.
@@ -80,9 +54,7 @@ struct MondayPlannerPageView: View {
                         }
                     }
 
-                    Text(plan == nil
-                         ? statusMessage
-                         : "FRANKLIN-STYLE DAILY PLANNING PAGE · PREPARED BY MONDAY · CALENDAR REMAINS THE OWNER OF TIME")
+                    Text(footerText)
                         .font(.system(size: 8, weight: .bold, design: .rounded))
                         .tracking(0.7)
                         .foregroundStyle(MondayPlannerPalette.mutedText)
@@ -149,6 +121,63 @@ struct MondayPlannerPageView: View {
         guard let parsed = input.date(from: plan.date) else { return plan.date }
         return parsed.formatted(.dateTime.weekday(.wide).month(.wide).day().year())
     }
+
+    private var footerText: String {
+        guard let plan else { return statusMessage }
+        let identifier = plan.planID.map { " · \($0)" } ?? " · LEGACY UNVERIFIED PLAN"
+        return "FRANKLIN-STYLE DAILY PLANNING PAGE · PREPARED BY MONDAY · CALENDAR REMAINS THE OWNER OF TIME\(identifier)"
+    }
+}
+
+private struct PlannerSourceHealthStrip: View {
+    let plan: PlannerPageData
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack {
+                Text("SOURCE HEALTH")
+                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .tracking(1.0)
+                    .foregroundStyle(MondayPlannerPalette.primaryText)
+                Spacer()
+                Text((plan.coverage?.status ?? "legacy").uppercased())
+                    .font(.system(size: 8, weight: .black, design: .rounded))
+                    .foregroundStyle(statusColor(plan.coverage?.status ?? "unknown"))
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], spacing: 8) {
+                ForEach(plan.sources) { source in
+                    HStack(spacing: 7) {
+                        Circle().fill(statusColor(source.status)).frame(width: 7, height: 7)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(source.name)
+                                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                .foregroundStyle(MondayPlannerPalette.primaryText)
+                                .lineLimit(1)
+                            Text(source.status.uppercased())
+                                .font(.system(size: 7, weight: .bold, design: .rounded))
+                                .foregroundStyle(MondayPlannerPalette.mutedText)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 7)
+                    .background(MondayPlannerPalette.sectionBand.opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.black.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func statusColor(_ status: String) -> Color {
+        switch status.lowercased() {
+        case "available": MondayPlannerPalette.good
+        case "empty": MondayPlannerPalette.empty
+        case "partial", "stale": MondayPlannerPalette.warning
+        case "blocked", "unavailable": MondayPlannerPalette.bad
+        default: MondayPlannerPalette.unknown
+        }
+    }
 }
 
 private struct PlannerPageScheduleColumn: View {
@@ -170,7 +199,7 @@ private struct PlannerPageScheduleColumn: View {
                 .padding(.vertical, 11)
 
             if schedule.isEmpty {
-                Text("No scheduled events were returned by the normalized planner payload.")
+                Text(emptyScheduleMessage)
                     .font(.system(size: 11, design: .serif))
                     .foregroundStyle(MondayPlannerPalette.secondaryText)
                     .padding(14)
@@ -206,6 +235,29 @@ private struct PlannerPageScheduleColumn: View {
         let minute = String(pieces[1])
         let shownHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour)
         return "\(shownHour):\(minute) \(hour >= 12 ? "PM" : "AM")"
+    }
+
+    private var emptyScheduleMessage: String {
+        guard let plan else { return "No current MONDAY plan is available." }
+        guard let calendarSource = plan.sources.first(where: { $0.kind == "calendar" }) else {
+            return "Calendar coverage is unknown. No Calendar source was included in this plan."
+        }
+        switch calendarSource.status.lowercased() {
+        case "empty":
+            return "Calendar was checked successfully and contains no timed events for this date."
+        case "available":
+            return "Calendar was checked successfully, but no timed events were included for this date."
+        case "stale":
+            return "Calendar coverage is stale. Refresh Calendar before relying on this schedule."
+        case "blocked":
+            return "Calendar access is blocked. Enable Calendar access, then rebuild the plan."
+        case "unavailable":
+            return "Calendar was unavailable when this plan was prepared. This is not a clear schedule."
+        case "partial":
+            return "Calendar coverage was partial. Some commitments may be missing."
+        default:
+            return "Calendar coverage is unknown. This is not evidence that the day is clear."
+        }
     }
 }
 
@@ -370,6 +422,11 @@ private enum MondayPlannerPalette {
     static let primaryText = Color(red: 0.88, green: 0.95, blue: 1.0)
     static let secondaryText = Color(red: 0.62, green: 0.76, blue: 0.86)
     static let mutedText = Color(red: 0.42, green: 0.63, blue: 0.74)
+    static let good = Color(red: 0.34, green: 0.84, blue: 0.61)
+    static let empty = Color(red: 0.25, green: 0.72, blue: 1.0)
+    static let warning = Color(red: 0.95, green: 0.60, blue: 0.23)
+    static let bad = Color(red: 1.0, green: 0.35, blue: 0.42)
+    static let unknown = Color(red: 0.58, green: 0.62, blue: 0.69)
 }
 
 private enum MondayPlannerEventColor {

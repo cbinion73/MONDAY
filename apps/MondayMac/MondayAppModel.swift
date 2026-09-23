@@ -22,24 +22,27 @@ final class MondayAppModel: ObservableObject {
     @Published var messagesBridgeStatus = "Messages is not configured."
 
     private let engine: MondayEngine
+    private let calendarSpecialist: AppleCalendarSpecialist
     private let messagesBridge = MondayMessagesBridge()
     let knowledge = MondayKnowledgeModel()
     private let speaker = AVSpeechSynthesizer()
 
     init() {
+        let calendarSpecialist = AppleCalendarSpecialist()
+        self.calendarSpecialist = calendarSpecialist
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("MONDAY", isDirectory: true)
         let store = FileContinuityStore(fileURL: base.appendingPathComponent("workspace-v1.json"))
         self.engine = MondayEngine(
             store: store,
             specialists: [
-                AppleCalendarSpecialist(),
+                calendarSpecialist,
                 AppleRemindersSpecialist(),
                 EmailCapabilityBoundarySpecialist(),
                 MacApplicationSpecialist(),
                 AppleIntelligenceSpecialist(
                     vaultRootURL: FileManager.default.homeDirectoryForCurrentUser
-                        .appendingPathComponent("Knowledge Vault/Personal Knowledge Vault", isDirectory: true)
+                        .appendingPathComponent("Knowledge Vault/Chris Knowledge", isDirectory: true)
                 )
             ]
         )
@@ -49,6 +52,11 @@ final class MondayAppModel: ObservableObject {
         await perform {
             self.workspace = try await self.engine.start(surface: .mac)
             self.capabilities = await self.engine.capabilities()
+            if self.workspace.settings.awarenessEnabled,
+               self.workspace.settings.calendarRead,
+               self.workspace.connections.first(where: { $0.id == "apple.calendar" })?.policy.observe != false {
+                await self.calendarSpecialist.refreshPlanningSourceIfAuthorized()
+            }
             self.messagesBridge.connect(to: self)
             self.messagesContactHandle = self.messagesBridge.contactHandle
             self.messagesBridgeStatus = await self.messagesBridge.reconcile(settings: self.workspace.settings)

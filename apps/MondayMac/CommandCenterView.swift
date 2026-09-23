@@ -1,716 +1,518 @@
 import Foundation
-import SQLite3
+import MONDAYCore
 import SwiftUI
 
 private enum CommandCenterTab: String, CaseIterable, Identifiable {
-    case portfolio = "Portfolio"
-    case researchJournal = "Research Journal"
+    case today = "Today"
+    case projects = "Projects"
+    case personalProjects = "Personal Projects"
+    case meetingContinuity = "Meeting Continuity"
+    case activity = "Activity"
+    case operations = "Operations"
+    case researchChronicle = "Research Chronicle"
+
     var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .today: "sun.max.fill"
+        case .projects: "rectangle.3.group.fill"
+        case .personalProjects: "person.crop.rectangle.stack.fill"
+        case .meetingContinuity: "person.2.wave.2.fill"
+        case .activity: "list.bullet.clipboard.fill"
+        case .operations: "gearshape.2.fill"
+        case .researchChronicle: "text.book.closed.fill"
+        }
+    }
 }
 
-/// A read-only visual projection of the governed MONDAY project registry.
-/// The dashboard never invents progress: unknown evidence, dates, and hours remain unknown.
+/// Read-only visual cockpit for the versioned projection prepared by the MONDAY plugin.
+/// It never replaces the underlying project vaults, ledgers, or journals.
 struct CommandCenterView: View {
-    @StateObject private var store = CommandCenterStore()
-    @State private var selectedProject: CommandCenterProject?
-    @State private var tab: CommandCenterTab = .portfolio
+    @StateObject private var store = CommandCenterPlanStore()
+    @State private var tab: CommandCenterTab = .today
 
     var body: some View {
-        ZStack {
-            CommandCenterDesign.background.ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                Picker("Command Center", selection: $tab) {
-                    ForEach(CommandCenterTab.allCases) { tab in
-                        Label(tab.rawValue, systemImage: tab == .portfolio ? "rectangle.3.group.fill" : "text.book.closed.fill").tag(tab)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 30)
-                .padding(.top, 22)
-
-                if tab == .portfolio {
-                    portfolioContent
-                } else {
-                    ResearchJournalView()
-                }
-            }
+        HStack(spacing: 0) {
+            navigation.frame(width: 235)
+            Rectangle().fill(CommandCenterPalette.line).frame(width: 1)
+            content.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .preferredColorScheme(.light)
-        .task { await store.refresh() }
+        .background(CommandCenterPalette.background.ignoresSafeArea())
+        .preferredColorScheme(.dark)
         .task {
+            await store.refresh()
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 60_000_000_000)
+                try? await Task.sleep(for: .seconds(60))
                 guard !Task.isCancelled else { return }
                 await store.refresh()
             }
         }
-        .sheet(item: $selectedProject) { project in
-            ProjectDetailView(project: project)
-                .frame(width: 620, height: 560)
-        }
     }
 
-    private var portfolioContent: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                header
-
-                if let error = store.errorMessage {
-                    unavailableState(error)
-                } else {
-                    metricStrip
-                    timeline
-                    portfolioGrid
-                }
-            }
-            .padding(30)
-        }
-    }
-
-    private var header: some View {
-        HStack(alignment: .top, spacing: 20) {
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 9) {
-                    Image(systemName: "rectangle.3.group.fill")
-                        .foregroundStyle(MondayDesign.mint)
-                    Text("MONDAY COMMAND CENTER")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .tracking(1.4)
-                        .foregroundStyle(MondayDesign.mint)
-                }
-                Text("The work that is actually moving.")
-                    .font(.system(size: 30, weight: .medium, design: .rounded))
-                Text("Visual portfolio, real gates, and evidence-backed status from the governed project registry.")
-                    .font(.system(size: 13, design: .rounded))
+    private var navigation: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 5) {
+                Label("COMMAND CENTER", systemImage: "command.circle.fill")
+                    .font(.system(size: 13, weight: .black, design: .rounded))
+                    .tracking(1.1)
+                    .foregroundStyle(CommandCenterPalette.accent)
+                Text("MONDAY's governed cockpit")
+                    .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(.secondary)
             }
+            .padding(.bottom, 18)
+
+            ForEach(CommandCenterTab.allCases) { item in
+                Button { tab = item } label: {
+                    HStack(spacing: 11) {
+                        Image(systemName: item.icon).frame(width: 18)
+                        Text(item.rawValue)
+                        Spacer()
+                        if tab == item {
+                            Circle().fill(CommandCenterPalette.accent).frame(width: 6, height: 6)
+                        }
+                    }
+                    .font(.system(size: 13, weight: tab == item ? .semibold : .regular, design: .rounded))
+                    .foregroundStyle(tab == item ? .white : .secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 11)
+                    .background(tab == item ? Color.white.opacity(0.075) : .clear, in: RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+            }
+
             Spacer()
-            VStack(alignment: .trailing, spacing: 10) {
-                Button {
-                    Task { await store.refresh() }
-                } label: {
-                    Label(store.isRefreshing ? "Refreshing…" : "Refresh", systemImage: "arrow.clockwise")
+
+            VStack(alignment: .leading, spacing: 7) {
+                Label(store.statusLabel, systemImage: store.plan == nil ? "exclamationmark.triangle.fill" : "checkmark.shield.fill")
+                    .foregroundStyle(store.plan == nil ? CommandCenterPalette.warning : CommandCenterPalette.good)
+                if let plan = store.plan {
+                    Text(plan.planID ?? "Legacy unverified plan").lineLimit(2)
+                }
+                Button { Task { await store.refresh() } } label: {
+                    Label(store.isRefreshing ? "Refreshing" : "Refresh", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(.bordered)
                 .disabled(store.isRefreshing)
-
-                Text(store.freshnessLabel)
-                    .font(.system(size: 10, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.trailing)
             }
+            .font(.system(size: 10, design: .rounded))
+            .foregroundStyle(.secondary)
         }
+        .padding(22)
+        .background(Color.black.opacity(0.18))
     }
 
-    private var metricStrip: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 14)], spacing: 14) {
-            MetricCard(
-                label: "Active portfolio",
-                value: "\(store.activeProjects.count)",
-                detail: "projects currently in motion",
-                color: MondayDesign.blue,
-                icon: "circle.grid.2x2.fill"
+    @ViewBuilder
+    private var content: some View {
+        switch tab {
+        case .today:
+            MondayMacPlannerView()
+        case .projects:
+            ProjectPortfolioPage(
+                title: "Projects",
+                subtitle: "Professional projects from governed Project Knowledge.",
+                projects: store.plan?.brief?.workPortfolio ?? [],
+                unavailable: store.unavailableMessage
             )
-            MetricCard(
-                label: "Needs attention",
-                value: "\(store.attentionProjects.count)",
-                detail: "at risk, blocked, or intervention",
-                color: MondayDesign.rose,
-                icon: "exclamationmark.triangle.fill"
+        case .personalProjects:
+            ProjectPortfolioPage(
+                title: "Personal Projects",
+                subtitle: "Private projects from Personal Project Knowledge. They are not reported to JARVIS.",
+                projects: store.plan?.brief?.personalPortfolio ?? [],
+                unavailable: store.unavailableMessage
             )
-            MetricCard(
-                label: "Gates ahead",
-                value: "\(store.upcomingGates.count)",
-                detail: "dated gates in the next 90 days",
-                color: MondayDesign.amber,
-                icon: "flag.checkered"
+        case .meetingContinuity:
+            MeetingContinuityPage(summary: store.plan?.brief?.meetingContinuity, unavailable: store.unavailableMessage)
+        case .activity:
+            ReceiptPage(
+                title: "Activity Ledger",
+                subtitle: "Observable, authorized MONDAY and Codex activity. Never a claim of complete daily coverage.",
+                records: store.activityRecords,
+                count: store.plan?.brief?.activityLedger.recordCount,
+                path: store.plan?.brief?.activityLedger.path,
+                unavailable: store.unavailableMessage
             )
-            MetricCard(
-                label: "Six-month capacity",
-                value: store.capacityLabel,
-                detail: store.capacityDetail,
-                color: MondayDesign.mint,
-                icon: "chart.bar.xaxis"
+        case .operations:
+            ReceiptPage(
+                title: "MONDAY Operations",
+                subtitle: "Pipeline receipts, limitations, open questions, and retry paths.",
+                records: store.operationRecords,
+                count: store.plan?.brief?.operations.receiptCount,
+                path: store.plan?.brief?.operations.path,
+                unavailable: store.unavailableMessage
             )
-        }
-    }
-
-    private var timeline: some View {
-        CommandCenterCard {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Next 90 Days")
-                            .font(.system(size: 17, weight: .semibold, design: .rounded))
-                        Text("Only actual dated gates appear here. Undated work stays off the timeline.")
-                            .font(.system(size: 11, design: .rounded))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    StatusPill(label: "\(store.upcomingGates.count) dated gates", color: MondayDesign.amber, icon: "calendar")
-                }
-
-                if store.upcomingGates.isEmpty {
-                    EmptyVisual(label: "No dated project gates in the next 90 days.", icon: "calendar.badge.exclamationmark")
-                } else {
-                    GateTimeline(gates: store.upcomingGates)
-                        .frame(height: 178)
-                }
-            }
-        }
-    }
-
-    private var portfolioGrid: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Portfolio")
-                        .font(.system(size: 18, weight: .semibold, design: .rounded))
-                    Text("Health, stage, and next milestone — no simulated completion percentage.")
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                StatusPill(label: "\(store.projects.count) records", color: MondayDesign.violet, icon: "circle.stack.fill")
-            }
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 285), spacing: 14)], spacing: 14) {
-                ForEach(store.projects) { project in
-                    ProjectCard(project: project) {
-                        selectedProject = project
-                    }
-                }
-            }
-        }
-    }
-
-    private func unavailableState(_ error: String) -> some View {
-        CommandCenterCard {
-            VStack(alignment: .leading, spacing: 12) {
-                Image(systemName: "externaldrive.badge.exclamationmark")
-                    .font(.system(size: 30))
-                    .foregroundStyle(MondayDesign.amber)
-                Text("Project registry unavailable")
-                    .font(.system(size: 20, weight: .semibold, design: .rounded))
-                Text(error)
-                    .font(.system(size: 13, design: .rounded))
-                    .foregroundStyle(.secondary)
-                Text("No fallback data is shown. The Command Center only displays the governed project registry.")
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(.tertiary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(24)
-        }
-    }
-}
-
-private struct ResearchJournalView: View {
-    @State private var content = ""
-    @State private var errorMessage: String?
-    private let sourceURL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Knowledge Vault/Monday Vault/Diary/BUILD-CHRONICLE-2026-05-to-2026-09.md")
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Label("MONDAY RESEARCH JOURNAL", systemImage: "text.book.closed.fill")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .tracking(1.2)
-                            .foregroundStyle(MondayDesign.mint)
-                        Text("What we built, why we built it, and what the work taught us.")
-                            .font(.system(size: 26, weight: .medium, design: .rounded))
-                    }
-                    Spacer()
-                    Text("READ ONLY · GOVERNED VAULT")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
-                if let errorMessage {
-                    CommandCenterCard {
-                        Text(errorMessage).foregroundStyle(.secondary)
-                    }
-                } else {
-                    Text(content)
-                        .font(.system(size: 15, design: .serif))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(22)
-                        .background(CommandCenterDesign.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-            }
-            .padding(30)
-        }
-        .task {
-            do {
-                content = try String(contentsOf: sourceURL, encoding: .utf8)
-                errorMessage = nil
-            } catch {
-                errorMessage = "The governed Research Journal could not be read from the MONDAY Vault. No fallback journal is shown."
-            }
+        case .researchChronicle:
+            ResearchChroniclePage()
         }
     }
 }
 
 @MainActor
-private final class CommandCenterStore: ObservableObject {
-    @Published private(set) var projects: [CommandCenterProject] = []
-    @Published private(set) var loadedAt: Date?
+private final class CommandCenterPlanStore: ObservableObject {
+    @Published private(set) var plan: CommandCenterPlan?
+    @Published private(set) var activityRecords: [ReceiptDisplayRecord] = []
+    @Published private(set) var operationRecords: [ReceiptDisplayRecord] = []
     @Published private(set) var errorMessage: String?
     @Published private(set) var isRefreshing = false
 
-    var activeProjects: [CommandCenterProject] {
-        projects.filter { $0.status == "active" }
-    }
+    private let planURL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".codex/monday-planner/daily-plan.json")
 
-    var attentionProjects: [CommandCenterProject] {
-        activeProjects.filter { $0.needsAttention }
-    }
-
-    var upcomingGates: [CommandCenterProject] {
-        let now = Calendar.current.startOfDay(for: .now)
-        let horizon = Calendar.current.date(byAdding: .day, value: 90, to: now) ?? now
-        return activeProjects
-            .filter { project in
-                guard let date = project.gateDate else { return false }
-                return date >= now && date <= horizon
-            }
-            .sorted { ($0.gateDate ?? .distantFuture) < ($1.gateDate ?? .distantFuture) }
-    }
-
-    var capacityLabel: String {
-        let planned = activeProjects.compactMap(\.plannedHours).reduce(0, +)
-        let actual = activeProjects.compactMap(\.actualHours).reduce(0, +)
-        guard planned > 0 || actual > 0 else { return "Unknown" }
-        return "\(Int(actual)) / \(Int(planned)) h"
-    }
-
-    var capacityDetail: String {
-        let plannedKnown = activeProjects.contains { $0.plannedHours != nil }
-        let actualKnown = activeProjects.contains { $0.actualHours != nil }
-        if !plannedKnown { return "planned hours not yet recorded" }
-        if !actualKnown { return "actual hours not yet recorded" }
-        return "actual / planned active hours"
-    }
-
-    var freshnessLabel: String {
-        guard let loadedAt else { return "Registry not loaded" }
-        let evidence = projects.compactMap(\.updatedAt).max()
-        let refresh = loadedAt.formatted(date: .omitted, time: .shortened)
-        guard let evidence else { return "Refreshed \(refresh) · no evidence date" }
-        return "Refreshed \(refresh) · source updated \(evidence.formatted(date: .abbreviated, time: .shortened))"
-    }
+    var statusLabel: String { plan != nil ? "Current projection" : (errorMessage ?? "Projection unavailable") }
+    var unavailableMessage: String? { plan == nil ? (errorMessage ?? "A current MONDAY projection is unavailable.") : nil }
 
     func refresh() async {
         guard !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false }
         do {
-            projects = try ProjectRegistryReader.load()
-            loadedAt = .now
+            let data = try Data(contentsOf: planURL)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let decoded = try decoder.decode(CommandCenterPlan.self, from: data)
+            guard decoded.validation() == .current else { throw CommandCenterLoadError.notCurrent }
+            plan = decoded
+            activityRecords = loadActivity(from: decoded.brief?.activityLedger.path)
+            operationRecords = loadOperations(from: decoded.brief?.operations.path)
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            plan = nil
+            activityRecords = []
+            operationRecords = []
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? "The current Command Center projection could not be read."
+        }
+    }
+
+    private func loadActivity(from path: String?) -> [ReceiptDisplayRecord] {
+        guard let path, let text = try? String(contentsOfFile: path, encoding: .utf8) else { return [] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return text.split(separator: "\n").reversed().prefix(25).compactMap { line in
+            try? decoder.decode(ReceiptDisplayRecord.self, from: Data(line.utf8))
+        }
+    }
+
+    private func loadOperations(from path: String?) -> [ReceiptDisplayRecord] {
+        guard let path else { return [] }
+        let root = URL(fileURLWithPath: path, isDirectory: true)
+        guard let files = try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { return [] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return files.filter { $0.pathExtension == "json" }
+            .sorted { $0.lastPathComponent > $1.lastPathComponent }
+            .prefix(25)
+            .compactMap { url in
+                guard let data = try? Data(contentsOf: url) else { return nil }
+                return try? decoder.decode(ReceiptDisplayRecord.self, from: data)
+            }
+    }
+}
+
+private enum CommandCenterLoadError: LocalizedError {
+    case notCurrent
+    var errorDescription: String? { "The available projection is stale, expired, or for another date. Rebuild today's MONDAY plan." }
+}
+
+private struct ReceiptDisplayRecord: Decodable, Identifiable {
+    let id: String
+    let summary: String?
+    let source: String?
+    let operation: String?
+    let status: String?
+    let occurredAt: Date?
+    let completedAt: Date?
+    let evidenceClass: String?
+    let limitations: [String]?
+    let openQuestions: [String]?
+
+    var title: String { summary ?? operation ?? id }
+    var detail: String { [source, status, evidenceClass].compactMap { $0 }.joined(separator: " · ") }
+    var timestamp: Date? { occurredAt ?? completedAt }
+}
+
+private struct ProjectPortfolioPage: View {
+    let title: String
+    let subtitle: String
+    let projects: [CommandCenterProjectSummary]
+    let unavailable: String?
+
+    var body: some View {
+        CommandCenterPage(title: title, subtitle: subtitle, icon: "rectangle.3.group.fill") {
+            if let unavailable {
+                CommandCenterUnavailable(message: unavailable)
+            } else if projects.isEmpty {
+                CommandCenterEmpty(message: "No active project records were included in the current projection.")
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 285), spacing: 14)], spacing: 14) {
+                    ForEach(projects) { project in
+                        CommandCenterCard {
+                            VStack(alignment: .leading, spacing: 11) {
+                                HStack {
+                                    Text(project.status.uppercased())
+                                        .font(.system(size: 9, weight: .black, design: .rounded))
+                                        .foregroundStyle(project.status == "blocked" ? CommandCenterPalette.bad : CommandCenterPalette.accent)
+                                    Spacer()
+                                    Text(project.evidenceStatus.uppercased())
+                                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Text(project.title).font(.system(size: 18, weight: .semibold, design: .rounded))
+                                if !project.outcome.isEmpty { Text(project.outcome).foregroundStyle(.secondary) }
+                                Divider().overlay(CommandCenterPalette.line)
+                                Text(project.nextAction.isEmpty ? "Next action is unresolved." : project.nextAction)
+                                    .font(.system(size: 12, design: .rounded))
+                                Text("Owner: \(project.owner) · Updated: \(project.updated)")
+                                    .font(.system(size: 10, design: .rounded)).foregroundStyle(.tertiary)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
-private struct CommandCenterProject: Identifiable, Sendable {
+private struct MeetingContinuityPage: View {
+    let summary: CommandCenterMeetingContinuity?
+    let unavailable: String?
+
+    var body: some View {
+        CommandCenterPage(
+            title: "Meeting Continuity",
+            subtitle: "Completed meetings are counted, dispositioned, routed, and validated against relevant projects.",
+            icon: "person.2.wave.2.fill"
+        ) {
+            if let unavailable {
+                CommandCenterUnavailable(message: unavailable)
+            } else if let summary {
+                HStack(spacing: 14) {
+                    CommandCenterMetric(value: "\(summary.occurrenceCount)", label: "OCCURRENCES", color: CommandCenterPalette.accent)
+                    CommandCenterMetric(value: "\(summary.unresolvedCount)", label: "UNRESOLVED", color: summary.unresolvedCount == 0 ? CommandCenterPalette.good : CommandCenterPalette.warning)
+                    CommandCenterMetric(value: "\(summary.byStatus.count)", label: "DISPOSITIONS", color: CommandCenterPalette.violet)
+                }
+                CommandCenterCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Disposition ledger").font(.system(size: 16, weight: .semibold, design: .rounded))
+                        ForEach(summary.byStatus.keys.sorted(), id: \.self) { status in
+                            HStack {
+                                Text(status.replacingOccurrences(of: "-", with: " ").capitalized)
+                                Spacer()
+                                Text("\(summary.byStatus[status] ?? 0)").foregroundStyle(CommandCenterPalette.accent)
+                            }
+                            .font(.system(size: 13, design: .rounded))
+                        }
+                        Text(summary.ledger)
+                            .font(.system(size: 10, design: .monospaced)).foregroundStyle(.tertiary)
+                            .textSelection(.enabled)
+                    }
+                }
+            } else {
+                CommandCenterEmpty(message: "Meeting Continuity was not included in this projection.")
+            }
+        }
+    }
+}
+
+private struct ReceiptPage: View {
+    let title: String
+    let subtitle: String
+    let records: [ReceiptDisplayRecord]
+    let count: Int?
+    let path: String?
+    let unavailable: String?
+
+    var body: some View {
+        CommandCenterPage(title: title, subtitle: subtitle, icon: "list.bullet.clipboard.fill") {
+            if let unavailable {
+                CommandCenterUnavailable(message: unavailable)
+            } else {
+                HStack(spacing: 14) {
+                    CommandCenterMetric(value: "\(count ?? 0)", label: "RECORDED", color: CommandCenterPalette.accent)
+                    CommandCenterMetric(value: "\(records.count)", label: "VISIBLE", color: CommandCenterPalette.violet)
+                }
+                if records.isEmpty {
+                    CommandCenterEmpty(message: "No readable receipts were included at the governed path.")
+                } else {
+                    ForEach(records) { record in
+                        CommandCenterCard {
+                            VStack(alignment: .leading, spacing: 7) {
+                                HStack {
+                                    Text(record.title).font(.system(size: 14, weight: .semibold, design: .rounded))
+                                    Spacer()
+                                    if let timestamp = record.timestamp {
+                                        Text(timestamp.formatted(date: .abbreviated, time: .shortened)).foregroundStyle(.tertiary)
+                                    }
+                                }
+                                if !record.detail.isEmpty { Text(record.detail).foregroundStyle(.secondary) }
+                                ForEach(record.limitations ?? [], id: \.self) { Text("Limitation: \($0)").foregroundStyle(CommandCenterPalette.warning) }
+                                ForEach(record.openQuestions ?? [], id: \.self) { Text("Open: \($0)").foregroundStyle(CommandCenterPalette.warning) }
+                            }
+                            .font(.system(size: 11, design: .rounded))
+                        }
+                    }
+                }
+                if let path {
+                    Text(path).font(.system(size: 9, design: .monospaced)).foregroundStyle(.tertiary).textSelection(.enabled)
+                }
+            }
+        }
+    }
+}
+
+private struct ResearchChroniclePage: View {
+    @State private var entries: [ChronicleEntry] = []
+    @State private var selected: ChronicleEntry?
+    @State private var errorMessage: String?
+
+    private let root = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Knowledge Vault/Monday Knowledge/500 Research Journal", isDirectory: true)
+
+    var body: some View {
+        CommandCenterPage(
+            title: "Research Chronicle",
+            subtitle: "Verified MONDAY app, plugin, and system-building work from the governed Research Journal.",
+            icon: "text.book.closed.fill"
+        ) {
+            if let errorMessage {
+                CommandCenterUnavailable(message: errorMessage)
+            } else if entries.isEmpty {
+                CommandCenterEmpty(message: "No Research Chronicle entries were found.")
+            } else {
+                HStack(alignment: .top, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(entries) { entry in
+                            Button { selected = entry } label: {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(entry.title).fontWeight(.semibold).lineLimit(2)
+                                    Text(entry.modified.formatted(date: .abbreviated, time: .omitted)).foregroundStyle(.secondary)
+                                }
+                                .font(.system(size: 11, design: .rounded))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(10)
+                                .background(selected?.id == entry.id ? Color.white.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 9))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .frame(width: 260)
+
+                    CommandCenterCard {
+                        ScrollView {
+                            Text(selected?.content ?? "Choose an entry.")
+                                .font(.system(size: 14, design: .serif)).lineSpacing(5).textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(minHeight: 520)
+                    }
+                }
+            }
+        }
+        .task { load() }
+    }
+
+    private func load() {
+        guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.contentModificationDateKey]) else {
+            errorMessage = "The governed Research Chronicle directory could not be read at \(root.path)."
+            return
+        }
+        entries = enumerator.compactMap { item in
+            guard let url = item as? URL, url.pathExtension.lowercased() == "md",
+                  let content = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+            let values = try? url.resourceValues(forKeys: [.contentModificationDateKey])
+            let title = content.split(separator: "\n").first(where: { $0.hasPrefix("#") })?
+                .trimmingCharacters(in: CharacterSet(charactersIn: "# ")) ?? url.deletingPathExtension().lastPathComponent
+            return ChronicleEntry(id: url.path, title: title, content: content, modified: values?.contentModificationDate ?? .distantPast)
+        }
+        .sorted { $0.modified > $1.modified }
+        selected = entries.first
+        errorMessage = nil
+    }
+}
+
+private struct ChronicleEntry: Identifiable {
     let id: String
     let title: String
-    let status: String
-    let health: String
-    let priority: Int?
-    let domain: String?
-    let stage: String?
-    let gateState: String?
-    let gateDate: Date?
-    let nextMilestone: String?
-    let nextAction: String?
-    let plannedHours: Double?
-    let actualHours: Double?
-    let tierFocus: String?
-    let evidenceAsOf: String?
-    let updatedAt: Date?
-
-    var needsAttention: Bool {
-        health == "at-risk" || health == "intervention" || gateState?.contains("blocked") == true
-    }
-
-    var healthColor: Color {
-        switch health {
-        case "ready": MondayDesign.mint
-        case "watch": MondayDesign.amber
-        case "at-risk", "intervention": MondayDesign.rose
-        default: Color.secondary
-        }
-    }
-
-    var healthLabel: String {
-        health.replacingOccurrences(of: "-", with: " ")
-    }
-
-    var gateLabel: String {
-        if let gateDate {
-            return gateDate.formatted(.dateTime.month(.abbreviated).day().year())
-        }
-        return "Undated"
-    }
+    let content: String
+    let modified: Date
 }
 
-private enum ProjectRegistryReader {
-    private static let databaseURL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Knowledge Vault/monday-memory-mcp/data/projects.sqlite3", isDirectory: false)
+private struct CommandCenterPage<Content: View>: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    @ViewBuilder let content: Content
 
-    static func load() throws -> [CommandCenterProject] {
-        guard FileManager.default.fileExists(atPath: databaseURL.path) else {
-            throw CommandCenterError.missingRegistry(databaseURL.path)
-        }
-
-        var database: OpaquePointer?
-        let openResult = sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READONLY, nil)
-        guard openResult == SQLITE_OK else {
-            let message = database.map { String(cString: sqlite3_errmsg($0)) } ?? "Unknown SQLite error"
-            if let database { sqlite3_close(database) }
-            throw CommandCenterError.database(message)
-        }
-        defer { sqlite3_close(database) }
-
-        let query = """
-        SELECT id, title, status, health, priority, domain, stage, gate_state,
-               gate_date, next_milestone, next_action, planned_hours_6m,
-               actual_hours_6m, tier_focus, evidence_as_of, updated_at
-        FROM projects
-        WHERE archived_at IS NULL
-        ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,
-                 CASE health WHEN 'intervention' THEN 0 WHEN 'at-risk' THEN 1
-                 WHEN 'watch' THEN 2 WHEN 'ready' THEN 3 ELSE 4 END,
-                 priority ASC, updated_at DESC;
-        """
-
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(database, query, -1, &statement, nil) == SQLITE_OK else {
-            throw CommandCenterError.database(String(cString: sqlite3_errmsg(database)))
-        }
-        defer { sqlite3_finalize(statement) }
-
-        var projects: [CommandCenterProject] = []
-        while sqlite3_step(statement) == SQLITE_ROW {
-            projects.append(
-                CommandCenterProject(
-                    id: string(statement, column: 0) ?? UUID().uuidString,
-                    title: string(statement, column: 1) ?? "Untitled project",
-                    status: string(statement, column: 2) ?? "unknown",
-                    health: string(statement, column: 3) ?? "unknown",
-                    priority: integer(statement, column: 4),
-                    domain: string(statement, column: 5),
-                    stage: string(statement, column: 6),
-                    gateState: string(statement, column: 7),
-                    gateDate: date(string(statement, column: 8)),
-                    nextMilestone: string(statement, column: 9),
-                    nextAction: string(statement, column: 10),
-                    plannedHours: decimal(statement, column: 11),
-                    actualHours: decimal(statement, column: 12),
-                    tierFocus: string(statement, column: 13),
-                    evidenceAsOf: string(statement, column: 14),
-                    updatedAt: date(string(statement, column: 15))
-                )
-            )
-        }
-        return projects
-    }
-
-    private static func string(_ statement: OpaquePointer?, column: Int32) -> String? {
-        guard sqlite3_column_type(statement, column) != SQLITE_NULL,
-              let text = sqlite3_column_text(statement, column) else { return nil }
-        return String(cString: text)
-    }
-
-    private static func integer(_ statement: OpaquePointer?, column: Int32) -> Int? {
-        guard sqlite3_column_type(statement, column) != SQLITE_NULL else { return nil }
-        return Int(sqlite3_column_int(statement, column))
-    }
-
-    private static func decimal(_ statement: OpaquePointer?, column: Int32) -> Double? {
-        guard sqlite3_column_type(statement, column) != SQLITE_NULL else { return nil }
-        return sqlite3_column_double(statement, column)
-    }
-
-    private static func date(_ value: String?) -> Date? {
-        guard let value, !value.isEmpty else { return nil }
-        let fractionalISO8601 = ISO8601DateFormatter()
-        fractionalISO8601.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fractionalISO8601.date(from: value) { return date }
-        if let date = ISO8601DateFormatter().date(from: value) { return date }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.date(from: value)
-    }
-}
-
-private enum CommandCenterError: LocalizedError {
-    case missingRegistry(String)
-    case database(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .missingRegistry(let path): "The governed project registry was not found at \(path)."
-        case .database(let message): "The project registry could not be read: \(message)"
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 7) {
+                    Label("MONDAY COMMAND CENTER", systemImage: icon)
+                        .font(.system(size: 10, weight: .black, design: .rounded)).tracking(1.3)
+                        .foregroundStyle(CommandCenterPalette.accent)
+                    Text(title).font(.system(size: 30, weight: .semibold, design: .rounded))
+                    Text(subtitle).font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
+                }
+                content
+            }
+            .padding(28)
         }
     }
-}
-
-private enum CommandCenterDesign {
-    static let background = Color.white
-    static let card = Color(red: 0.985, green: 0.988, blue: 0.995)
-    static let line = Color.black.opacity(0.09)
 }
 
 private struct CommandCenterCard<Content: View>: View {
-    @ViewBuilder var content: Content
-
+    @ViewBuilder let content: Content
     var body: some View {
         content
-            .padding(16)
-            .background(CommandCenterDesign.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(CommandCenterDesign.line, lineWidth: 0.7))
-            .shadow(color: .black.opacity(0.045), radius: 10, y: 3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(18)
+            .background(CommandCenterPalette.card, in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(CommandCenterPalette.line, lineWidth: 1))
     }
 }
 
-private struct MetricCard: View {
-    let label: String
+private struct CommandCenterMetric: View {
     let value: String
-    let detail: String
+    let label: String
     let color: Color
-    let icon: String
-
     var body: some View {
         CommandCenterCard {
-            VStack(alignment: .leading, spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(color)
-                Text(value)
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                Text(label.uppercased())
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .tracking(0.9)
-                    .foregroundStyle(.secondary)
-                Text(detail)
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(.tertiary)
-            }
-            .frame(maxWidth: .infinity, minHeight: 122, alignment: .leading)
+            Text(value).font(.system(size: 30, weight: .bold, design: .rounded)).foregroundStyle(color)
+            Text(label).font(.system(size: 9, weight: .black, design: .rounded)).tracking(1).foregroundStyle(.secondary)
         }
     }
 }
 
-private struct GateTimeline: View {
-    let gates: [CommandCenterProject]
-
+private struct CommandCenterUnavailable: View {
+    let message: String
     var body: some View {
-        GeometryReader { proxy in
-            let start = Calendar.current.startOfDay(for: .now)
-            let end = Calendar.current.date(byAdding: .day, value: 90, to: start) ?? start
-            let range = max(end.timeIntervalSince(start), 1)
-
-            ZStack(alignment: .topLeading) {
-                Capsule()
-                    .fill(CommandCenterDesign.line)
-                    .frame(height: 3)
-                    .padding(.top, 79)
-
-                ForEach(gates) { project in
-                    if let date = project.gateDate {
-                        let progress = min(max(date.timeIntervalSince(start) / range, 0), 1)
-                        let x = max(10, min(proxy.size.width - 12, proxy.size.width * progress))
-                        TimelineGate(project: project)
-                            .position(x: x, y: 79)
-                    }
-                }
-
-                HStack {
-                    Text(start.formatted(.dateTime.month(.abbreviated).day()))
-                    Spacer()
-                    Text(end.formatted(.dateTime.month(.abbreviated).day()))
-                }
-                .font(.system(size: 10, weight: .medium, design: .rounded))
-                .foregroundStyle(.tertiary)
-                .padding(.top, 156)
-            }
+        CommandCenterCard {
+            Label("Projection unavailable", systemImage: "externaldrive.badge.exclamationmark")
+                .font(.system(size: 18, weight: .semibold, design: .rounded)).foregroundStyle(CommandCenterPalette.warning)
+            Text(message).foregroundStyle(.secondary).padding(.top, 4)
+            Text("No fallback status is invented.").font(.caption).foregroundStyle(.tertiary).padding(.top, 4)
         }
     }
 }
 
-private struct TimelineGate: View {
-    let project: CommandCenterProject
-
+private struct CommandCenterEmpty: View {
+    let message: String
     var body: some View {
-        VStack(spacing: 6) {
-            VStack(spacing: 2) {
-                Text(project.gateLabel)
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .foregroundStyle(project.healthColor)
-                Text(project.title)
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-                    .frame(width: 112)
-            }
-            Circle()
-                .fill(project.healthColor)
-                .frame(width: 12, height: 12)
-                .overlay(Circle().stroke(.white.opacity(0.85), lineWidth: 2))
-                .shadow(color: project.healthColor.opacity(0.6), radius: 6)
-            Text(project.gateState?.replacingOccurrences(of: "_", with: " ") ?? "gate")
-                .font(.system(size: 8, design: .rounded))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .frame(width: 112)
-        }
+        CommandCenterCard { Label(message, systemImage: "tray.fill").foregroundStyle(.secondary) }
     }
 }
 
-private struct ProjectCard: View {
-    let project: CommandCenterProject
-    let open: () -> Void
-
-    var body: some View {
-        Button(action: open) {
-            CommandCenterCard {
-                VStack(alignment: .leading, spacing: 13) {
-                    HStack(alignment: .top) {
-                        StatusPill(label: project.healthLabel, color: project.healthColor, icon: project.needsAttention ? "exclamationmark" : "circle.fill")
-                        Spacer()
-                        if let priority = project.priority {
-                            Text("P\(priority)")
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Text(project.title)
-                        .font(.system(size: 17, weight: .semibold, design: .rounded))
-                        .multilineTextAlignment(.leading)
-                        .lineLimit(2)
-
-                    if let stage = project.stage, !stage.isEmpty {
-                        Label(stage.replacingOccurrences(of: "-", with: " "), systemImage: "circle.dotted")
-                            .font(.system(size: 10, design: .rounded))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-
-                    Rectangle().fill(CommandCenterDesign.line).frame(height: 1)
-
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("NEXT MILESTONE")
-                            .font(.system(size: 8, weight: .bold, design: .rounded))
-                            .tracking(0.9)
-                            .foregroundStyle(.tertiary)
-                        Text(project.nextMilestone ?? "Not yet recorded")
-                            .font(.system(size: 11, design: .rounded))
-                            .foregroundStyle(project.nextMilestone == nil ? .tertiary : .secondary)
-                            .lineLimit(2)
-                    }
-
-                    HStack {
-                        Label(project.gateLabel, systemImage: "calendar")
-                        Spacer()
-                        if let domain = project.domain, !domain.isEmpty {
-                            Text(domain)
-                        }
-                    }
-                    .font(.system(size: 10, design: .rounded))
-                    .foregroundStyle(.tertiary)
-                }
-                .frame(maxWidth: .infinity, minHeight: 245, alignment: .leading)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private struct ProjectDetailView: View {
-    let project: CommandCenterProject
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        ZStack {
-            CommandCenterDesign.background.ignoresSafeArea()
-            VStack(alignment: .leading, spacing: 20) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 9) {
-                        StatusPill(label: project.healthLabel, color: project.healthColor, icon: "heart.text.square")
-                        Text(project.title)
-                            .font(.system(size: 27, weight: .medium, design: .rounded))
-                    }
-                    Spacer()
-                    Button("Done") { dismiss() }
-                        .buttonStyle(.bordered)
-                }
-
-                DetailRow(label: "Stage", value: project.stage?.replacingOccurrences(of: "-", with: " ") ?? "Unknown")
-                DetailRow(label: "Gate", value: "\(project.gateState?.replacingOccurrences(of: "_", with: " ") ?? "Not recorded") · \(project.gateLabel)")
-                DetailRow(label: "Next milestone", value: project.nextMilestone ?? "Not recorded")
-                DetailRow(label: "Next action", value: project.nextAction ?? "Not recorded")
-                DetailRow(label: "Evidence updated", value: project.updatedAt?.formatted(date: .abbreviated, time: .shortened) ?? "Unknown")
-
-                if let planned = project.plannedHours ?? project.actualHours {
-                    let actual = project.actualHours
-                    HStack(spacing: 10) {
-                        Image(systemName: "chart.bar.xaxis")
-                            .foregroundStyle(MondayDesign.mint)
-                        Text(actual == nil ? "\(Int(planned)) planned hours; actual hours unknown" : "\(Int(actual ?? 0)) actual / \(Int(project.plannedHours ?? 0)) planned hours")
-                            .font(.system(size: 12, design: .rounded))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.top, 4)
-                }
-
-                Spacer()
-            }
-            .padding(30)
-        }
-        .preferredColorScheme(.light)
-    }
-}
-
-private struct DetailRow: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(label.uppercased())
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .tracking(1)
-                .foregroundStyle(.tertiary)
-            Text(value)
-                .font(.system(size: 13, design: .rounded))
-                .foregroundStyle(.secondary)
-        }
-    }
-}
-
-private struct EmptyVisual: View {
-    let label: String
-    let icon: String
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon).foregroundStyle(.tertiary)
-            Text(label)
-                .font(.system(size: 12, design: .rounded))
-                .foregroundStyle(.secondary)
-            Spacer()
-        }
-        .padding(.vertical, 36)
-    }
+private enum CommandCenterPalette {
+    static let background = LinearGradient(
+        colors: [Color(red: 0.008, green: 0.016, blue: 0.030), Color(red: 0.018, green: 0.045, blue: 0.075)],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+    static let card = Color(red: 0.025, green: 0.070, blue: 0.110).opacity(0.92)
+    static let line = Color.white.opacity(0.09)
+    static let accent = Color(red: 0.25, green: 0.82, blue: 1.0)
+    static let violet = Color(red: 0.67, green: 0.45, blue: 1.0)
+    static let good = Color(red: 0.34, green: 0.84, blue: 0.61)
+    static let warning = Color(red: 0.95, green: 0.60, blue: 0.23)
+    static let bad = Color(red: 1.0, green: 0.35, blue: 0.42)
 }

@@ -250,7 +250,7 @@ private struct CaptainLogView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    DeckHeading(eyebrow: "MONDAY JOURNAL", title: "Captain’s Log", detail: "Read your recorded days and capture a private draft for Codex.")
+                    DeckHeading(eyebrow: "CHRIS'S PERSONAL JOURNAL", title: "Captain’s Log", detail: "Read your recorded days and capture a private draft for review. MONDAY never silently writes the journal.")
                     DeckCard {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Capture for Codex").font(.system(size: 17, weight: .semibold, design: .rounded))

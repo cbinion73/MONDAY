@@ -1,0 +1,24 @@
+name: MONDAY validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  apple-platforms:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Test shared core
+        run: swift test
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Build macOS app
+        run: xcodebuild -quiet -project MONDAY.xcodeproj -scheme MONDAY -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
+      - name: Build iOS app
+        run: xcodebuild -quiet -project MONDAY.xcodeproj -scheme MONDAYMobile -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Build watchOS app
+        run: xcodebuild -quiet -project MONDAY.xcodeproj -target MONDAYWatch -configuration Release -sdk watchsimulator CODE_SIGNING_ALLOWED=NO build

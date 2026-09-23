@@ -49,19 +49,46 @@ actor AppleCalendarSpecialist: MondaySpecialist {
         MondayRequestRouting.isCalendarRequest(request.text)
     }
 
+    /// Refresh planning coverage on app launch only when Calendar access was already granted.
+    /// This never triggers a permission prompt or creates an event.
+    func refreshPlanningSourceIfAuthorized(at date: Date = .now) {
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { return }
+        let dayStart = calendar.startOfDay(for: date)
+        let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
+        let events = store.events(matching: store.predicateForEvents(withStart: dayStart, end: dayEnd, calendars: nil))
+            .filter { !$0.isAllDay }
+            .sorted { $0.startDate < $1.startDate }
+        do {
+            try MondayCalendarSourcePublisher.publish(events: events, date: date, calendar: calendar)
+        } catch {
+            MondayCalendarSourcePublisher.publishFailure(error, date: date, calendar: calendar)
+        }
+    }
+
     func respond(to request: SpecialistRequest) async throws -> SpecialistResponse {
         guard request.workspace.settings.awarenessEnabled,
               request.workspace.settings.calendarRead,
               request.workspace.connections.first(where: { $0.id == "apple.calendar" })?.policy.observe != false else {
             throw SpecialistError.permissionRequired("Calendar observation is disabled in MONDAY’s Trust Center.")
         }
-        try await ensureFullAccess()
+        do {
+            try await ensureFullAccess()
+        } catch {
+            MondayCalendarSourcePublisher.publishFailure(error, date: request.now, calendar: calendar)
+            throw error
+        }
 
         let dayStart = calendar.startOfDay(for: request.now)
         let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)!
         let events = store.events(matching: store.predicateForEvents(withStart: dayStart, end: dayEnd, calendars: nil))
             .filter { !$0.isAllDay }
             .sorted { $0.startDate < $1.startDate }
+
+        do {
+            try MondayCalendarSourcePublisher.publish(events: events, date: request.now, calendar: calendar)
+        } catch {
+            MondayCalendarSourcePublisher.publishFailure(error, date: request.now, calendar: calendar)
+        }
 
         let formatter = DateFormatter()
         formatter.timeStyle = .short

@@ -1,12 +1,13 @@
 # Product Boundary
 
-This repo is a clean restart.
+This repo is the native Apple application for the consolidated MONDAY operating system.
 
 ## Binding boundaries
 
-- MONDAY is a new product, not a continuation of JARVIS or legacy MONDAY.
-- Legacy MONDAY and JARVIS code are reference material only until explicitly imported.
-- Specialized functions should live in standalone apps or bounded services coordinated by MONDAY.
+- The primary `monday` Codex plugin owns MONDAY's reusable operating methods, source-health controls, and planning pipeline.
+- This native app owns conversation, permissioned Apple capabilities, and the read-only Command Center projection.
+- Atlas, Nexus, and CRG Notebook Reviewer remain independent products. Planning, Personal, and Thermo are capability families inside MONDAY.
+- Legacy MONDAY and JARVIS material remains reference-only until explicitly evaluated and imported.
 - Device awareness, sync, trust, and orchestration are first-class concerns.
 - MONDAY owns the relationship with the user, not every domain implementation.
 - Apple technology must be evaluated before third-party technology is introduced.
@@ -22,6 +23,7 @@ This repo is a clean restart.
 - Settings, trust, approvals, and audit
 - Open-loop tracking and verified follow-through
 - Synchronization and model-use policy
+- Versioned Command Center publication and native-app readback verification
 
 ## Specialist applications own
 
@@ -31,11 +33,19 @@ This repo is a clean restart.
 - Execution within their declared authority
 - Structured reporting of outcomes
 
-## Out of scope for the clean start
+## Durable record boundaries
+
+- Professional project truth: `~/Knowledge Vault/Project Knowledge`
+- Personal project truth: `~/Knowledge Vault/Personal Project Knowledge`
+- Chris's journal: `~/Knowledge Vault/Chris Knowledge/500 Personal Journal`
+- MONDAY operations: `~/Knowledge Vault/Monday Knowledge`
+- Command Center files under `~/.codex/monday-planner` are projections, not authoritative records.
+
+## Out of scope
 
 - transferring legacy code
 - binding to old runtimes
-- rebuilding prior modules
+- duplicating plugin procedures inside app personalization
 - importing old docs without explicit review
 - universal or unrestricted application control
 - undisclosed background model activity or spending

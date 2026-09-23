@@ -1,6 +1,6 @@
 # Obsidian Vault Context
 
-MONDAY can use Chris's local personal knowledge vault at `~/Knowledge Vault/Personal Knowledge Vault` as a governed, read-only source of personal context on the Mac.
+MONDAY can use Chris's local personal knowledge vault at `~/Knowledge Vault/Chris Knowledge` as a governed, read-only source of personal context on the Mac.
 
 ## Authority boundary
 
@@ -20,7 +20,7 @@ MONDAY indexes ordinary Markdown from these curated areas:
 
 It deliberately excludes `MeGPT/Corpus/`, `MeGPT/Inbox/`, `MeGPT/Review/`, prompts, templates, databases, raw text conversions, and generated deliverables. These sources may contain useful leads, but they are not silently promoted into established memory.
 
-The root-level `Monday Vault/` has the dedicated operational area: `Inbox/`, `Commitments/`, `Decisions/`, `Follow-Ups/`, `Projects/`, `Reviews/`, and `Parking-Lot/`. The native MONDAY app remains read-only against the personal knowledge vault; the separate Monday Memory MCP reads the Monday Vault and may create or update governed operational notes with revision history and an audit trail.
+`~/Knowledge Vault/Monday Knowledge` is MONDAY's operations workspace. Its `100 Activity Ledger`, `400 MONDAY Operations`, and `500 Research Journal` areas hold bounded receipts and verified system-building records. They are not authoritative sources for project status, personal facts, commitments, or decisions. The native MONDAY app remains read-only against Chris Knowledge.
 
 ## Answer behavior
 

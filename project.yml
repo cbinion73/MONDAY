@@ -140,3 +140,9 @@ schemes:
       config: Debug
     test:
       config: Debug
+  MONDAYWatch:
+    build:
+      targets:
+        MONDAYWatch: all
+    run:
+      config: Debug

@@ -5,6 +5,11 @@ agent. It maintains continuity across devices, coordinates specialized applicati
 reconciles evidence, and safely carries the user's intentions through to verified
 outcomes.
 
+The native application and the consolidated `monday` Codex plugin are one operating
+system with separate responsibilities. The plugin prepares a versioned, evidence-bounded
+projection. The app validates that projection, displays it, and writes a matching readback
+receipt. Publication alone is not proof that the app displayed the plan.
+
 ## Product definition
 
 - [Product vision](docs/PRODUCT-VISION.md)
@@ -22,6 +27,12 @@ MONDAY now has a native Apple-platform MVP vertical slice:
   the Foundation Models framework
 - Approval-gated Calendar execution with read-after-write verification
 - Explicit provenance, open loops, action state, audit history, and global stop
+- A versioned Command Center with Today, Projects, Personal Projects, Meeting Continuity,
+  Activity Ledger, MONDAY Operations, and Research Chronicle pages
+- Calendar source manifests that distinguish available, empty, stale, blocked, unavailable,
+  partial, and unknown coverage
+- Current-date, expiry, schema, and plan-identifier validation before a daily plan is shown
+- Native-app readback receipts for verified Command Center display
 - Native iPhone continuity, Apple Watch approval, and CarPlay driving surfaces
 - Monday Knowledge: portable Markdown, daily notes, tags, wiki links, backlinks, search,
   revision history, and an agent-readable JSON index synchronized through iCloud Documents
@@ -30,7 +41,7 @@ MONDAY now has a native Apple-platform MVP vertical slice:
 - Governed read-only Obsidian context on Mac with curated evidence tiers, complete-note
   retrieval, deterministic source links, and on-device-only grounding
 - Local-only defaults with Apple’s on-device model, no cloud model, and no background model activity
-- No legacy code or external dependencies
+- Explicit boundaries around legacy material and external capability systems
 
 The Mac slice is functional today. The iPad evaluation surface is physically
 installed and launch-verified on an M2 12.9-inch iPad Pro running iPadOS 27. It shares the real
@@ -84,7 +95,7 @@ xcodebuild -project MONDAY.xcodeproj -scheme MONDAY \
   -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
 xcodebuild -project MONDAY.xcodeproj -scheme MONDAYMobile \
   -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO build
-xcodebuild -project MONDAY.xcodeproj -target MONDAYWatch \
+xcodebuild -project MONDAY.xcodeproj -target MONDAYWatch -configuration Release \
   -sdk watchsimulator CODE_SIGNING_ALLOWED=NO build
 ~~~
 
@@ -106,4 +117,5 @@ See [Obsidian vault context](docs/OBSIDIAN-VAULT.md) for the read-only retrieval
 provenance rules, excluded raw sources, and on-device privacy boundary.
 
 Legacy JARVIS and MONDAY material is reference material only. Nothing enters this
-repository without explicit evaluation against the new product definition.
+repository without explicit evaluation against the current product definition and
+durable-record boundaries.

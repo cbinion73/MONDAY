@@ -28,12 +28,11 @@ THREAD_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 ACTIVE_WINDOW_SECONDS = 5 * 60
 MAX_THREADS = 12
 LIBRARIES = {
-    "captains-log": Path.home() / "Knowledge Vault/Monday Vault/Personal Log",
+    "captains-log": Path.home() / "Knowledge Vault/Chris Knowledge/500 Personal Journal",
     "bible-studies": Path.home() / "Knowledge Vault/Monday Vault/Bible Studies",
-    "books": Path.home() / "Knowledge Vault/Personal Knowledge Vault/Books",
-    "research-journal": Path.home() / "Knowledge Vault/Monday Vault/Diary",
+    "books": Path.home() / "Knowledge Vault/Chris Knowledge/Books",
+    "research-journal": Path.home() / "Knowledge Vault/Monday Knowledge/500 Research Journal",
 }
-RESEARCH_JOURNAL_FILENAME = "BUILD-CHRONICLE-2026-05-to-2026-09.md"
 CAPTURE_INBOX = CODEX_ROOT / "captains-log-captures"
 PLANNER_PATH = CODEX_ROOT / "monday-planner" / "daily-plan.json"
 
@@ -111,7 +110,7 @@ def library_entries(collection: str) -> list[dict[str, Any]]:
     root = LIBRARIES.get(collection)
     if root is None or not root.exists():
         return []
-    paths = [root / RESEARCH_JOURNAL_FILENAME] if collection == "research-journal" else root.glob("*.md")
+    paths = root.rglob("*.md")
     entries: list[dict[str, Any]] = []
     for path in paths:
         if path.name == "README.md":
@@ -132,7 +131,7 @@ def library_entry(collection: str, entry_id: str) -> dict[str, Any] | None:
     root = LIBRARIES.get(collection)
     if root is None:
         return None
-    paths = [root / RESEARCH_JOURNAL_FILENAME] if collection == "research-journal" else root.glob("*.md")
+    paths = root.rglob("*.md")
     for path in paths:
         if path.name == "README.md" or uuid.uuid5(uuid.NAMESPACE_URL, str(path)).hex != entry_id:
             continue

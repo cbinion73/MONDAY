@@ -23,7 +23,7 @@ final class ObsidianPromotionModel: ObservableObject {
     @Published var errorMessage: String?
 
     private let reader = ObsidianVaultReader(
-        rootURL: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Knowledge Vault/Personal Knowledge Vault", isDirectory: true)
+        rootURL: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Knowledge Vault/Chris Knowledge", isDirectory: true)
     )
     private let store = MondayKnowledgeStore()
 
