@@ -305,16 +305,19 @@ class Priority2TwinTests(unittest.TestCase):
 
     def test_projection_redacts_governance_and_playbook_metadata(self) -> None:
         self.capture(self.record())
-        private = "Private statement at user@example.com in /Users/chris/private.txt"
-        self.invoke("opt-out", "--scope", "record-type", "--key", "capability", "--enabled", "yes", "--reason", private, "--apply")
-        spec = {"schemaVersion": 1, "playbookID": "metadata-redaction", "title": private, "purpose": "Projection privacy test", "audience": private, "recordIDs": ["work-style"]}
+        private_reason = "PERSONAL_REASON_CANARY"
+        sensitive_metadata = "Approved audience at user@example.com in /Users/chris/private.txt"
+        self.invoke("opt-out", "--scope", "record-type", "--key", "capability", "--enabled", "yes", "--reason", private_reason, "--apply")
+        spec = {"schemaVersion": 1, "playbookID": "metadata-redaction", "title": sensitive_metadata, "purpose": "Projection privacy test", "audience": sensitive_metadata, "recordIDs": ["work-style"]}
         self.invoke("prepare-playbook", "--input", str(self.write("metadata-redaction.json", spec)), "--apply")
         projection = json.loads(self.invoke("project", "--apply").stdout)
         rendered = json.dumps(projection)
+        self.assertNotIn(private_reason, rendered)
         self.assertNotIn("user@example.com", rendered)
         self.assertNotIn("/Users/chris/private.txt", rendered)
         self.assertIn("[REDACTED EMAIL]", rendered)
         self.assertIn("[REDACTED PATH]", rendered)
+        self.assertTrue(all(event["reason"] == "Withheld from privacy-reduced projection." for event in projection["governanceEvents"]))
 
 
 if __name__ == "__main__":

@@ -735,8 +735,7 @@ def build_projection() -> dict[str, Any]:
     reduced_events = []
     for item in events:
         reduced = {key: item.get(key) for key in ("eventID", "occurredAt", "action", "domain", "recordID", "reason", "beforeVersion", "afterVersion", "result")}
-        if isinstance(reduced.get("reason"), str):
-            reduced["reason"], _ = redact_text(reduced["reason"])
+        reduced["reason"] = "Withheld from privacy-reduced projection."
         reduced_events.append(reduced)
     policy = opt_outs()
     audit = audit_contracts()
