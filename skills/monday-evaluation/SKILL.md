@@ -19,5 +19,6 @@ Read [the evaluation contract](references/evaluation-contract.md) before changin
 - Pilot observations are append-only and digest chained. Changing a pilot plan creates a new pilot.
 - A single-user local pilot can validate only its tested scope. Enterprise readiness remains blocked until representative enterprise evidence and organizational approvals exist.
 - Evaluation projections are privacy-reduced and read-only. Display requires exact schema, projection ID, content digest, app version, and view-specific readback.
+- Engineering release requires a locally generated, digest-bound receipt that independently runs plugin validation, source-to-installed parity, app version/build verification, strict code-signature verification, and compatibility checks. Caller-supplied pass booleans are not release evidence.
 
 Use `monday-thermo-quality-assurance` for independent release or readiness review. Use `monday-runtime` if evaluation execution needs durable retry or recovery; evaluation never grants authority for an external effect.

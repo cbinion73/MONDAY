@@ -8,6 +8,7 @@ import ast
 import hashlib
 import json
 import os
+import plistlib
 import re
 import subprocess
 import tempfile
@@ -27,6 +28,8 @@ CONNECTORS_PATH = REFERENCE_ROOT / "connector-decision-registry.json"
 ROADMAP_PATH = REFERENCE_ROOT / "roadmap-status.json"
 INSPECTION_PATH = ROOT / "inspection.json"
 READBACK_PATH = ROOT / "readback.json"
+PLUGIN_VALIDATOR = Path.home() / ".codex/skills/.system/plugin-creator/scripts/validate_plugin.py"
+DEFAULT_INSTALLED_APP = Path("/Applications/Command Center.app")
 ALLOWED_VIEWS = {
     "evaluation-overview", "evaluation-coverage", "evaluation-release-gates",
     "evaluation-connectors", "evaluation-pilot", "evaluation-enterprise-claim",
@@ -85,6 +88,99 @@ def git_value(root: Path, *arguments: str) -> str | None:
 
 def plugin_version() -> str:
     return str(load_json(PLUGIN_ROOT / ".codex-plugin/plugin.json")["version"])
+
+
+def command_receipt(command: list[str], cwd: Path | None = None) -> dict[str, Any]:
+    result = subprocess.run(command, cwd=cwd, text=True, capture_output=True)
+    output = result.stdout + "\n" + result.stderr
+    return {
+        "status": "PASS" if result.returncode == 0 else "FAIL",
+        "exitCode": result.returncode,
+        "outputDigest": hashlib.sha256(output.encode()).hexdigest(),
+    }
+
+
+def collect_release_evidence(app_repo: Path, installed_plugin: Path, installed_app: Path, evidence_id: str, apply: bool) -> dict[str, Any]:
+    if not evidence_id or not re.fullmatch(r"[A-Za-z0-9._-]+", evidence_id):
+        raise EvaluationError("release evidence requires a safe evidence ID")
+    validator = command_receipt(["python3", str(PLUGIN_VALIDATOR), str(PLUGIN_ROOT)])
+    parity = command_receipt(["diff", "-qr", "--exclude=.git", str(PLUGIN_ROOT), str(installed_plugin)])
+    app_version, app_build = app_metadata(app_repo)
+    try:
+        with (installed_app / "Contents/Info.plist").open("rb") as handle:
+            plist = plistlib.load(handle)
+        installed_version = str(plist.get("CFBundleShortVersionString", ""))
+        installed_build = int(plist.get("CFBundleVersion", 0))
+    except (OSError, ValueError, plistlib.InvalidFileException) as error:
+        installed_version, installed_build = "", 0
+        app_build_receipt = {"status": "FAIL", "reason": type(error).__name__}
+    else:
+        app_build_receipt = {
+            "status": "PASS" if (installed_version, installed_build) == (app_version, app_build) else "FAIL",
+            "installedVersion": installed_version,
+            "installedBuild": installed_build,
+            "sourceVersion": app_version,
+            "sourceBuild": app_build,
+        }
+    signature = command_receipt(["codesign", "--verify", "--deep", "--strict", str(installed_app)])
+    manifest = load_json(PLUGIN_ROOT / ".codex-plugin/plugin.json")
+    capabilities = manifest.get("interface", {}).get("capabilities", [])
+    compatibility = {
+        "status": "PASS" if "Behavioral evaluation and bounded pilots" in capabilities and app_version == "0.4.2" and app_build == 17 else "FAIL",
+        "pluginVersion": plugin_version(),
+        "pluginCommit": git_value(PLUGIN_ROOT, "rev-parse", "HEAD") or "unknown",
+        "appVersion": app_version,
+        "appBuild": app_build,
+        "appCommit": git_value(app_repo, "rev-parse", "HEAD") or "unknown",
+    }
+    checks = {
+        "validator": validator,
+        "pluginParity": parity,
+        "appBuild": app_build_receipt,
+        "appSignature": signature,
+        "compatibility": compatibility,
+    }
+    core = {
+        "schemaVersion": 1,
+        "evidenceID": evidence_id,
+        "generatedAt": iso(),
+        "installedPlugin": str(installed_plugin),
+        "installedApp": str(installed_app),
+        "checks": checks,
+        "status": "PASS" if all(item.get("status") == "PASS" for item in checks.values()) else "FAIL",
+    }
+    value = {**core, "contentDigest": digest(core)}
+    path = ROOT / "release-evidence" / f"{evidence_id}.json"
+    if apply:
+        if path.exists() and load_json(path) != value:
+            raise EvaluationError("release evidence ID already exists with different evidence")
+        atomic_json(path, value)
+    return {**value, "artifact": str(path), "applied": apply}
+
+
+def verify_release_evidence(evidence: dict[str, Any], report: dict[str, Any] | None) -> list[str]:
+    artifact = evidence.get("engineeringEvidenceArtifact")
+    expected_digest = evidence.get("engineeringEvidenceDigest")
+    if not isinstance(artifact, str) or not isinstance(expected_digest, str):
+        return ["missing-engineering-evidence-receipt"]
+    receipt = load_json(Path(artifact).expanduser())
+    reasons: list[str] = []
+    supplied_digest = receipt.get("contentDigest")
+    core = dict(receipt)
+    core.pop("contentDigest", None)
+    if supplied_digest != digest(core) or supplied_digest != expected_digest:
+        reasons.append("engineering-evidence-digest-mismatch")
+    required = {"validator", "pluginParity", "appBuild", "appSignature", "compatibility"}
+    checks = receipt.get("checks") if isinstance(receipt.get("checks"), dict) else {}
+    if set(checks) != required or receipt.get("status") != "PASS":
+        reasons.append("engineering-evidence-incomplete")
+    for name in sorted(required):
+        if checks.get(name, {}).get("status") != "PASS":
+            reasons.append(f"engineering-evidence-{name}-not-pass")
+    compatibility = checks.get("compatibility", {})
+    if report and (compatibility.get("pluginCommit") != report.get("plugin", {}).get("commit") or compatibility.get("appCommit") != report.get("app", {}).get("commit")):
+        reasons.append("engineering-evidence-release-mismatch")
+    return reasons
 
 
 def discover_python_tests(root: Path) -> list[str]:
@@ -253,9 +349,7 @@ def gate_decision(gate_id: str, report: dict[str, Any] | None, evidence: dict[st
             reasons.append("evaluation-suite-not-complete-pass")
         if not report or any(item.get("result") != "pass" for item in report.get("caseCoverage", [])):
             reasons.append("adversarial-cases-not-complete-pass")
-        for key in ["validatorsPass", "pluginParityPass", "appBuildPass", "appSignaturePass", "compatibilityPass"]:
-            if evidence.get(key) is not True:
-                reasons.append(f"missing-{key}")
+        reasons.extend(verify_release_evidence(evidence, report))
         verdict = "PASS" if not reasons else "FAIL"
     elif gate_id == "pilot-start":
         roadmap = load_json(ROADMAP_PATH)["priorities"]
@@ -331,7 +425,9 @@ def release_record(request: dict[str, Any], apply: bool) -> dict[str, Any]:
     value = {
         "schemaVersion": 1, "releaseID": release_id, "recordedAt": iso(), "requestDigest": request_digest,
         "engineeringReleaseVerdict": engineering["verdict"], "gates": [engineering, pilot, connector, enterprise],
-        "runID": report.get("runID"), "suiteDigest": report.get("suiteDigest"), "applied": apply,
+        "runID": report.get("runID"), "suiteDigest": report.get("suiteDigest"),
+        "engineeringEvidenceArtifact": evidence.get("engineeringEvidenceArtifact"),
+        "engineeringEvidenceDigest": evidence.get("engineeringEvidenceDigest"), "applied": apply,
     }
     if apply: atomic_json(receipt, value)
     project_inspection()
@@ -549,6 +645,7 @@ def parser() -> argparse.ArgumentParser:
     audit = commands.add_parser("audit-contracts"); audit.add_argument("--app-repo", default=str(DEFAULT_APP_REPO))
     listing = commands.add_parser("list-cases"); listing.add_argument("--category")
     run = commands.add_parser("run"); run.add_argument("--app-repo", default=str(DEFAULT_APP_REPO)); run.add_argument("--run-id")
+    evidence = commands.add_parser("collect-release-evidence"); evidence.add_argument("--evidence-id", required=True); evidence.add_argument("--app-repo", default=str(DEFAULT_APP_REPO)); evidence.add_argument("--installed-plugin", required=True); evidence.add_argument("--installed-app", default=str(DEFAULT_INSTALLED_APP)); evidence.add_argument("--apply", action="store_true")
     gate = commands.add_parser("gate"); gate.add_argument("--gate", required=True); gate.add_argument("--run"); gate.add_argument("--evidence")
     connector = commands.add_parser("connector-review"); connector.add_argument("--input", required=True); connector.add_argument("--apply", action="store_true")
     commands.add_parser("connector-status")
@@ -571,6 +668,7 @@ def main() -> None:
             suite = load_json(SUITE_PATH); cases = suite["adversarialCases"]
             result = {"suiteID": suite["suiteID"], "cases": [item for item in cases if not args.category or item["class"] == args.category]}
         elif args.command == "run": result = execute_suite(Path(args.app_repo).expanduser(), args.run_id)
+        elif args.command == "collect-release-evidence": result = collect_release_evidence(Path(args.app_repo).expanduser(), Path(args.installed_plugin).expanduser(), Path(args.installed_app).expanduser(), args.evidence_id, args.apply)
         elif args.command == "gate":
             report = load_json(Path(args.run).expanduser()) if args.run else None
             evidence = input_json(args.evidence) if args.evidence else {}

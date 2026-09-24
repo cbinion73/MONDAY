@@ -50,6 +50,30 @@ class Priority4EvaluationTests(unittest.TestCase):
             "engineeringReleaseVerdict": "PASS", "idempotencyKey": "pilot-start-one",
         }
 
+    def engineering_evidence(self, report: dict, *, failing_check: str | None = None) -> dict:
+        checks = {
+            name: {"status": "FAIL" if name == failing_check else "PASS"}
+            for name in ["validator", "pluginParity", "appBuild", "appSignature", "compatibility"]
+        }
+        checks["compatibility"].update({
+            "pluginCommit": report["plugin"]["commit"],
+            "appCommit": report["app"]["commit"],
+        })
+        core = {
+            "schemaVersion": 1,
+            "evidenceID": "unit-release-evidence",
+            "generatedAt": "2026-09-24T16:00:00Z",
+            "installedPlugin": "/test/plugin",
+            "installedApp": "/test/app",
+            "checks": checks,
+            "status": "FAIL" if failing_check else "PASS",
+        }
+        import hashlib
+        content_digest = hashlib.sha256(json.dumps(core, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+        artifact = self.inputs / f"engineering-evidence-{failing_check or 'pass'}.json"
+        artifact.write_text(json.dumps({**core, "contentDigest": content_digest}), encoding="utf-8")
+        return {"engineeringEvidenceArtifact": str(artifact), "engineeringEvidenceDigest": content_digest}
+
     def test_contract_audit_inventories_all_current_tests_and_adversarial_classes(self) -> None:
         _, value = self.invoke("audit-contracts", arguments=["--app-repo", str(APP)])
         self.assertEqual(value["status"], "PASS")
@@ -61,14 +85,15 @@ class Priority4EvaluationTests(unittest.TestCase):
 
     def test_engineering_gate_requires_complete_suite_and_every_release_receipt(self) -> None:
         report = self.inputs / "report.json"
-        report.write_text(json.dumps({"status": "PASS", "unresolvedCount": 0, "caseCoverage": [{"result": "pass"}]}), encoding="utf-8")
-        evidence = {"validatorsPass": True, "pluginParityPass": True, "appBuildPass": True, "appSignaturePass": True, "compatibilityPass": True}
+        report_value = {"status": "PASS", "unresolvedCount": 0, "caseCoverage": [{"result": "pass"}], "plugin": {"commit": "plugin-commit"}, "app": {"commit": "app-commit"}}
+        report.write_text(json.dumps(report_value), encoding="utf-8")
+        evidence = self.engineering_evidence(report_value)
         _, passed = self.invoke("gate", payload=evidence, arguments=["--gate", "engineering-release", "--run", str(report)])
         self.assertEqual(passed["verdict"], "PASS")
-        evidence["appSignaturePass"] = False
-        _, failed = self.invoke("gate", payload=evidence, arguments=["--gate", "engineering-release", "--run", str(report)])
+        failing = self.engineering_evidence(report_value, failing_check="appSignature")
+        _, failed = self.invoke("gate", payload=failing, arguments=["--gate", "engineering-release", "--run", str(report)])
         self.assertEqual(failed["verdict"], "FAIL")
-        self.assertIn("missing-appSignaturePass", failed["reasons"])
+        self.assertIn("engineering-evidence-appSignature-not-pass", failed["reasons"])
 
     def test_pilot_start_is_blocked_by_unattended_priority1_item17(self) -> None:
         _, value = self.invoke("pilot-start", payload=self.pilot_plan(), apply=True)
@@ -79,10 +104,12 @@ class Priority4EvaluationTests(unittest.TestCase):
 
     def test_release_record_keeps_four_gates_distinct_and_idempotent(self) -> None:
         report = self.inputs / "complete-report.json"
-        report.write_text(json.dumps({"runID": "run-one", "suiteDigest": "a" * 64, "status": "PASS", "unresolvedCount": 0, "caseCoverage": [{"result": "pass"}]}), encoding="utf-8")
+        report_value = {"runID": "run-one", "suiteDigest": "a" * 64, "status": "PASS", "unresolvedCount": 0, "caseCoverage": [{"result": "pass"}], "plugin": {"commit": "plugin-commit"}, "app": {"commit": "app-commit"}}
+        report.write_text(json.dumps(report_value), encoding="utf-8")
+        engineering_evidence = self.engineering_evidence(report_value)
         request = {
             "releaseID": "release-one", "runReport": str(report), "idempotencyKey": "release-one-key",
-            "evidence": {"validatorsPass": True, "pluginParityPass": True, "appBuildPass": True, "appSignaturePass": True, "compatibilityPass": True, "pilotPlanApproved": True, "pilotConnectorsAdmitted": True, "noOpenCriticalAlerts": True},
+            "evidence": {**engineering_evidence, "pilotPlanApproved": True, "pilotConnectorsAdmitted": True, "noOpenCriticalAlerts": True},
         }
         _, value = self.invoke("release-record", payload=request, apply=True)
         self.assertEqual([item["gateID"] for item in value["gates"]], ["engineering-release", "pilot-start", "connector-activation", "enterprise-claim"])

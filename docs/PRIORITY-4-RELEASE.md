@@ -8,7 +8,7 @@ Priority 4 implements roadmap items 29 through 33 as a governed evaluation and p
 
 ## Item 30: measurable release gates
 
-Engineering release, pilot start, connector activation, and enterprise claims are separate machine-readable gates. Critical controls have zero tolerance. A partial test denominator cannot pass. Pilot start inherits Priorities 0 through 3 and remains blocked while Priority 1 item 17 is unresolved.
+Engineering release, pilot start, connector activation, and enterprise claims are separate machine-readable gates. Critical controls have zero tolerance. A partial test denominator cannot pass. Engineering release consumes a digest-bound local receipt produced by direct validator, parity, build, signature, and compatibility checks, not caller assertions. Pilot start inherits Priorities 0 through 3 and remains blocked while Priority 1 item 17 is unresolved.
 
 ## Item 31: selective Tier 2 connectors
 
@@ -29,6 +29,7 @@ An accepted pilot supports only the tested single-user local configuration. Ente
 ```bash
 python3 scripts/monday_evaluation.py audit-contracts
 python3 -m unittest tests.test_priority4_evaluation -v
+python3 scripts/monday_evaluation.py collect-release-evidence --evidence-id <id> --installed-plugin <path> --apply
 python3 skills/monday-core/scripts/monday_core.py validate-registry
 python3 /Users/chris.binion/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/monday-evaluation
 ```
