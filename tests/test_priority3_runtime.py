@@ -328,7 +328,9 @@ class Priority3RuntimeTests(unittest.TestCase):
         self.assertEqual(severities["runtime-lease-stalled"], "warning")
         dead_alerts = [item for item in projection["alerts"] if item["category"] == "dead-letter-open"]
         self.assertEqual(sorted(item["severity"] for item in dead_alerts), ["error", "warning"])
-        policy = json.loads((ROOT / "skills/monday-runtime/references/compatibility-matrix.json").read_text())["alertPolicy"]
+        matrix = json.loads((ROOT / "skills/monday-runtime/references/compatibility-matrix.json").read_text())
+        self.assertEqual(matrix["schemaVersion"], 2)
+        policy = matrix["alertPolicy"]
         self.assertEqual(policy["failureCountThreshold"], 3)
         self.assertEqual(policy["knownRunningAppReadbackMinutes"], 5)
 
