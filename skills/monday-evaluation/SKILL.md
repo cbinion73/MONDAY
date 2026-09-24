@@ -9,6 +9,8 @@ Judge MONDAY by repeatable behavior in its intended operating workflow. Use the 
 
 Read [the evaluation contract](references/evaluation-contract.md) before changing cases, gates, or evidence. Read [the connector registry](references/connector-decision-registry.json) before collecting a non-Tier-1 source. Read [the pilot contract](references/pilot-contract.md) before starting, recording, or completing a pilot.
 
+Priority 1 item 17 is never changed by narrative judgment or a hand-edited packaged roadmap. After a genuinely unattended next-day run has staged all five canonical source attempts, published the current-day schema-3 plan, and received matching native readback without manual repair, submit the bounded evidence envelope to `scripts/monday_evaluation.py verify-unattended-rollover --input <file> --apply`. The verifier reads the source manifests, plan, planning run, and app receipt directly, writes an immutable evidence receipt, and only then promotes the runtime roadmap gate.
+
 ## Invariants
 
 - The suite denominator is discovered and recorded before execution. A blocking case that is skipped, blocked, unresolved, or not run fails its gate.

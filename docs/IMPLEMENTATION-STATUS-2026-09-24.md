@@ -76,6 +76,8 @@ Open gate: roadmap item 17 requires a real unattended morning rollover with
 fresh connector attempts, the exact local-day Calendar window, a published
 plan, quality verdict, matching native readback, and completed reconciliation.
 Until that occurs without manual repair, Priority 1 is not called complete.
+The gate is now machine-enforced through an immutable runtime receipt rather
+than a hand-edited packaged roadmap status.
 
 ## Priority 2, governed Digital Twin
 

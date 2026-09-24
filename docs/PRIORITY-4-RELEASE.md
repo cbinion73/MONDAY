@@ -22,6 +22,8 @@ No Tier 3 integration is active. Unknown and speculative integrations fail close
 
 The first pilot is one participant, one Mac, five business days, fifteen checkpoints, seventy-five Tier 1 attempts, and zero Tier 3 integrations. Observations are append-only and digest chained. Acceptance requires all denominators, five unattended morning rollovers, exact publication readback, complete meeting dispositions and project readbacks, no critical control incident, and Chris's final disposition.
 
+Priority 1 item 17 is promoted only by `verify-unattended-rollover`. The verifier reads all five canonical source manifests and the live plan, planning-run, and native-readback artifacts, rejects manual repair or mismatched dates and denominators, and writes an immutable digest-bound receipt before creating the runtime roadmap override. The packaged roadmap remains blocked by default, so a reinstall cannot silently inherit a machine-specific operational PASS.
+
 An accepted pilot supports only the tested single-user local configuration. Enterprise readiness remains blocked pending representative multi-user evidence and organizational security, privacy, compliance, deployment, support, recovery, and distribution approvals.
 
 ## Verification

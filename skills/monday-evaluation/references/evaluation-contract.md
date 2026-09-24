@@ -19,6 +19,10 @@ Four decisions remain distinct:
 
 The verdicts are `PASS`, `PASS WITH CONDITIONS`, `FAIL`, and `BLOCKED`. A missing denominator or stale/mismatched evidence fails closed.
 
+## Unattended rollover evidence
+
+Priority 1 item 17 is a runtime attestation, not a packaged constant. The packaged roadmap remains blocked by default. `verify-unattended-rollover` requires a next-local-day run scheduled for 06:01 America/New_York, no manual repair, all five canonical source manifests attempted on that day with valid denominators, a complete midnight-to-midnight Calendar collection, a current schema-3 plan with non-failing QA, matching native display readback, and a completed planning-run readback stage. The command binds manifest, plan, readback, and run digests into an immutable receipt under the evaluation runtime. Only a successful applied receipt creates the runtime roadmap override used by the pilot-start gate.
+
 ## Inspection projection
 
 `inspection.json` uses schema 1 and exactly these fields:

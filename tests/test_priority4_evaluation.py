@@ -19,8 +19,17 @@ class Priority4EvaluationTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.runtime = Path(self.temp.name) / "evaluation"
         self.inputs = Path(self.temp.name) / "inputs"
+        self.sources = Path(self.temp.name) / "sources"
+        self.planner = Path(self.temp.name) / "planner"
         self.inputs.mkdir()
-        self.environment = {**os.environ, "MONDAY_EVALUATION_ROOT": str(self.runtime)}
+        self.sources.mkdir()
+        self.planner.mkdir()
+        self.environment = {
+            **os.environ,
+            "MONDAY_EVALUATION_ROOT": str(self.runtime),
+            "MONDAY_SOURCES_ROOT": str(self.sources),
+            "MONDAY_PLANNER_ROOT": str(self.planner),
+        }
 
     def tearDown(self) -> None:
         self.temp.cleanup()
@@ -74,6 +83,67 @@ class Priority4EvaluationTests(unittest.TestCase):
         artifact.write_text(json.dumps({**core, "contentDigest": content_digest}), encoding="utf-8")
         return {"engineeringEvidenceArtifact": str(artifact), "engineeringEvidenceDigest": content_digest}
 
+    def rollover_fixture(self) -> dict:
+        source_ids = ["outlook-calendar", "outlook-email", "onedrive-files", "teams", "sharepoint-files"]
+        for source_id in source_ids:
+            status = "partial" if source_id in {"onedrive-files", "sharepoint-files"} else "available"
+            unresolved = 1 if status == "partial" else 0
+            manifest = {
+                "schemaVersion": 1,
+                "manifestID": f"manifest-{source_id}",
+                "sourceID": source_id,
+                "status": status,
+                "attemptedAt": "2026-09-25T06:04:00-04:00",
+                "itemCount": 2,
+                "processedCount": 2 - unresolved,
+                "unresolvedCount": unresolved,
+                "scope": {"timezone": "America/New_York"},
+            }
+            if source_id == "outlook-calendar":
+                manifest["scope"].update({
+                    "windowStart": "2026-09-25T00:00:00-04:00",
+                    "windowEnd": "2026-09-26T00:00:00-04:00",
+                })
+            (self.sources / f"{source_id}.manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        plan = {
+            "schemaVersion": 3,
+            "planID": "plan-2026-09-25-test",
+            "date": "2026-09-25",
+            "generatedAt": "2026-09-25T06:12:00-04:00",
+            "validUntil": "2026-09-26T00:00:00-04:00",
+            "qualityAssurance": {"verdict": "PASS WITH CONDITIONS"},
+            "publication": {"state": "published"},
+        }
+        readback = {
+            "schemaVersion": 1,
+            "planID": plan["planID"],
+            "planSchemaVersion": 3,
+            "consumer": "MONDAY Command Center",
+            "appVersion": "0.4.2",
+            "consumedAt": "2026-09-25T06:13:00-04:00",
+            "state": "displayed",
+        }
+        run = {
+            "runID": "planning-run-unattended-test",
+            "planID": plan["planID"],
+            "status": "completed",
+            "stages": [{"name": "readback", "status": "completed", "planID": plan["planID"], "schemaVersion": 3}],
+        }
+        (self.planner / "daily-plan.json").write_text(json.dumps(plan), encoding="utf-8")
+        (self.planner / "readback.json").write_text(json.dumps(readback), encoding="utf-8")
+        (self.planner / "planning-run.json").write_text(json.dumps(run), encoding="utf-8")
+        return {
+            "schemaVersion": 1,
+            "evidenceID": "rollover-2026-09-25",
+            "priorLocalDate": "2026-09-24",
+            "localDate": "2026-09-25",
+            "timezone": "America/New_York",
+            "scheduledAt": "2026-09-25T06:01:00-04:00",
+            "startedAt": "2026-09-25T06:02:00-04:00",
+            "completedAt": "2026-09-25T06:14:00-04:00",
+            "manualRepair": False,
+        }
+
     def test_contract_audit_inventories_all_current_tests_and_adversarial_classes(self) -> None:
         _, value = self.invoke("audit-contracts", arguments=["--app-repo", str(APP)])
         self.assertEqual(value["status"], "PASS")
@@ -101,6 +171,32 @@ class Priority4EvaluationTests(unittest.TestCase):
         self.assertEqual(value["gate"]["verdict"], "BLOCKED")
         self.assertIn("priority1-item17-unresolved", value["gate"]["reasons"])
         self.assertFalse((self.runtime / "pilots/pilot-one/pilot-state.json").exists())
+
+    def test_verified_unattended_rollover_promotes_item17_and_unlocks_pilot_start(self) -> None:
+        request = self.rollover_fixture()
+        _, verified = self.invoke("verify-unattended-rollover", payload=request, apply=True)
+        self.assertEqual(verified["status"], "PASS")
+        self.assertEqual(len(verified["sources"]), 5)
+        roadmap = json.loads((self.runtime / "roadmap-status.json").read_text(encoding="utf-8"))
+        self.assertEqual(roadmap["priorities"]["1"]["items"]["17"], "PASS")
+        _, replay = self.invoke("verify-unattended-rollover", payload=request, apply=True)
+        self.assertTrue(replay["idempotentReplay"])
+        _, pilot = self.invoke("pilot-start", payload=self.pilot_plan(), apply=True)
+        self.assertEqual(pilot["status"], "running")
+        self.assertEqual(pilot["gate"]["verdict"], "PASS")
+
+    def test_unattended_rollover_rejects_manual_repair_and_mismatched_readback(self) -> None:
+        request = self.rollover_fixture()
+        result, error = self.invoke("verify-unattended-rollover", payload={**request, "manualRepair": True}, apply=True, check=False)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("requires no manual repair", error["error"])
+        readback_path = self.planner / "readback.json"
+        readback = json.loads(readback_path.read_text(encoding="utf-8"))
+        readback["planID"] = "wrong-plan"
+        readback_path.write_text(json.dumps(readback), encoding="utf-8")
+        result, error = self.invoke("verify-unattended-rollover", payload=request, apply=True, check=False)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("does not match", error["error"])
 
     def test_release_record_keeps_four_gates_distinct_and_idempotent(self) -> None:
         report = self.inputs / "complete-report.json"

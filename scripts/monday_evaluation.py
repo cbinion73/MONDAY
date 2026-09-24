@@ -16,6 +16,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +29,9 @@ CONNECTORS_PATH = REFERENCE_ROOT / "connector-decision-registry.json"
 ROADMAP_PATH = REFERENCE_ROOT / "roadmap-status.json"
 INSPECTION_PATH = ROOT / "inspection.json"
 READBACK_PATH = ROOT / "readback.json"
+RUNTIME_ROADMAP_PATH = ROOT / "roadmap-status.json"
+SOURCES_ROOT = Path(os.environ.get("MONDAY_SOURCES_ROOT", Path.home() / ".codex/monday-sources"))
+PLANNER_ROOT = Path(os.environ.get("MONDAY_PLANNER_ROOT", Path.home() / ".codex/monday-planner"))
 PLUGIN_VALIDATOR = Path.home() / ".codex/skills/.system/plugin-creator/scripts/validate_plugin.py"
 DEFAULT_INSTALLED_APP = Path("/Applications/Command Center.app")
 ALLOWED_VIEWS = {
@@ -88,6 +92,26 @@ def git_value(root: Path, *arguments: str) -> str | None:
 
 def plugin_version() -> str:
     return str(load_json(PLUGIN_ROOT / ".codex-plugin/plugin.json")["version"])
+
+
+def parse_timestamp(value: Any, label: str) -> datetime:
+    if not isinstance(value, str):
+        raise EvaluationError(f"{label} must be a timezone-aware timestamp")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise EvaluationError(f"{label} must be a valid timestamp") from error
+    if parsed.tzinfo is None:
+        raise EvaluationError(f"{label} must be timezone-aware")
+    return parsed
+
+
+def effective_roadmap() -> dict[str, Any]:
+    path = RUNTIME_ROADMAP_PATH if RUNTIME_ROADMAP_PATH.exists() else ROADMAP_PATH
+    value = load_json(path)
+    if value.get("schemaVersion") != 1 or not isinstance(value.get("priorities"), dict):
+        raise EvaluationError("roadmap status is invalid")
+    return value
 
 
 def command_receipt(command: list[str], cwd: Path | None = None) -> dict[str, Any]:
@@ -352,7 +376,7 @@ def gate_decision(gate_id: str, report: dict[str, Any] | None, evidence: dict[st
         reasons.extend(verify_release_evidence(evidence, report))
         verdict = "PASS" if not reasons else "FAIL"
     elif gate_id == "pilot-start":
-        roadmap = load_json(ROADMAP_PATH)["priorities"]
+        roadmap = effective_roadmap()["priorities"]
         if evidence.get("engineeringReleaseVerdict") != "PASS": reasons.append("engineering-release-not-pass")
         if roadmap["0"]["status"] != "PASS": reasons.append("priority0-not-pass")
         if roadmap["1"]["items"].get("17") != "PASS": reasons.append("priority1-item17-unresolved")
@@ -432,6 +456,145 @@ def release_record(request: dict[str, Any], apply: bool) -> dict[str, Any]:
     if apply: atomic_json(receipt, value)
     project_inspection()
     return value
+
+
+def verify_unattended_rollover(request: dict[str, Any], apply: bool) -> dict[str, Any]:
+    required = {
+        "schemaVersion", "evidenceID", "priorLocalDate", "localDate", "timezone",
+        "scheduledAt", "startedAt", "completedAt", "manualRepair",
+    }
+    if set(request) != required:
+        raise EvaluationError(f"unattended rollover evidence shape mismatch: {sorted(set(request) ^ required)}")
+    if request.get("schemaVersion") != 1 or request.get("timezone") != "America/New_York":
+        raise EvaluationError("unattended rollover requires schema 1 and America/New_York")
+    evidence_id = request.get("evidenceID")
+    if not isinstance(evidence_id, str) or not re.fullmatch(r"[A-Za-z0-9._-]+", evidence_id):
+        raise EvaluationError("unattended rollover requires a safe evidence ID")
+    if request.get("manualRepair") is not False:
+        raise EvaluationError("Priority 1 item 17 requires no manual repair")
+    try:
+        prior_date = datetime.strptime(str(request["priorLocalDate"]), "%Y-%m-%d").date()
+        local_date = datetime.strptime(str(request["localDate"]), "%Y-%m-%d").date()
+    except ValueError as error:
+        raise EvaluationError("rollover dates must use YYYY-MM-DD") from error
+    if local_date != prior_date + timedelta(days=1):
+        raise EvaluationError("unattended rollover must prove the next local day")
+    zone = ZoneInfo("America/New_York")
+    day_start = datetime.combine(local_date, datetime.min.time(), tzinfo=zone)
+    day_end = day_start + timedelta(days=1)
+    scheduled = parse_timestamp(request["scheduledAt"], "scheduledAt").astimezone(zone)
+    started = parse_timestamp(request["startedAt"], "startedAt").astimezone(zone)
+    completed = parse_timestamp(request["completedAt"], "completedAt").astimezone(zone)
+    if scheduled.date() != local_date or scheduled.strftime("%H:%M") != "06:01":
+        raise EvaluationError("unattended rollover must be scheduled for 06:01 local time")
+    if not scheduled <= started <= scheduled + timedelta(minutes=15):
+        raise EvaluationError("unattended rollover did not start within the scheduled window")
+    if not started <= completed <= scheduled + timedelta(hours=2):
+        raise EvaluationError("unattended rollover completion is outside the bounded run window")
+
+    source_ids = {"outlook-calendar", "outlook-email", "onedrive-files", "teams", "sharepoint-files"}
+    source_evidence: list[dict[str, Any]] = []
+    allowed_statuses = {"available", "empty", "partial", "blocked", "unavailable", "unknown"}
+    for source_id in sorted(source_ids):
+        manifest_path = SOURCES_ROOT / f"{source_id}.manifest.json"
+        manifest = load_json(manifest_path)
+        if manifest.get("sourceID") != source_id or manifest.get("status") not in allowed_statuses:
+            raise EvaluationError(f"{source_id} manifest is missing canonical source identity or status")
+        attempted = parse_timestamp(manifest.get("attemptedAt"), f"{source_id}.attemptedAt").astimezone(zone)
+        if not day_start <= attempted < day_end:
+            raise EvaluationError(f"{source_id} was not attempted during the rollover day")
+        item_count = manifest.get("itemCount")
+        processed_count = manifest.get("processedCount")
+        unresolved_count = manifest.get("unresolvedCount")
+        if not all(isinstance(value, int) and value >= 0 for value in (item_count, processed_count, unresolved_count)):
+            raise EvaluationError(f"{source_id} manifest requires nonnegative denominators")
+        if item_count != processed_count + unresolved_count:
+            raise EvaluationError(f"{source_id} manifest denominator mismatch")
+        if not manifest.get("manifestID"):
+            raise EvaluationError(f"{source_id} manifest requires a manifest identifier")
+        source_evidence.append({
+            "sourceID": source_id,
+            "status": manifest["status"],
+            "attemptedAt": manifest["attemptedAt"],
+            "manifestID": manifest["manifestID"],
+            "manifestDigest": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+            "itemCount": item_count,
+            "processedCount": processed_count,
+            "unresolvedCount": unresolved_count,
+        })
+        if source_id == "outlook-calendar":
+            if manifest["status"] not in {"available", "empty"} or unresolved_count != 0:
+                raise EvaluationError("Calendar must be a successful complete current-day collection")
+            scope = manifest.get("scope") if isinstance(manifest.get("scope"), dict) else {}
+            window_start = parse_timestamp(scope.get("windowStart"), "calendar.windowStart").astimezone(zone)
+            window_end = parse_timestamp(scope.get("windowEnd"), "calendar.windowEnd").astimezone(zone)
+            if window_start != day_start or window_end != day_end:
+                raise EvaluationError("Calendar window must be exact local midnight to midnight")
+
+    plan_path = PLANNER_ROOT / "daily-plan.json"
+    readback_path = PLANNER_ROOT / "readback.json"
+    run_path = PLANNER_ROOT / "planning-run.json"
+    plan = load_json(plan_path)
+    readback = load_json(readback_path)
+    run = load_json(run_path)
+    if plan.get("schemaVersion") != 3 or plan.get("date") != local_date.isoformat() or not plan.get("planID"):
+        raise EvaluationError("published plan does not prove the rollover date and schema")
+    generated = parse_timestamp(plan.get("generatedAt"), "plan.generatedAt").astimezone(zone)
+    valid_until = parse_timestamp(plan.get("validUntil"), "plan.validUntil").astimezone(zone)
+    if not started <= generated <= completed or valid_until != day_end:
+        raise EvaluationError("published plan timestamps do not match the unattended rollover")
+    verdict = plan.get("qualityAssurance", {}).get("verdict")
+    if verdict not in {"PASS", "PASS WITH CONDITIONS"} or plan.get("publication", {}).get("state") != "published":
+        raise EvaluationError("published plan requires a non-failing QA verdict")
+    if readback.get("planID") != plan["planID"] or readback.get("planSchemaVersion") != 3 or readback.get("state") != "displayed":
+        raise EvaluationError("native readback does not match the published plan")
+    consumed = parse_timestamp(readback.get("consumedAt"), "readback.consumedAt").astimezone(zone)
+    if not generated <= consumed <= completed:
+        raise EvaluationError("native readback is outside the unattended rollover window")
+    if run.get("runID") is None or run.get("planID") != plan["planID"] or run.get("status") != "completed":
+        raise EvaluationError("planning run is not completed for the published plan")
+    readback_stage = next((stage for stage in run.get("stages", []) if stage.get("name") == "readback"), None)
+    if not readback_stage or readback_stage.get("status") != "completed" or readback_stage.get("planID") != plan["planID"] or readback_stage.get("schemaVersion") != 3:
+        raise EvaluationError("planning run has no completed matching readback stage")
+
+    core = {
+        "schemaVersion": 1,
+        "evidenceID": evidence_id,
+        "verifiedAt": iso(),
+        "priorLocalDate": prior_date.isoformat(),
+        "localDate": local_date.isoformat(),
+        "timezone": "America/New_York",
+        "scheduledAt": request["scheduledAt"],
+        "startedAt": request["startedAt"],
+        "completedAt": request["completedAt"],
+        "manualRepair": False,
+        "requestDigest": digest(request),
+        "sources": source_evidence,
+        "plan": {"planID": plan["planID"], "schemaVersion": 3, "qualityVerdict": verdict, "contentDigest": hashlib.sha256(plan_path.read_bytes()).hexdigest()},
+        "readback": {"state": "displayed", "appVersion": readback.get("appVersion"), "consumedAt": readback["consumedAt"], "contentDigest": hashlib.sha256(readback_path.read_bytes()).hexdigest()},
+        "run": {"runID": run["runID"], "status": "completed", "contentDigest": hashlib.sha256(run_path.read_bytes()).hexdigest()},
+        "status": "PASS",
+    }
+    value = {**core, "contentDigest": digest(core), "applied": apply}
+    receipt_path = ROOT / "rollover-evidence" / f"{evidence_id}.json"
+    if receipt_path.exists():
+        existing = load_json(receipt_path)
+        if existing.get("requestDigest") != core["requestDigest"] or existing.get("sources") != source_evidence or existing.get("plan") != core["plan"] or existing.get("readback") != core["readback"] or existing.get("run") != core["run"]:
+            raise EvaluationError("rollover evidence ID cannot be reused for changed evidence")
+        return {**existing, "idempotentReplay": True, "artifact": str(receipt_path)}
+    if apply:
+        atomic_json(receipt_path, value)
+        roadmap = load_json(ROADMAP_PATH)
+        roadmap["observedAt"] = iso()
+        roadmap["priorities"]["1"] = {
+            "status": "PASS",
+            "items": {"11-16": "PASS", "17": "PASS"},
+            "evidence": str(receipt_path),
+            "evidenceDigest": value["contentDigest"],
+        }
+        atomic_json(RUNTIME_ROADMAP_PATH, roadmap)
+        project_inspection()
+    return {**value, "artifact": str(receipt_path)}
 
 
 def pilot_start(plan: dict[str, Any], apply: bool) -> dict[str, Any]:
@@ -557,9 +720,11 @@ def project_inspection() -> dict[str, Any]:
     latest_release = latest_json(release)
     latest_pilot = latest_json(pilots)
     app_version, app_build = app_metadata(DEFAULT_APP_REPO)
+    roadmap = effective_roadmap()
+    rollover_pass = roadmap["priorities"]["1"]["items"].get("17") == "PASS"
     evidence = [
         {"evidenceID": "evaluation-contract-audit", "kind": "review", "status": "verified" if audit["status"] == "PASS" else "blocked", "observedAt": iso(), "safeSummary": "Versioned evaluation contracts and complete test discovery were audited."},
-        {"evidenceID": "priority1-unattended-rollover", "kind": "review", "status": "blocked", "observedAt": iso(), "safeSummary": "The unattended next-day publication and matching readback gate remains open."},
+        {"evidenceID": "priority1-unattended-rollover", "kind": "review", "status": "verified" if rollover_pass else "blocked", "observedAt": iso(), "safeSummary": "A clean unattended next-day publication and matching readback were verified." if rollover_pass else "The unattended next-day publication and matching readback gate remains open."},
     ]
     if latest_report:
         evidence.append({"evidenceID": "evaluation-run", "kind": "test", "status": "verified" if latest_report.get("status") == "PASS" else "blocked", "observedAt": latest_report.get("completedAt", iso()), "safeSummary": "The governed plugin and Command Center evaluation suite was executed."})
@@ -576,7 +741,7 @@ def project_inspection() -> dict[str, Any]:
     engineering = "PASS" if latest_report and latest_report.get("status") == "PASS" and latest_release and latest_release.get("engineeringReleaseVerdict") == "PASS" else "BLOCKED"
     gate_results = [
         {"gateID": "engineering-release", "status": engineering, "evaluatedAt": iso(), "reasonCodes": [] if engineering == "PASS" else ["governed-release-evidence-incomplete"], "evidenceIDs": ["evaluation-run"]},
-        {"gateID": "pilot-start", "status": "BLOCKED", "evaluatedAt": iso(), "reasonCodes": ["priority1-item17-unresolved"], "evidenceIDs": ["priority1-unattended-rollover"]},
+        {"gateID": "pilot-start", "status": "BLOCKED", "evaluatedAt": iso(), "reasonCodes": ["pilot-plan-not-started"] if rollover_pass else ["priority1-item17-unresolved"], "evidenceIDs": ["priority1-unattended-rollover"]},
         {"gateID": "connector-activation", "status": "BLOCKED", "evaluatedAt": iso(), "reasonCodes": ["jira-live-canary-and-approval-missing"], "evidenceIDs": ["evaluation-contract-audit"]},
         {"gateID": "enterprise-claim", "status": "BLOCKED", "evaluatedAt": iso(), "reasonCodes": ["representative-enterprise-evidence-and-approvals-missing"], "evidenceIDs": ["evaluation-contract-audit"]},
     ]
@@ -596,7 +761,7 @@ def project_inspection() -> dict[str, Any]:
             "manualInterventionCount": int(latest_pilot.get("manualInterventionCount", 0)), "disposition": latest_pilot.get("disposition", "pending"), "evidenceIDs": [],
         }
     else:
-        pilot = {"pilotID": "priority4-single-user-pilot", "status": "blocked", "cohort": "single-user", "timezone": "America/New_York", "plannedBusinessDays": 5, "plannedCheckpoints": 15, "attemptedCheckpoints": 0, "unattendedRolloversPlanned": 5, "unattendedRolloversCompleted": 0, "tier1AttemptsPlanned": 75, "tier1AttemptsRecorded": 0, "manualInterventionCount": 0, "disposition": "pending", "evidenceIDs": ["priority1-unattended-rollover"]}
+        pilot = {"pilotID": "priority4-single-user-pilot", "status": "not-started" if rollover_pass else "blocked", "cohort": "single-user", "timezone": "America/New_York", "plannedBusinessDays": 5, "plannedCheckpoints": 15, "attemptedCheckpoints": 0, "unattendedRolloversPlanned": 5, "unattendedRolloversCompleted": 0, "tier1AttemptsPlanned": 75, "tier1AttemptsRecorded": 0, "manualInterventionCount": 0, "disposition": "pending", "evidenceIDs": ["priority1-unattended-rollover"]}
     counts = {value: sum(1 for item in case_coverage if item["result"] == value) for value in ["pass", "fail", "blocked", "skipped", "not-run"]}
     release_blocking = [item for item in case_coverage if item["releaseBlocking"]]
     core = {
@@ -650,6 +815,7 @@ def parser() -> argparse.ArgumentParser:
     connector = commands.add_parser("connector-review"); connector.add_argument("--input", required=True); connector.add_argument("--apply", action="store_true")
     commands.add_parser("connector-status")
     release = commands.add_parser("release-record"); release.add_argument("--input", required=True); release.add_argument("--apply", action="store_true")
+    rollover = commands.add_parser("verify-unattended-rollover"); rollover.add_argument("--input", required=True); rollover.add_argument("--apply", action="store_true")
     start = commands.add_parser("pilot-start"); start.add_argument("--input", required=True); start.add_argument("--apply", action="store_true")
     record = commands.add_parser("pilot-record"); record.add_argument("--input", required=True); record.add_argument("--apply", action="store_true")
     complete = commands.add_parser("pilot-complete"); complete.add_argument("--input", required=True); complete.add_argument("--apply", action="store_true")
@@ -676,6 +842,7 @@ def main() -> None:
         elif args.command == "connector-review": result = connector_review(input_json(args.input), args.apply)
         elif args.command == "connector-status": result = load_json(CONNECTORS_PATH)
         elif args.command == "release-record": result = release_record(input_json(args.input), args.apply)
+        elif args.command == "verify-unattended-rollover": result = verify_unattended_rollover(input_json(args.input), args.apply)
         elif args.command == "pilot-start": result = pilot_start(input_json(args.input), args.apply)
         elif args.command == "pilot-record": result = pilot_record(input_json(args.input), args.apply)
         elif args.command == "pilot-complete": result = pilot_complete(input_json(args.input), args.apply)
