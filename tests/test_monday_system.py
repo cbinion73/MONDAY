@@ -48,6 +48,40 @@ class MondaySystemTests(unittest.TestCase):
             check=check,
         )
 
+    def stage_calendar(self, day: str, items: list[dict[str, str]], completed_at: datetime, freshness_hours: int = 24) -> None:
+        start = datetime.fromisoformat(f"{day}T00:00:00+00:00")
+        normalized = []
+        for item in items:
+            normalized.append(
+                {
+                    "title": item["title"],
+                    "start": datetime.fromisoformat(f"{day}T{item['time']}:00+00:00").isoformat(),
+                    "end": datetime.fromisoformat(f"{day}T{item['end']}:00+00:00").isoformat(),
+                    "isAllDay": False,
+                }
+            )
+        envelope = {
+            "schemaVersion": 1,
+            "collectionID": f"calendar-{day}-{completed_at.timestamp()}",
+            "sourceID": "outlook-calendar",
+            "route": "outlook-calendar",
+            "status": "available" if normalized else "empty",
+            "attemptedAt": completed_at.isoformat(),
+            "completedAt": completed_at.isoformat(),
+            "scope": {"windowStart": start.isoformat(), "windowEnd": (start + timedelta(days=1)).isoformat(), "timezone": "UTC"},
+            "counts": {"itemCount": len(normalized), "processedCount": len(normalized), "unresolvedCount": 0},
+            "freshnessHours": freshness_hours,
+            "normalizedItems": normalized,
+            "error": None,
+            "limitations": [],
+            "priorWatermark": None,
+            "proposedWatermark": None,
+            "watermarkBasis": "daily bounded query",
+        }
+        path = Path(self.temporary.name) / f"calendar-{day}.json"
+        path.write_text(json.dumps(envelope), encoding="utf-8")
+        self.invoke("stage-collection", "--input", str(path), "--apply")
+
     def test_available_source_requires_success_timestamp(self) -> None:
         result = self.invoke(
             "stage-source", "--source-id", "calendar", "--name", "Calendar", "--kind", "calendar", "--status", "available",
@@ -74,27 +108,14 @@ class MondaySystemTests(unittest.TestCase):
 
     def test_staged_calendar_populates_schedule_and_manifest(self) -> None:
         today = datetime.now(timezone.utc).date().isoformat()
-        artifact = Path(self.temporary.name) / "calendar.json"
-        artifact.write_text(json.dumps({"date": today, "items": [{"time": "09:00", "end": "10:00", "title": "Real event"}]}), encoding="utf-8")
-        succeeded = datetime.now(timezone.utc).isoformat()
-        self.invoke(
-            "stage-source", "--source-id", "outlook-calendar", "--name", "Outlook Calendar", "--kind", "calendar",
-            "--status", "available", "--succeeded-at", succeeded, "--item-count", "1", "--processed-count", "1",
-            "--unresolved-count", "0", "--artifact", str(artifact), "--apply",
-        )
+        self.stage_calendar(today, [{"time": "09:00", "end": "10:00", "title": "Real event"}], datetime.now(timezone.utc).replace(microsecond=0))
         plan = json.loads(self.invoke("publish").stdout)
         self.assertEqual(plan["schedule"][0]["title"], "Real event")
         self.assertEqual(next(item for item in plan["sources"] if item["kind"] == "calendar")["status"], "available")
 
     def test_stale_source_is_not_usable(self) -> None:
-        artifact = Path(self.temporary.name) / "calendar.json"
-        artifact.write_text(json.dumps({"date": datetime.now(timezone.utc).date().isoformat(), "items": [{"time": "09:00", "end": "10:00", "title": "Stale event"}]}), encoding="utf-8")
-        old = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
-        self.invoke(
-            "stage-source", "--source-id", "calendar", "--name", "Calendar", "--kind", "calendar", "--status", "available",
-            "--succeeded-at", old, "--item-count", "1", "--processed-count", "1", "--unresolved-count", "0",
-            "--freshness-hours", "12", "--artifact", str(artifact), "--apply",
-        )
+        day = datetime.now(timezone.utc).date().isoformat()
+        self.stage_calendar(day, [{"time": "09:00", "end": "10:00", "title": "Stale event"}], datetime.now(timezone.utc).replace(microsecond=0) - timedelta(days=2), 12)
         plan = json.loads(self.invoke("publish").stdout)
         self.assertEqual(plan["schedule"], [])
         self.assertEqual(next(item for item in plan["sources"] if item["kind"] == "calendar")["status"], "stale")

@@ -33,3 +33,18 @@ Validate the core registry and deterministic controls with:
 python3 skills/monday-core/scripts/monday_core.py validate-registry
 python3 -m unittest discover -s skills/monday-core/tests -v
 ```
+
+## Dependable daily system
+
+The planning runtime now records `collect → validate → analyze → challenge → quality → publish → readback`. Connector-owning skills perform bounded Microsoft queries and submit privacy-reduced envelopes through `stage-collection`; the Python runtime validates and transactionally commits artifacts and manifests without pretending to be a connector client.
+
+Useful local checks:
+
+```bash
+python3 scripts/monday_system.py source-status
+python3 scripts/monday_system.py publish --date YYYY-MM-DD
+python3 scripts/monday_system.py status
+python3 -m unittest discover -s tests -v
+```
+
+See `docs/PRIORITY-1-RELEASE.md` for the release requirements and unattended next-day gate.
