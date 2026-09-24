@@ -10,7 +10,7 @@ read-only application that implements the plugin's projection contracts.
 - Plugin version: `0.1.0+codex.20260924181124`
 - Source identity: the commit referenced by the immutable release tag below
 - Immutable source tag: `v0.1.0-codex.20260924181124`
-- Published Git branch: `monday-plugin` in `cbinion73/MONDAY`
+- Published Git repository and branch: `cbinion73/monday-plugin`, `main`
 - Compatible Command Center: `0.4.3 (18)`
 - Command Center source commit: `d5461b075dcbfd3fa862c54778e0752450724326`
 
