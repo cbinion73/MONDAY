@@ -19,9 +19,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 UTC = timezone.utc
-DATABASE_VERSION = 1
-PROJECTION_VERSION = 1
+DATABASE_VERSION = 2
+PROJECTION_VERSION = 2
 READBACK_VERSION = 1
+CAPABILITY_VERSION = "2.0.0"
 PRODUCER = "monday-runtime"
 AUDIENCE = "Chris-private-local"
 PROJECTION_TTL_MINUTES = 15
@@ -31,7 +32,7 @@ ALLOWED_RUNTIME_VIEW_IDS = {
     "operations-commitments-decisions", "operations-source-health", "operations-connections",
     "operations-compatibility-migrations", "operations-alerts-recovery",
 }
-MIN_APP_VERSION = "0.4.0"
+MIN_APP_VERSION = "0.4.1"
 MAX_APP_VERSION = "0.5.0"
 ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 HASH_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -133,6 +134,21 @@ def atomic_json(path: Path, value: Any) -> None:
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
+
+
+def atomic_bytes(path: Path, value: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    os.chmod(path.parent, 0o700)
+    handle, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(handle, "wb") as stream:
+            stream.write(value)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary): os.unlink(temporary)
 
 
 def plugin_version() -> str:
@@ -273,6 +289,40 @@ CREATE TABLE IF NOT EXISTS runtime_meta (
   key TEXT PRIMARY KEY,
   value_json TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS alerts (
+  alert_id TEXT PRIMARY KEY,
+  fingerprint TEXT NOT NULL UNIQUE,
+  category TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  title TEXT NOT NULL,
+  safe_summary TEXT NOT NULL,
+  status TEXT NOT NULL,
+  source_kind TEXT NOT NULL,
+  source_entity_id TEXT NOT NULL,
+  evidence_digest TEXT NOT NULL,
+  first_seen TEXT NOT NULL,
+  last_seen TEXT NOT NULL,
+  occurrence_count INTEGER NOT NULL,
+  cooldown_until TEXT NOT NULL,
+  acknowledged_at TEXT,
+  resolved_at TEXT,
+  resolution_evidence_digest TEXT,
+  reopened_count INTEGER NOT NULL,
+  version INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS alert_events (
+  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+  alert_id TEXT NOT NULL REFERENCES alerts(alert_id),
+  event_type TEXT NOT NULL,
+  event_at TEXT NOT NULL,
+  status TEXT NOT NULL,
+  evidence_digest TEXT NOT NULL,
+  event_digest TEXT NOT NULL UNIQUE
+);
+CREATE TRIGGER IF NOT EXISTS alert_events_no_update
+BEFORE UPDATE ON alert_events BEGIN SELECT RAISE(ABORT, 'alert events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS alert_events_no_delete
+BEFORE DELETE ON alert_events BEGIN SELECT RAISE(ABORT, 'alert events are append-only'); END;
 """
 
 
@@ -312,6 +362,61 @@ def migrate_database(connection: sqlite3.Connection) -> None:
         connection.execute("PRAGMA user_version=1")
         connection.commit()
     version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+    if version == 1:
+        backup_dir = ROOT / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        os.chmod(backup_dir, 0o700)
+        backup_path = backup_dir / f"runtime-db-v1-{now().strftime('%Y%m%dT%H%M%SZ')}.sqlite3"
+        backup = sqlite3.connect(backup_path)
+        connection.backup(backup)
+        backup.close()
+        os.chmod(backup_path, 0o600)
+        backup_digest = hashlib.sha256(backup_path.read_bytes()).hexdigest()
+        verification = sqlite3.connect(f"file:{backup_path}?mode=ro", uri=True)
+        try:
+            if verification.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                raise RuntimeErrorState("Pre-migration database backup failed integrity verification")
+        finally:
+            verification.close()
+        try:
+            connection.executescript("""
+        CREATE TABLE IF NOT EXISTS alerts (
+          alert_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL UNIQUE, category TEXT NOT NULL,
+          severity TEXT NOT NULL, title TEXT NOT NULL, safe_summary TEXT NOT NULL, status TEXT NOT NULL,
+          source_kind TEXT NOT NULL, source_entity_id TEXT NOT NULL, evidence_digest TEXT NOT NULL,
+          first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, occurrence_count INTEGER NOT NULL,
+          cooldown_until TEXT NOT NULL, acknowledged_at TEXT, resolved_at TEXT,
+          resolution_evidence_digest TEXT, reopened_count INTEGER NOT NULL, version INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS alert_events (
+          sequence INTEGER PRIMARY KEY AUTOINCREMENT, alert_id TEXT NOT NULL REFERENCES alerts(alert_id),
+          event_type TEXT NOT NULL, event_at TEXT NOT NULL, status TEXT NOT NULL,
+          evidence_digest TEXT NOT NULL, event_digest TEXT NOT NULL UNIQUE
+        );
+        CREATE TRIGGER IF NOT EXISTS alert_events_no_update
+        BEFORE UPDATE ON alert_events BEGIN SELECT RAISE(ABORT, 'alert events are append-only'); END;
+        CREATE TRIGGER IF NOT EXISTS alert_events_no_delete
+        BEFORE DELETE ON alert_events BEGIN SELECT RAISE(ABORT, 'alert events are append-only'); END;
+            """)
+            applied = iso()
+            migration_digest = digest({"from": 1, "to": 2, "tables": ["alerts", "alert_events"], "backupDigest": backup_digest})
+            connection.execute(
+                "INSERT OR IGNORE INTO migration_receipts VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("runtime-database-1-to-2", "database", 1, 2, migration_digest, applied, f"applied-backup-{backup_digest[:12]}"),
+            )
+            connection.execute("INSERT OR REPLACE INTO runtime_meta VALUES (?,?)", ("databaseMigrationBackup", canonical({"path": str(backup_path), "digest": backup_digest, "verifiedAt": applied})))
+            connection.execute("PRAGMA user_version=2")
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            verified_backup = sqlite3.connect(f"file:{backup_path}?mode=ro", uri=True)
+            try:
+                verified_backup.backup(connection)
+                connection.commit()
+            finally:
+                verified_backup.close()
+            raise
+        version = 2
     if version != DATABASE_VERSION:
         raise RuntimeErrorState(f"No registered migration to runtime database version {DATABASE_VERSION}")
 
@@ -931,12 +1036,23 @@ def app_compatible(value: str) -> bool:
     return semver(MIN_APP_VERSION) <= parsed < semver(MAX_APP_VERSION)
 
 
-def compatibility_check(app_version: str, projection_schema: int) -> dict[str, Any]:
+def compatibility_check(app_version: str, projection_schema: int, plugin: str | None = None, capability: str | None = None, database_schema: int | None = None, readback_schema: int | None = None) -> dict[str, Any]:
+    issues = []
     if projection_schema != PROJECTION_VERSION:
-        return {"status": "incompatible", "reason": "unsupported-projection-schema", "projectionSchemaVersion": projection_schema, "supportedProjectionSchemaVersion": PROJECTION_VERSION}
+        issues.append("unsupported-projection-schema")
+    if plugin is not None and plugin != plugin_version():
+        issues.append("plugin-version-mismatch")
+    if capability is not None and capability != CAPABILITY_VERSION:
+        issues.append("capability-version-mismatch")
+    if database_schema is not None and database_schema != DATABASE_VERSION:
+        issues.append("database-schema-mismatch")
+    if readback_schema is not None and readback_schema != READBACK_VERSION:
+        issues.append("readback-schema-mismatch")
+    if issues:
+        return {"status": "incompatible", "issueCodes": issues, "projectionSchemaVersion": projection_schema, "supportedProjectionSchemaVersion": PROJECTION_VERSION, "rollbackPolicy": "restore-verified-pre-migration-backup-only"}
     parsed = semver(app_version)
     status_value = "compatible" if app_compatible(app_version) else ("upgrade-required" if parsed < semver(MIN_APP_VERSION) else "incompatible")
-    return {"status": status_value, "appVersion": app_version, "minimumInclusive": MIN_APP_VERSION, "maximumExclusive": MAX_APP_VERSION, "projectionSchemaVersion": projection_schema}
+    return {"status": status_value, "appVersion": app_version, "pluginVersion": plugin_version(), "capabilityVersion": CAPABILITY_VERSION, "databaseSchemaVersion": DATABASE_VERSION, "projectionSchemaVersion": projection_schema, "readbackSchemaVersion": READBACK_VERSION, "minimumInclusive": MIN_APP_VERSION, "maximumExclusive": MAX_APP_VERSION, "upgradePolicy": "registered-migration-required", "downgradePolicy": "automatic-downgrade-forbidden", "rollbackPolicy": "restore-verified-pre-migration-backup-only"}
 
 
 def public_workflow(row: sqlite3.Row) -> dict[str, Any]:
@@ -952,8 +1068,8 @@ def public_workflow(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def public_action(row: sqlite3.Row) -> dict[str, Any]:
-    state = {"confirmation-required": "proposed", "attempting": "attempted", "indeterminate": "attempted", "failed-before-dispatch": "failed"}.get(row["state"], row["state"])
-    value: dict[str, Any] = {"actionID": row["action_id"], "kind": row["action_type"], "targetLabel": f"{row['destination_system']}:{row['destination_class']}", "state": state, "confirmationRequired": True, "readbackStatus": "matched" if row["state"] == "verified" else "missing", "retrySafe": False}
+    readback_status = "matched" if row["state"] == "verified" or (row["state"] == "failed-before-dispatch" and row["native_receipt_hash"]) else ("indeterminate" if row["state"] == "indeterminate" else "missing")
+    value: dict[str, Any] = {"actionID": row["action_id"], "kind": row["action_type"], "targetLabel": f"{row['destination_system']}:{row['destination_class']}", "state": row["state"], "confirmationRequired": row["state"] in {"confirmation-required", "failed-before-dispatch"}, "readbackStatus": readback_status, "retrySafe": row["state"] == "failed-before-dispatch"}
     if row["confirmed_at"]:
         value["confirmedAt"] = row["confirmed_at"]
     if row["attempted_at"] or row["state"] in {"attempting", "indeterminate", "failed-before-dispatch"}:
@@ -985,12 +1101,99 @@ def diagnostic_projection(connection: sqlite3.Connection, category: str) -> list
 
 
 def diagnostic_runtime_records(connection: sqlite3.Connection, category: str) -> list[dict[str, Any]]:
-    return [{"itemID": row["item_id"], "state": row["state"], "detail": json.loads(row["detail_json"]), "updatedAt": row["updated_at"]} for row in connection.execute("SELECT * FROM diagnostics WHERE category=? ORDER BY item_id", (category,))]
+    return [{"itemID": row["item_id"], "state": row["state"], "detail": json.loads(row["detail_json"]), "version": row["version"], "updatedAt": row["updated_at"]} for row in connection.execute("SELECT * FROM diagnostics WHERE category=? ORDER BY item_id", (category,))]
 
 
-def alert(alert_code: str, severity: str, entity_id: str, observed_at: str, threshold: str, count: int = 1) -> dict[str, Any]:
+def alert(alert_code: str, severity: str, entity_id: str, observed_at: str, threshold: str, count: int = 1, source_kind: str = "runtime-derived") -> dict[str, Any]:
     dedup = f"{alert_code}:{entity_id}"
-    return {"alertID": f"alert-{hashlib.sha256(dedup.encode()).hexdigest()[:16]}", "dedupKey": dedup, "code": alert_code, "severity": severity, "entityID": entity_id, "observedAt": observed_at, "threshold": threshold, "count": max(1, count), "cooldownMinutes": 15, "resolution": "verified-state-change-required"}
+    evidence = digest({"code": alert_code, "entityID": entity_id, "observedAt": observed_at, "count": max(1, count), "sourceKind": source_kind})
+    return {"alertID": f"alert-{hashlib.sha256(dedup.encode()).hexdigest()[:16]}", "dedupKey": dedup, "code": alert_code, "severity": severity, "entityID": entity_id, "observedAt": observed_at, "threshold": threshold, "count": max(1, count), "cooldownMinutes": 15, "resolution": "verified-state-change-required", "sourceKind": source_kind, "evidenceDigest": evidence}
+
+
+ALERT_TITLES = {
+    "dead-letter-open": "Review guarded workflow replay", "workflow-retry-wait": "Wait for bounded retry",
+    "external-action-failed-before-dispatch": "Reconfirm before another attempt", "external-action-indeterminate": "Investigate destination-native state",
+    "external-action-readback-overdue": "Collect destination-native readback", "source-coverage-gap": "Repair bounded source coverage",
+    "runtime-integrity-failure": "Stop and inspect runtime integrity", "repeated-runtime-failure": "Review repeated runtime failures",
+    "morning-pipeline-missing": "Recover the morning pipeline", "app-readback-overdue": "Repair Command Center readback",
+    "runtime-blocked": "Resolve the blocked workflow", "runtime-lease-stalled": "Inspect the stalled lease",
+}
+
+
+def add_alert_event(connection: sqlite3.Connection, alert_id: str, event_type: str, at: str, status: str, evidence_digest: str) -> None:
+    value = {"alertID": alert_id, "eventType": event_type, "eventAt": at, "status": status, "evidenceDigest": evidence_digest}
+    connection.execute("INSERT INTO alert_events(alert_id,event_type,event_at,status,evidence_digest,event_digest) VALUES (?,?,?,?,?,?)", (alert_id, event_type, at, status, evidence_digest, digest(value)))
+
+
+def reconcile_alert_candidates(connection: sqlite3.Connection, candidates: list[dict[str, Any]], observed_at: str) -> None:
+    for item in candidates:
+        row = connection.execute("SELECT * FROM alerts WHERE fingerprint=?", (item["dedupKey"],)).fetchone()
+        title = ALERT_TITLES[item["code"]]
+        summary = f"{item['code']} met its {item['threshold']} threshold; occurrence count {item['count']}."
+        cooldown_until = iso(parse_time(observed_at, "observedAt") + timedelta(minutes=item["cooldownMinutes"]))
+        if row is None:
+            connection.execute("INSERT INTO alerts VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (item["alertID"], item["dedupKey"], item["code"], item["severity"], title, summary, "open", item["sourceKind"], item["entityID"], item["evidenceDigest"], observed_at, observed_at, item["count"], cooldown_until, None, None, None, 0, 1))
+            add_alert_event(connection, item["alertID"], "raised", observed_at, "open", item["evidenceDigest"])
+        elif row["evidence_digest"] != item["evidenceDigest"]:
+            reopened = row["status"] == "resolved"
+            status = "open" if reopened else row["status"]
+            event_type = "reopened" if reopened else ("observed" if parse_time(observed_at, "observedAt") >= parse_time(row["cooldown_until"], "cooldownUntil") else "deduplicated")
+            connection.execute("UPDATE alerts SET severity=?,safe_summary=?,status=?,source_kind=?,evidence_digest=?,last_seen=?,occurrence_count=?,cooldown_until=?,resolved_at=NULL,resolution_evidence_digest=NULL,reopened_count=reopened_count+?,version=version+1 WHERE alert_id=?", (item["severity"], summary, status, item["sourceKind"], item["evidenceDigest"], observed_at, row["occurrence_count"] + 1, cooldown_until, 1 if reopened else 0, row["alert_id"]))
+            add_alert_event(connection, row["alert_id"], event_type, observed_at, status, item["evidenceDigest"])
+
+
+def alert_trigger_active(connection: sqlite3.Connection, row: sqlite3.Row) -> bool:
+    category, entity_id = row["category"], row["source_entity_id"]
+    if row["source_kind"] == "external-monitor":
+        diagnostic = connection.execute("SELECT state,detail_json FROM diagnostics WHERE item_id=? AND category IN ('connections','sources') ORDER BY category LIMIT 1", (entity_id,)).fetchone()
+        if diagnostic is None:
+            return False
+        detail = json.loads(diagnostic["detail_json"])
+        return not (diagnostic["state"] == "resolved" and detail.get("verifiedResolvedAt")) and diagnostic["state"] not in {"available", "connected", "complete", "healthy"}
+    if category == "dead-letter-open":
+        return connection.execute("SELECT 1 FROM dead_letters WHERE workflow_id=? AND replayed_by IS NULL", (entity_id,)).fetchone() is not None
+    if category == "workflow-retry-wait":
+        return connection.execute("SELECT 1 FROM workflows WHERE workflow_id=? AND state='retry-wait'", (entity_id,)).fetchone() is not None
+    if category.startswith("external-action-"):
+        action = connection.execute("SELECT state,updated_at FROM external_actions WHERE action_id=?", (entity_id,)).fetchone()
+        if action is None:
+            return False
+        if category == "external-action-indeterminate": return action["state"] == "indeterminate"
+        if category == "external-action-failed-before-dispatch": return action["state"] == "failed-before-dispatch"
+        return action["state"] in {"attempting", "attempted"} and now() - parse_time(action["updated_at"], "updatedAt") >= timedelta(minutes=STALE_ACTION_MINUTES)
+    if category == "repeated-runtime-failure":
+        cutoff = iso(now() - timedelta(minutes=60))
+        return connection.execute("SELECT COUNT(*) FROM runtime_events WHERE entity_kind='workflow' AND entity_id=? AND event_type='fail' AND event_at>=?", (entity_id, cutoff)).fetchone()[0] >= 3
+    return False
+
+
+def alert_transition(request: dict[str, Any], apply: bool) -> dict[str, Any]:
+    alert_id = identifier(request.get("alertID"), "alertID")
+    event = request.get("event")
+    if event not in {"acknowledge", "resolve"}:
+        raise RuntimeErrorState("Alert event must be acknowledge or resolve")
+    evidence_digest = request.get("verificationEvidenceDigest")
+    if event == "resolve" and (not isinstance(evidence_digest, str) or not HASH_PATTERN.fullmatch(evidence_digest)):
+        raise RuntimeErrorState("Verified alert resolution requires verificationEvidenceDigest")
+
+    def mutate(connection: sqlite3.Connection) -> dict[str, Any]:
+        row = connection.execute("SELECT * FROM alerts WHERE alert_id=?", (alert_id,)).fetchone()
+        if row is None: raise RuntimeErrorState("Alert does not exist")
+        if request.get("expectedVersion") != row["version"]: raise RuntimeErrorState("Alert transition requires its current expectedVersion")
+        at = iso(parse_time(request["occurredAt"], "occurredAt")) if request.get("occurredAt") else iso()
+        if event == "acknowledge":
+            if row["status"] == "resolved": raise RuntimeErrorState("Resolved alert cannot be acknowledged")
+            status_value = "acknowledged"
+            connection.execute("UPDATE alerts SET status=?,acknowledged_at=?,version=version+1 WHERE alert_id=?", (status_value, at, alert_id))
+            event_evidence = row["evidence_digest"]
+        else:
+            if alert_trigger_active(connection, row): raise RuntimeErrorState("Alert trigger remains active; verified resolution is not permitted")
+            status_value = "resolved"
+            connection.execute("UPDATE alerts SET status=?,resolved_at=?,resolution_evidence_digest=?,version=version+1 WHERE alert_id=?", (status_value, at, evidence_digest, alert_id))
+            event_evidence = evidence_digest
+        add_alert_event(connection, alert_id, event + "d", at, status_value, event_evidence)
+        return {"status": status_value, "alertID": alert_id, "version": row["version"] + 1}
+    return idempotent_mutation("alert-transition", request, mutate, apply)
 
 
 def projection_from_database(connection: sqlite3.Connection, generated: datetime | None = None) -> dict[str, Any]:
@@ -1015,7 +1218,7 @@ def projection_from_database(connection: sqlite3.Connection, generated: datetime
             alerts.append(alert("external-action-readback-overdue", "warning", row["action_id"], row["updated_at"], f"{STALE_ACTION_MINUTES}m"))
     for source in diagnostic_runtime_records(connection, "sources"):
         if source["state"] in {"partial", "stale", "unavailable", "blocked", "unknown"}:
-            alerts.append(alert("source-coverage-gap", "warning", source["itemID"], source["updatedAt"], "immediate"))
+            alerts.append(alert("source-coverage-gap", "warning", source["itemID"], source["updatedAt"], "immediate", source["version"], "external-monitor"))
     for record in diagnostic_runtime_records(connection, "connections"):
         signal = {"itemID": record["itemID"], "state": record["state"], "updatedAt": record["updatedAt"], **record["detail"]}
         if signal["state"] == "resolved" and signal.get("verifiedResolvedAt"):
@@ -1023,19 +1226,25 @@ def projection_from_database(connection: sqlite3.Connection, generated: datetime
         signal_class = signal.get("signalClass")
         count = int(signal.get("failureCount60m", 1))
         if signal["state"] in {"unauthorized", "digest-mismatch", "corruption", "privacy-failure"}:
-            alerts.append(alert("runtime-integrity-failure", "critical", signal["itemID"], signal["updatedAt"], "immediate", count))
+            alerts.append(alert("runtime-integrity-failure", "critical", signal["itemID"], signal["updatedAt"], "immediate", count, "external-monitor"))
         elif count >= 3:
-            alerts.append(alert("repeated-runtime-failure", "high", signal["itemID"], signal["updatedAt"], "3-failures-per-60m", count))
+            alerts.append(alert("repeated-runtime-failure", "high", signal["itemID"], signal["updatedAt"], "3-failures-per-60m", count, "external-monitor"))
         elif signal_class == "morning-pipeline" and signal["state"] == "missing" and signal.get("deadlineAt") and generated >= parse_time(signal["deadlineAt"], "deadlineAt"):
-            alerts.append(alert("morning-pipeline-missing", "high", signal["itemID"], signal["updatedAt"], "06:16-local", count))
+            alerts.append(alert("morning-pipeline-missing", "high", signal["itemID"], signal["updatedAt"], "06:16-local", count, "external-monitor"))
         elif signal_class == "app-readback" and signal["state"] == "missing" and signal.get("appKnownRunning") is True and int(signal.get("readbackAgeMinutes", 0)) > 5:
-            alerts.append(alert("app-readback-overdue", "high", signal["itemID"], signal["updatedAt"], "5m", count))
+            alerts.append(alert("app-readback-overdue", "high", signal["itemID"], signal["updatedAt"], "5m", count, "external-monitor"))
         elif signal["state"] == "blocked" and int(signal.get("blockedMinutes", 0)) >= 30:
-            alerts.append(alert("runtime-blocked", "warning", signal["itemID"], signal["updatedAt"], "30m", count))
+            alerts.append(alert("runtime-blocked", "warning", signal["itemID"], signal["updatedAt"], "30m", count, "external-monitor"))
         elif signal["state"] == "stalled-lease" and int(signal.get("leaseAgeMinutes", 0)) >= 15:
-            alerts.append(alert("runtime-lease-stalled", "warning", signal["itemID"], signal["updatedAt"], "15m", count))
+            alerts.append(alert("runtime-lease-stalled", "warning", signal["itemID"], signal["updatedAt"], "15m", count, "external-monitor"))
+    failure_cutoff = iso(generated - timedelta(minutes=60))
+    for row in connection.execute("SELECT entity_id,COUNT(*) AS failure_count,MAX(event_at) AS last_failure FROM runtime_events WHERE entity_kind='workflow' AND event_type='fail' AND event_at>=? GROUP BY entity_id HAVING COUNT(*)>=3", (failure_cutoff,)):
+        alerts.append(alert("repeated-runtime-failure", "high", row["entity_id"], row["last_failure"], "3-failures-per-60m", row["failure_count"], "runtime-derived"))
+    reconcile_alert_candidates(connection, alerts, iso(generated))
+    persisted_alerts = connection.execute("SELECT * FROM alerts ORDER BY first_seen,alert_id").fetchall()
     instructions: list[dict[str, Any]] = []
-    codes = {item["code"] for item in alerts}
+    active_alerts = [row for row in persisted_alerts if row["status"] != "resolved"]
+    codes = {row["category"] for row in active_alerts}
     recovery = {
         "dead-letter-open": ("Review guarded workflow replay", "Inspect the dead-letter digest, cause, replay safety, and dry-run a new replay identifier."),
         "workflow-retry-wait": ("Wait for bounded retry", "Confirm the retry time and remaining budget before issuing the version-bound retry event."),
@@ -1054,13 +1263,16 @@ def projection_from_database(connection: sqlite3.Connection, generated: datetime
         codes.add("dead-letter-open")
     for code in sorted(codes):
         title, instruction = recovery[code]
-        related = sorted({item["entityID"] for item in alerts if item["code"] == code})
-        instructions.append({"instructionID": f"recovery-{code}", "title": title, "steps": [instruction], "actionBoundary": "local-read-only" if code.startswith("external-action") else "local-governed", "relatedIDs": related})
+        related = sorted({row["source_entity_id"] for row in active_alerts if row["category"] == code})
+        evidence_ids = sorted({row["evidence_digest"] for row in active_alerts if row["category"] == code})
+        instructions.append({"instructionID": f"recovery-{code}", "title": title, "steps": [f"1. {instruction}", "2. Verify the authoritative state and record its evidence digest.", "3. If verification fails, stop and restore the last verified local state."], "verificationSteps": ["Verify the source state changed and bind the evidence digest to the resolution event."], "rollbackSteps": ["Restore only the verified pre-change backup or leave the operation stopped."], "evidenceIDs": evidence_ids, "actionBoundary": "local-read-only" if code.startswith("external-action") else "local-governed", "relatedIDs": related})
     alert_projection = []
-    instruction_title = {item["instructionID"].removeprefix("recovery-"): item["title"] for item in instructions}
-    for item in alerts:
-        severity = "error" if item["severity"] == "high" else item["severity"]
-        alert_projection.append({"alertID": item["alertID"], "severity": severity, "category": item["code"], "state": "open", "title": instruction_title[item["code"]], "safeSummary": f"{item['code']} met its {item['threshold']} threshold; occurrence count {item['count']}.", "raisedAt": item["observedAt"], "recoveryInstructionIDs": [f"recovery-{item['code']}"]})
+    for row in persisted_alerts:
+        severity = "error" if row["severity"] == "high" else row["severity"]
+        item = {"alertID": row["alert_id"], "severity": severity, "category": row["category"], "state": row["status"], "status": row["status"], "title": row["title"], "safeSummary": row["safe_summary"], "raisedAt": row["first_seen"], "firstSeen": row["first_seen"], "lastSeen": row["last_seen"], "count": row["occurrence_count"], "suppressedUntil": row["cooldown_until"], "sourceKind": row["source_kind"], "evidenceIDs": [row["evidence_digest"]], "recoveryInstructionIDs": [f"recovery-{row['category']}"]}
+        if row["acknowledged_at"]: item["acknowledgedAt"] = row["acknowledged_at"]
+        if row["resolved_at"]: item["resolvedAt"] = row["resolved_at"]
+        alert_projection.append(item)
     migrations = [{"migrationID": row["migration_id"], "fromVersion": f"{row['from_version']}.0.0", "toVersion": f"{row['to_version']}.0.0", "state": "applied", "reversible": False, "appliedAt": row["applied_at"], "safeSummary": "Applied a registered local runtime migration."} for row in migration_rows]
     all_workflow_count = connection.execute("SELECT COUNT(*) FROM workflows").fetchone()[0]
     all_action_count = connection.execute("SELECT COUNT(*) FROM external_actions").fetchone()[0]
@@ -1080,11 +1292,11 @@ def projection_from_database(connection: sqlite3.Connection, generated: datetime
         "decisions": diagnostic_projection(connection, "decisions"),
         "sources": diagnostic_projection(connection, "sources"),
         "connections": diagnostic_projection(connection, "connections"),
-        "compatibility": {"projectionSchemaVersion": PROJECTION_VERSION, "minimumAppVersion": MIN_APP_VERSION, "maximumAppVersion": "0.4.999", "status": "compatible", "issueCodes": []},
+        "compatibility": {"projectionSchemaVersion": PROJECTION_VERSION, "readbackSchemaVersion": READBACK_VERSION, "databaseSchemaVersion": DATABASE_VERSION, "pluginVersion": plugin_version(), "capabilityVersion": CAPABILITY_VERSION, "minimumAppVersion": MIN_APP_VERSION, "maximumAppVersion": MAX_APP_VERSION, "status": "compatible", "issueCodes": [], "upgradePolicy": "registered-migration-required", "downgradePolicy": "automatic-downgrade-forbidden", "rollbackPolicy": "restore-verified-pre-migration-backup-only"},
         "migrations": migrations,
         "alerts": alert_projection,
         "recoveryInstructions": instructions,
-        "coverage": {"workflowCount": len(workflow_rows), "retryCount": len(retries), "deadLetterCount": len(letters), "externalActionCount": len(action_rows), "commitmentCount": connection.execute("SELECT COUNT(*) FROM diagnostics WHERE category='commitments'").fetchone()[0], "decisionCount": connection.execute("SELECT COUNT(*) FROM diagnostics WHERE category='decisions'").fetchone()[0], "sourceCount": connection.execute("SELECT COUNT(*) FROM diagnostics WHERE category='sources'").fetchone()[0], "connectionCount": connection.execute("SELECT COUNT(*) FROM diagnostics WHERE category='connections'").fetchone()[0], "migrationCount": len(migrations), "alertCount": len(alert_projection), "recoveryInstructionCount": len(instructions), "unresolvedCount": len(retries) + sum(1 for item in letters if item["replayEligibility"] != "blocked") + len(alert_projection)},
+        "coverage": {"workflowCount": len(workflow_rows), "retryCount": len(retries), "deadLetterCount": len(letters), "externalActionCount": len(action_rows), "commitmentCount": connection.execute("SELECT COUNT(*) FROM diagnostics WHERE category='commitments'").fetchone()[0], "decisionCount": connection.execute("SELECT COUNT(*) FROM diagnostics WHERE category='decisions'").fetchone()[0], "sourceCount": connection.execute("SELECT COUNT(*) FROM diagnostics WHERE category='sources'").fetchone()[0], "connectionCount": connection.execute("SELECT COUNT(*) FROM diagnostics WHERE category='connections'").fetchone()[0], "migrationCount": len(migrations), "alertCount": len(alert_projection), "recoveryInstructionCount": len(instructions), "unresolvedCount": len(retries) + sum(1 for item in letters if item["replayEligibility"] != "blocked") + len(active_alerts)},
     }
     for item in letters:
         item.pop("consequential", None)
@@ -1110,6 +1322,17 @@ def validate_projection(payload: dict[str, Any]) -> None:
         raise RuntimeErrorState("Operations projection content digest mismatch")
     if not isinstance(payload["projectionID"], str) or not payload["projectionID"].endswith(supplied[:12]):
         raise RuntimeErrorState("Operations projection identifier does not bind the content digest")
+    action_states = {"confirmation-required", "confirmed", "attempting", "attempted", "verified", "failed-before-dispatch", "indeterminate", "cancelled"}
+    for action in payload["externalActions"]:
+        if action.get("state") not in action_states:
+            raise RuntimeErrorState("Operations projection contains an unsupported external-action state")
+        if action.get("confirmationRequired") != (action["state"] in {"confirmation-required", "failed-before-dispatch"}):
+            raise RuntimeErrorState("External-action confirmation requirement does not match its state")
+    for item in payload["alerts"]:
+        if item.get("status") not in {"open", "acknowledged", "resolved"} or item.get("state") != item.get("status"):
+            raise RuntimeErrorState("Operations projection contains an invalid alert lifecycle state")
+        if item.get("sourceKind") not in {"runtime-derived", "external-monitor"}:
+            raise RuntimeErrorState("Operations alert source provenance is invalid")
     forbidden_keys = {"boundedTarget", "targetHash", "lastErrorSummary", "confirmationID", "attemptID", "nativeRequestHash", "nativeReceiptHash", "payloadDigest"}
     def inspect_keys(value: Any) -> None:
         if isinstance(value, dict):
@@ -1124,9 +1347,14 @@ def validate_projection(payload: dict[str, Any]) -> None:
 
 
 def publish_projection() -> dict[str, Any]:
-    connection = open_database(False)
+    connection = open_database(True)
     try:
+        connection.execute("BEGIN IMMEDIATE")
         projection = projection_from_database(connection)
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
     finally:
         connection.close()
     validate_projection(projection)
@@ -1167,26 +1395,95 @@ def rebuild_from_events(connection: sqlite3.Connection) -> dict[str, Any]:
 
 def migrate_legacy_projection(path: str, apply: bool) -> dict[str, Any]:
     legacy = load_json(path)
-    if legacy.get("schemaVersion") != 0:
-        raise RuntimeErrorState("Only registered projection migration 0 to 1 is supported")
+    if legacy.get("schemaVersion") != 1:
+        raise RuntimeErrorState("Only registered projection migration 1 to 2 is supported")
     legacy_digest = digest(legacy)
     if not apply:
-        return {"status": "review-required", "migrationID": "operations-projection-0-to-1", "fromVersion": 0, "toVersion": 1, "legacyDigest": legacy_digest, "applied": False}
+        return {"status": "ready", "migrationID": "operations-projection-1-to-2", "fromVersion": 1, "toVersion": 2, "legacyDigest": legacy_digest, "dataPreserving": True, "applied": False}
+    source_path = Path(path)
+    source_bytes = source_path.read_bytes()
+    backup_dir = ROOT / "backups"
+    backup_path = backup_dir / f"operations-v1-{now().strftime('%Y%m%dT%H%M%SZ')}-{hashlib.sha256(source_bytes).hexdigest()[:12]}.json"
+    atomic_bytes(backup_path, source_bytes)
+    backup_digest = hashlib.sha256(backup_path.read_bytes()).hexdigest()
+    if backup_digest != hashlib.sha256(source_bytes).hexdigest():
+        raise RuntimeErrorState("Pre-migration projection backup digest verification failed")
+    migrated = dict(legacy)
+    migrated["schemaVersion"] = 2
+    migrated["runtimeVersion"] = plugin_version()
+    for action in migrated.get("externalActions", []):
+        state = action.get("state")
+        if state == "proposed": action["state"] = "confirmation-required"
+        elif state == "failed": action["state"] = "failed-before-dispatch"
+        elif state == "attempted" and action.get("readbackStatus") == "indeterminate": action["state"] = "indeterminate"
+        elif state not in {"confirmed", "attempted", "verified", "cancelled", "confirmation-required", "attempting", "failed-before-dispatch", "indeterminate"}:
+            raise RuntimeErrorState(f"Schema-1 external action state cannot be migrated safely: {state}")
+        action["confirmationRequired"] = action["state"] in {"confirmation-required", "failed-before-dispatch"}
+    for item in migrated.get("alerts", []):
+        item.setdefault("status", "resolved" if item.get("resolvedAt") else "open")
+        item["state"] = item["status"]
+        item.setdefault("firstSeen", item.get("raisedAt"))
+        item.setdefault("lastSeen", item.get("resolvedAt", item.get("raisedAt")))
+        item.setdefault("count", 1)
+        item.setdefault("suppressedUntil", item.get("raisedAt"))
+        item.setdefault("sourceKind", "external-monitor")
+        item.setdefault("evidenceIDs", [digest({"legacyAlertID": item.get("alertID"), "legacyDigest": legacy_digest})])
+    for item in migrated.get("recoveryInstructions", []):
+        item.setdefault("verificationSteps", ["Verify authoritative state and record evidence before resolution."])
+        item.setdefault("rollbackSteps", ["Restore the verified pre-migration backup if validation fails."])
+        item.setdefault("evidenceIDs", [backup_digest])
+    migrated["compatibility"] = {"projectionSchemaVersion": 2, "readbackSchemaVersion": READBACK_VERSION, "databaseSchemaVersion": DATABASE_VERSION, "pluginVersion": plugin_version(), "capabilityVersion": CAPABILITY_VERSION, "minimumAppVersion": MIN_APP_VERSION, "maximumAppVersion": MAX_APP_VERSION, "status": "compatible", "issueCodes": [], "upgradePolicy": "registered-migration-required", "downgradePolicy": "automatic-downgrade-forbidden", "rollbackPolicy": "restore-verified-pre-migration-backup-only"}
+    migrated.pop("projectionID", None)
+    migrated.pop("contentDigest", None)
+    migrated_digest = digest(migrated)
+    migrated = {**migrated, "projectionID": f"runtime-{parse_time(migrated['generatedAt'], 'generatedAt').date().isoformat()}-{migrated_digest[:12]}", "contentDigest": migrated_digest}
+    validate_projection(migrated)
     connection = open_database(True)
     try:
         connection.execute("BEGIN IMMEDIATE")
-        existing = connection.execute("SELECT artifact_digest FROM migration_receipts WHERE migration_id=?", ("operations-projection-0-to-1",)).fetchone()
+        existing = connection.execute("SELECT artifact_digest FROM migration_receipts WHERE migration_id=?", ("operations-projection-1-to-2",)).fetchone()
         if existing and existing["artifact_digest"] != legacy_digest:
             raise RuntimeErrorState("Projection migration ID already applied to different content")
-        connection.execute("INSERT OR IGNORE INTO migration_receipts VALUES (?,?,?,?,?,?,?)", ("operations-projection-0-to-1", "projection", 0, 1, legacy_digest, iso(), "reviewed-lossy"))
+        receipt = {"backupPath": str(backup_path), "backupDigest": backup_digest, "migratedDigest": migrated["contentDigest"]}
+        connection.execute("INSERT OR IGNORE INTO migration_receipts VALUES (?,?,?,?,?,?,?)", ("operations-projection-1-to-2", "projection", 1, 2, legacy_digest, iso(), "applied-data-preserving"))
+        connection.execute("INSERT OR REPLACE INTO runtime_meta VALUES (?,?)", ("projectionMigrationBackup", canonical(receipt)))
+        atomic_json(source_path, migrated)
+        if os.environ.get("MONDAY_RUNTIME_FAIL_MIGRATION_WRITE") == "1":
+            raise RuntimeErrorState("Injected projection migration validation failure")
+        written = load_json(source_path)
+        validate_projection(written)
         connection.commit()
-    except Exception:
+    except Exception as exc:
         connection.rollback()
-        raise
+        atomic_bytes(source_path, source_bytes)
+        if hashlib.sha256(source_path.read_bytes()).hexdigest() != backup_digest:
+            raise RuntimeErrorState("Projection migration failed and backup restore verification failed") from exc
+        raise RuntimeErrorState("Projection migration failed; database receipt rolled back and verified schema-1 backup was atomically restored") from exc
     finally:
         connection.close()
-    projection = publish_projection()
-    return {"status": "migrated", "migrationID": "operations-projection-0-to-1", "legacyDigest": legacy_digest, "projectionID": projection["projectionID"], "applied": True}
+    return {"status": "migrated", "migrationID": "operations-projection-1-to-2", "legacyDigest": legacy_digest, "backupPath": str(backup_path), "backupDigest": backup_digest, "projectionID": migrated["projectionID"], "applied": True}
+
+
+def restore_projection(backup_path: str, expected_digest: str, apply: bool) -> dict[str, Any]:
+    if not HASH_PATTERN.fullmatch(expected_digest): raise RuntimeErrorState("expectedDigest must be lowercase SHA-256")
+    path = Path(backup_path)
+    value = path.read_bytes()
+    actual = hashlib.sha256(value).hexdigest()
+    if actual != expected_digest: raise RuntimeErrorState("Projection backup digest mismatch; restore refused")
+    payload = json.loads(value)
+    if payload.get("schemaVersion") != 1: raise RuntimeErrorState("Only a verified schema-1 pre-migration backup can be restored")
+    if not apply: return {"status": "restore-ready", "backupDigest": actual, "applied": False}
+    atomic_bytes(PROJECTION_PATH, value)
+    if hashlib.sha256(PROJECTION_PATH.read_bytes()).hexdigest() != actual:
+        raise RuntimeErrorState("Restored projection failed digest verification")
+    connection = open_database(True)
+    try:
+        receipt_id = f"operations-projection-restore-{actual[:12]}"
+        connection.execute("INSERT OR IGNORE INTO migration_receipts VALUES (?,?,?,?,?,?,?)", (receipt_id, "projection-rollback", 2, 1, actual, iso(), "restored-verified-backup"))
+        connection.commit()
+    finally:
+        connection.close()
+    return {"status": "restored", "backupDigest": actual, "target": str(PROJECTION_PATH), "applied": True}
 
 
 def reconcile_readback(apply: bool) -> dict[str, Any]:
@@ -1243,7 +1540,7 @@ def parser() -> argparse.ArgumentParser:
     commands = root.add_subparsers(dest="command", required=True)
     initialize = commands.add_parser("init", help="initialize or migrate the durable runtime")
     initialize.add_argument("--apply", action="store_true")
-    for name in ["workflow-start", "workflow-transition", "workflow-replay", "action-propose", "action-transition", "standing-authorization", "stage-diagnostic"]:
+    for name in ["workflow-start", "workflow-transition", "workflow-replay", "action-propose", "action-transition", "standing-authorization", "stage-diagnostic", "alert-transition"]:
         command = commands.add_parser(name)
         command.add_argument("--input", required=True)
         command.add_argument("--apply", action="store_true")
@@ -1255,9 +1552,17 @@ def parser() -> argparse.ArgumentParser:
     compatibility = commands.add_parser("compatibility-check")
     compatibility.add_argument("--app-version", required=True)
     compatibility.add_argument("--projection-schema", type=int, required=True)
+    compatibility.add_argument("--plugin-version")
+    compatibility.add_argument("--capability-version")
+    compatibility.add_argument("--database-schema", type=int)
+    compatibility.add_argument("--readback-schema", type=int)
     migration = commands.add_parser("migrate-projection")
     migration.add_argument("--input", required=True)
     migration.add_argument("--apply", action="store_true")
+    restore = commands.add_parser("restore-projection")
+    restore.add_argument("--backup", required=True)
+    restore.add_argument("--expected-digest", required=True)
+    restore.add_argument("--apply", action="store_true")
     readback = commands.add_parser("reconcile-readback")
     readback.add_argument("--apply", action="store_true")
     commands.add_parser("status")
@@ -1275,18 +1580,24 @@ def main() -> int:
                 result = {"status": "initialized", "databaseVersion": DATABASE_VERSION, "projectionID": projection["projectionID"], "applied": True}
             else:
                 result = {"status": "validated", "databaseVersion": DATABASE_VERSION, "applied": False}
-        elif args.command in {"workflow-start", "workflow-transition", "workflow-replay", "action-propose", "action-transition", "standing-authorization", "stage-diagnostic"}:
+        elif args.command in {"workflow-start", "workflow-transition", "workflow-replay", "action-propose", "action-transition", "standing-authorization", "stage-diagnostic", "alert-transition"}:
             request = load_json(args.input)
-            handler = {"workflow-start": workflow_start, "workflow-transition": workflow_transition, "workflow-replay": workflow_replay, "action-propose": action_propose, "action-transition": action_transition, "standing-authorization": standing_authorization, "stage-diagnostic": stage_diagnostic}[args.command]
+            handler = {"workflow-start": workflow_start, "workflow-transition": workflow_transition, "workflow-replay": workflow_replay, "action-propose": action_propose, "action-transition": action_transition, "standing-authorization": standing_authorization, "stage-diagnostic": stage_diagnostic, "alert-transition": alert_transition}[args.command]
             result = handler(request, args.apply)
         elif args.command == "project":
             if args.apply:
                 result = publish_projection()
             else:
-                connection = open_database(False)
+                source = open_database(False)
+                connection = sqlite3.connect(":memory:")
+                connection.row_factory = sqlite3.Row
+                source.backup(connection)
+                source.close()
                 try:
+                    connection.execute("BEGIN")
                     result = projection_from_database(connection)
                     validate_projection(result)
+                    connection.rollback()
                 finally:
                     connection.close()
         elif args.command == "rebuild":
@@ -1303,9 +1614,11 @@ def main() -> int:
             else:
                 result = {**result, "applied": False}
         elif args.command == "compatibility-check":
-            result = compatibility_check(args.app_version, args.projection_schema)
+            result = compatibility_check(args.app_version, args.projection_schema, args.plugin_version, args.capability_version, args.database_schema, args.readback_schema)
         elif args.command == "migrate-projection":
             result = migrate_legacy_projection(args.input, args.apply)
+        elif args.command == "restore-projection":
+            result = restore_projection(args.backup, args.expected_digest, args.apply)
         elif args.command == "reconcile-readback":
             result = reconcile_readback(args.apply)
         else:

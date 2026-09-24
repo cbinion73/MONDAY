@@ -92,14 +92,14 @@ class Priority3RuntimeTests(unittest.TestCase):
             "sources": ({"sourceID", "status", "scopeLabel", "attemptedAt", "succeededAt", "itemCount", "processedCount", "unresolvedCount", "freshness", "errorCode"}, {"sourceID", "status", "scopeLabel", "itemCount", "processedCount", "unresolvedCount", "freshness"}),
             "connections": ({"connectionID", "sourceID", "status", "authenticationState", "coverageState", "lastCheckedAt", "diagnosticCodes"},) * 2,
             "migrations": ({"migrationID", "fromVersion", "toVersion", "state", "reversible", "appliedAt", "safeSummary"}, {"migrationID", "fromVersion", "toVersion", "state", "reversible", "safeSummary"}),
-            "alerts": ({"alertID", "severity", "category", "state", "title", "safeSummary", "raisedAt", "resolvedAt", "recoveryInstructionIDs"}, {"alertID", "severity", "category", "state", "title", "safeSummary", "raisedAt", "recoveryInstructionIDs"}),
-            "recoveryInstructions": ({"instructionID", "title", "steps", "actionBoundary", "relatedIDs"},) * 2,
+            "alerts": ({"alertID", "severity", "category", "state", "status", "title", "safeSummary", "raisedAt", "firstSeen", "lastSeen", "count", "acknowledgedAt", "suppressedUntil", "resolvedAt", "sourceKind", "evidenceIDs", "recoveryInstructionIDs"}, {"alertID", "severity", "category", "state", "status", "title", "safeSummary", "raisedAt", "firstSeen", "lastSeen", "count", "suppressedUntil", "sourceKind", "evidenceIDs", "recoveryInstructionIDs"}),
+            "recoveryInstructions": ({"instructionID", "title", "steps", "verificationSteps", "rollbackSteps", "evidenceIDs", "actionBoundary", "relatedIDs"},) * 2,
         }
         for collection, (allowed, required) in allowed_required.items():
             for item in value[collection]:
                 self.assertTrue(set(item).issubset(allowed), (collection, set(item) - allowed))
                 self.assertTrue(required.issubset(item), (collection, required - set(item)))
-        self.assertEqual(set(value["compatibility"]), {"projectionSchemaVersion", "minimumAppVersion", "maximumAppVersion", "status", "issueCodes"})
+        self.assertEqual(set(value["compatibility"]), {"projectionSchemaVersion", "readbackSchemaVersion", "databaseSchemaVersion", "pluginVersion", "capabilityVersion", "minimumAppVersion", "maximumAppVersion", "status", "issueCodes", "upgradePolicy", "downgradePolicy", "rollbackPolicy"})
         self.assertEqual(set(value["coverage"]), {"workflowCount", "retryCount", "deadLetterCount", "externalActionCount", "commitmentCount", "decisionCount", "sourceCount", "connectionCount", "migrationCount", "alertCount", "recoveryInstructionCount", "unresolvedCount"})
         for field, collection in [("workflowCount", "workflows"), ("retryCount", "retries"), ("deadLetterCount", "deadLetters"), ("externalActionCount", "externalActions"), ("commitmentCount", "commitments"), ("decisionCount", "decisions"), ("sourceCount", "sources"), ("connectionCount", "connections"), ("migrationCount", "migrations"), ("alertCount", "alerts"), ("recoveryInstructionCount", "recoveryInstructions")]:
             self.assertEqual(value["coverage"][field], len(value[collection]))
@@ -120,10 +120,14 @@ class Priority3RuntimeTests(unittest.TestCase):
         self.assertEqual(projection["audience"], "Chris-private-local")
         self.assertEqual(projection["alerts"], [], "unchanged healthy runtime must stay quiet")
         self.assert_app_contract_shape(projection)
-        _, old = self.invoke("compatibility-check", extra=["--app-version", "0.2.0", "--projection-schema", "1"])
-        _, current = self.invoke("compatibility-check", extra=["--app-version", "0.4.0", "--projection-schema", "1"])
+        self.assertEqual(projection["schemaVersion"], 2)
+        _, old = self.invoke("compatibility-check", extra=["--app-version", "0.4.0", "--projection-schema", "2"])
+        _, current = self.invoke("compatibility-check", extra=["--app-version", "0.4.1", "--projection-schema", "2", "--plugin-version", projection["runtimeVersion"], "--capability-version", "2.0.0", "--database-schema", "2", "--readback-schema", "1"])
         self.assertEqual(old["status"], "upgrade-required")
         self.assertEqual(current["status"], "compatible")
+        _, downgrade = self.invoke("compatibility-check", extra=["--app-version", "0.4.1", "--projection-schema", "1"])
+        self.assertEqual(downgrade["status"], "incompatible")
+        self.assertEqual(current["downgradePolicy"], "automatic-downgrade-forbidden")
 
     def test_idempotency_conflict_optimistic_versions_retry_dead_letter_replay_and_rebuild(self) -> None:
         request = self.workflow()
@@ -194,6 +198,8 @@ class Priority3RuntimeTests(unittest.TestCase):
         attempt_id = begun["attemptID"]
         _, uncertain = self.invoke("action-transition", self.action_transition("action-uncertain", 3, action_digest, "fail", "fail-u", attemptID=attempt_id, error={"code": "connection-lost", "summary": "Connection ended during dispatch", "classification": "uncertain", "dispatchState": "unknown"}), apply=True)
         self.assertEqual(uncertain["status"], "indeterminate")
+        projected = {item["actionID"]: item for item in json.loads((self.runtime / "operations.json").read_text())["externalActions"]}
+        self.assertEqual(projected["action-uncertain"]["state"], "indeterminate")
         retry, _ = self.invoke("action-transition", self.action_transition("action-uncertain", 4, action_digest, "confirm", "blind-retry", confirmationID="confirmation-u2", actor="Chris", issuedAt=iso(issued), confirmationExpiresAt=iso(issued + timedelta(minutes=10))), apply=True, check=False)
         self.assertEqual(retry.returncode, 2)
         absence = {"system": "teams", "observedAt": iso(datetime.now(UTC)), "outcome": "verified-no-effect", "receiptHash": "c" * 64, "actionDigest": action_digest, "attemptID": attempt_id, "confirmationID": "confirmation-u"}
@@ -208,6 +214,10 @@ class Priority3RuntimeTests(unittest.TestCase):
         _, begun = self.invoke("action-transition", self.action_transition("action-pre-dispatch", 2, action_digest, "begin", "begin-p"), apply=True)
         _, failed = self.invoke("action-transition", self.action_transition("action-pre-dispatch", 3, action_digest, "fail", "fail-p", attemptID=begun["attemptID"], error={"code": "local-validation", "summary": "Local validation stopped dispatch", "classification": "permanent", "dispatchState": "not-dispatched"}), apply=True)
         self.assertEqual(failed["status"], "failed-before-dispatch")
+        projected = {item["actionID"]: item for item in json.loads((self.runtime / "operations.json").read_text())["externalActions"]}["action-pre-dispatch"]
+        self.assertEqual(projected["state"], "failed-before-dispatch")
+        self.assertTrue(projected["confirmationRequired"])
+        self.assertEqual(projected["readbackStatus"], "missing")
         fresh = datetime.now(UTC) - timedelta(seconds=1)
         _, reconfirmed = self.invoke("action-transition", self.action_transition("action-pre-dispatch", 4, action_digest, "confirm", "confirm-p2", confirmationID="confirmation-p2", actor="Chris", issuedAt=iso(fresh), confirmationExpiresAt=iso(fresh + timedelta(minutes=10))), apply=True)
         self.assertEqual(reconfirmed["status"], "confirmed")
@@ -266,6 +276,29 @@ class Priority3RuntimeTests(unittest.TestCase):
         self.assertTrue(any(item["instructionID"] == "recovery-runtime-integrity-failure" for item in projection["recoveryInstructions"]))
         self.assertNotIn("Different content", json.dumps(projection))
 
+    def test_alert_lifecycle_is_durable_acknowledged_verified_resolved_and_reopened(self) -> None:
+        detail = {"scopeLabel": "current-day", "itemCount": 2, "processedCount": 1, "unresolvedCount": 1, "freshness": "stale"}
+        self.invoke("stage-diagnostic", {"category": "sources", "itemID": "calendar", "state": "stale", "detail": detail, "idempotencyKey": "alert-source-1"}, apply=True)
+        projection = json.loads((self.runtime / "operations.json").read_text())
+        item = next(value for value in projection["alerts"] if value["category"] == "source-coverage-gap")
+        self.assertEqual(item["sourceKind"], "external-monitor")
+        self.invoke("alert-transition", {"alertID": item["alertID"], "event": "acknowledge", "expectedVersion": 1, "idempotencyKey": "ack-1"}, apply=True)
+        projection = json.loads((self.runtime / "operations.json").read_text())
+        self.assertEqual(next(value for value in projection["alerts"] if value["alertID"] == item["alertID"])["status"], "acknowledged")
+        healthy = {"scopeLabel": "current-day", "itemCount": 2, "processedCount": 2, "unresolvedCount": 0, "freshness": "fresh"}
+        self.invoke("stage-diagnostic", {"category": "sources", "itemID": "calendar", "state": "available", "detail": healthy, "expectedVersion": 1, "idempotencyKey": "alert-source-2"}, apply=True)
+        self.invoke("alert-transition", {"alertID": item["alertID"], "event": "resolve", "expectedVersion": 2, "verificationEvidenceDigest": "a" * 64, "idempotencyKey": "resolve-1"}, apply=True)
+        projection = json.loads((self.runtime / "operations.json").read_text())
+        resolved = next(value for value in projection["alerts"] if value["alertID"] == item["alertID"])
+        self.assertEqual(resolved["status"], "resolved")
+        self.assertNotIn(item["alertID"], {value for instruction in projection["recoveryInstructions"] for value in instruction["relatedIDs"]})
+        stale_again = {**detail, "itemCount": 3, "processedCount": 2}
+        self.invoke("stage-diagnostic", {"category": "sources", "itemID": "calendar", "state": "stale", "detail": stale_again, "expectedVersion": 2, "idempotencyKey": "alert-source-3"}, apply=True)
+        projection = json.loads((self.runtime / "operations.json").read_text())
+        reopened = next(value for value in projection["alerts"] if value["alertID"] == item["alertID"])
+        self.assertEqual(reopened["status"], "open")
+        self.assertGreaterEqual(reopened["count"], 2)
+
     def test_full_alert_thresholds_and_dead_letter_severity_are_machine_enforced(self) -> None:
         deadline = iso(datetime.now(UTC) - timedelta(minutes=1))
         signals = [
@@ -301,11 +334,41 @@ class Priority3RuntimeTests(unittest.TestCase):
 
     def test_projection_migration_future_database_rejection_and_tamper_detection(self) -> None:
         legacy = self.inputs / "legacy.json"
-        legacy.write_text(json.dumps({"schemaVersion": 0, "legacy": True}))
+        legacy_value = json.loads((self.runtime / "operations.json").read_text())
+        legacy_value["schemaVersion"] = 1
+        legacy_value["compatibility"] = {"projectionSchemaVersion": 1, "minimumAppVersion": "0.4.0", "maximumAppVersion": "0.4.999", "status": "compatible", "issueCodes": []}
+        core = dict(legacy_value)
+        core.pop("projectionID")
+        core.pop("contentDigest")
+        old_digest = hashlib.sha256(json.dumps(core, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+        legacy_value["contentDigest"] = old_digest
+        legacy_value["projectionID"] = f"runtime-legacy-{old_digest[:12]}"
+        legacy.write_text(json.dumps(legacy_value))
         _, preview = self.invoke("migrate-projection", extra=["--input", str(legacy)])
-        self.assertEqual(preview["status"], "review-required")
+        self.assertEqual(preview["status"], "ready")
+        self.environment["MONDAY_RUNTIME_FAIL_MIGRATION_WRITE"] = "1"
+        failed, failure = self.invoke("migrate-projection", apply=True, check=False, extra=["--input", str(legacy)])
+        self.environment.pop("MONDAY_RUNTIME_FAIL_MIGRATION_WRITE")
+        self.assertEqual(failed.returncode, 2)
+        self.assertIn("receipt rolled back", failure["error"])
+        self.assertEqual(json.loads(legacy.read_text())["schemaVersion"], 1)
+        database = sqlite3.connect(self.runtime / "runtime.sqlite3")
+        self.assertEqual(database.execute("SELECT COUNT(*) FROM migration_receipts WHERE migration_id='operations-projection-1-to-2'").fetchone()[0], 0)
+        database.close()
         _, migrated = self.invoke("migrate-projection", apply=True, extra=["--input", str(legacy)])
         self.assertEqual(migrated["status"], "migrated")
+        migrated_value = json.loads(legacy.read_text())
+        self.assertEqual(migrated_value["schemaVersion"], 2)
+        backup = Path(migrated["backupPath"])
+        self.assertTrue(backup.exists())
+        self.assertEqual(hashlib.sha256(backup.read_bytes()).hexdigest(), migrated["backupDigest"])
+        _, restored = self.invoke("restore-projection", apply=True, extra=["--backup", str(backup), "--expected-digest", migrated["backupDigest"]])
+        self.assertEqual(restored["status"], "restored")
+        self.assertEqual(json.loads((self.runtime / "operations.json").read_text())["schemaVersion"], 1)
+        rejected, error = self.invoke("restore-projection", apply=True, check=False, extra=["--backup", str(backup), "--expected-digest", "0" * 64])
+        self.assertEqual(rejected.returncode, 2)
+        self.assertIn("digest mismatch", error["error"])
+        self.invoke("project", apply=True)
         projection = json.loads((self.runtime / "operations.json").read_text())
         projection["coverage"]["workflowCount"] = 999
         (self.runtime / "operations.json").write_text(json.dumps(projection))
@@ -313,7 +376,7 @@ class Priority3RuntimeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("content digest mismatch", error["error"])
         database = sqlite3.connect(self.runtime / "runtime.sqlite3")
-        database.execute("PRAGMA user_version=2")
+        database.execute("PRAGMA user_version=3")
         database.commit()
         database.close()
         future, error = self.invoke("status", check=False)
@@ -325,10 +388,10 @@ class Priority3RuntimeTests(unittest.TestCase):
         receipt = {
             "schemaVersion": 1,
             "projectionID": projection["projectionID"],
-            "projectionSchemaVersion": 1,
+            "projectionSchemaVersion": 2,
             "contentDigest": projection["contentDigest"],
             "consumer": "Command Center",
-            "appVersion": "0.4.0",
+            "appVersion": "0.4.1",
             "displayedAt": projection["generatedAt"],
             "state": "displayed",
             "viewIDs": ["operations-overview"],

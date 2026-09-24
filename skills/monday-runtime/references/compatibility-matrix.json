@@ -1,10 +1,15 @@
 {
   "schemaVersion": 1,
-  "runtimeDatabaseVersion": 1,
-  "operationsProjectionVersion": 1,
+  "runtimeDatabaseVersion": 2,
+  "operationsProjectionVersion": 2,
   "operationsReadbackVersion": 1,
+  "capabilityVersion": "2.0.0",
+  "supportedPluginVersions": {
+    "minimumInclusive": "0.1.0",
+    "maximumExclusive": "0.2.0"
+  },
   "supportedAppVersions": {
-    "minimumInclusive": "0.4.0",
+    "minimumInclusive": "0.4.1",
     "maximumExclusive": "0.5.0"
   },
   "retryPolicy": {
@@ -22,15 +27,36 @@
     "stalledLeaseMinutes": 15,
     "deduplication": "code-plus-entity",
     "cooldownMinutes": 15,
-    "resolution": "authoritative-state-no-longer-meets-trigger"
+    "resolution": "verified-authoritative-state-no-longer-meets-trigger",
+    "lifecycle": ["open", "acknowledged", "resolved"],
+    "signalProvenance": ["runtime-derived", "external-monitor"]
+  },
+  "pairings": [
+    {
+      "plugin": ">=0.1.0 <0.2.0",
+      "capability": "2.0.0",
+      "runtimeDatabase": 2,
+      "operationsProjection": 2,
+      "operationsReadback": 1,
+      "app": ">=0.4.1 <0.5.0"
+    }
+  ],
+  "versionPolicy": {
+    "upgrade": "registered-migration-with-verified-backup",
+    "downgrade": "automatic-downgrade-forbidden",
+    "rollback": "restore-verified-pre-migration-backup-only"
   },
   "projectionMigrations": [
     {
-      "id": "operations-projection-0-to-1",
-      "from": 0,
-      "to": 1,
-      "lossless": false,
-      "requiresReview": true
+      "id": "operations-projection-1-to-2",
+      "from": 1,
+      "to": 2,
+      "lossless": true,
+      "requiresReview": false,
+      "preMigrationBackup": true,
+      "digestVerification": true,
+      "atomicRollback": true,
+      "testedRestore": true
     }
   ]
 }
