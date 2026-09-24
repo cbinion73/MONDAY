@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.monday/connector-decision-registry.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "registryID", "statuses", "connectors", "tier3Policy"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "registryID": {"type": "string", "minLength": 1},
+    "statuses": {"type": "array", "items": {"enum": ["proposed", "evaluating", "approved-for-pilot", "active", "rejected", "retired"]}, "uniqueItems": true},
+    "connectors": {"type": "array", "items": {"type": "object", "required": ["connectorID", "tier", "status", "route", "sourceID", "useCase", "owner", "authorityRole", "authoritativeRecord", "readOnly", "scopeRequired", "maximumItems", "privacyAllowlist", "notProofOf", "allowedConsumers", "planningImpact", "liveCanary", "approval"]}},
+    "tier3Policy": {"type": "object", "required": ["activeCount", "admissionRequirements"]}
+  }
+}

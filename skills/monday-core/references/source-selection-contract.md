@@ -16,6 +16,12 @@ Use the least sensitive authoritative source that can answer the question at the
 
 Never substitute one connector for another. Authentication proves connection only. Discovery proves route only. A file existing proves neither review nor relevance.
 
+## Expansion lanes
+
+Tier 2 and Tier 3 sources are not canonical lanes. Before using one, route through `monday-evaluation` and require its machine-readable connector decision. An `evaluating` connector is not active evidence. A pilot-only connector remains optional, advisory, and unable to cure a Tier 1 coverage gap. Unknown sources and routes fail closed.
+
+Jira through TWG is currently `evaluating`: authentication or a successful query does not activate it. No Tier 3 integration is active.
+
 ## Durable local sources
 
 - Project Knowledge is authoritative for Thermo project state.

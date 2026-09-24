@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "suiteID": "monday-system-priority4-v1",
+  "suiteVersion": "1.0.0",
+  "coverageRoots": [
+    {"kind": "python", "path": "tests", "pattern": "test*.py"},
+    {"kind": "python", "path": "skills/monday-core/tests", "pattern": "test*.py"},
+    {"kind": "python", "path": "skills/monday-thermo-meeting-continuity/tests", "pattern": "test*.py"},
+    {"kind": "python", "path": "skills/monday-thermo-project-intelligence/tests", "pattern": "test*.py"},
+    {"kind": "swift", "path": "Tests/CommandCenterContractTests.swift", "appRelative": true, "pattern": "func test"}
+  ],
+  "runners": [
+    {"runnerID": "plugin-tests", "kind": "python-unittest", "command": ["python3", "-m", "unittest", "discover", "-s", "tests", "-v"], "releaseBlocking": true},
+    {"runnerID": "core-tests", "kind": "python-unittest", "command": ["python3", "-m", "unittest", "discover", "-s", "skills/monday-core/tests", "-v"], "releaseBlocking": true},
+    {"runnerID": "continuity-tests", "kind": "python-unittest", "command": ["python3", "-m", "unittest", "discover", "-s", "skills/monday-thermo-meeting-continuity/tests", "-v"], "releaseBlocking": true},
+    {"runnerID": "project-intelligence-tests", "kind": "python-unittest", "command": ["python3", "-m", "unittest", "discover", "-s", "skills/monday-thermo-project-intelligence/tests", "-v"], "releaseBlocking": true},
+    {"runnerID": "command-center-tests", "kind": "xcodebuild", "command": ["xcodebuild", "test", "-project", "MondayCommandCenter.xcodeproj", "-scheme", "MondayCommandCenter", "-destination", "platform=macOS", "ENABLE_HARDENED_RUNTIME=NO", "CODE_SIGNING_ALLOWED=NO", "CODE_SIGNING_REQUIRED=NO"], "releaseBlocking": true, "requiresAppRepo": true}
+  ],
+  "requiredAdversarialClasses": [
+    "source-truth", "authority", "domain-boundary", "privacy", "data-loss", "digest-schema", "migration-rollback", "external-action", "temporal-rollover", "idempotency-replay", "connector-admission", "instruction-injection", "path-safety", "readback-forgery"
+  ],
+  "adversarialCases": [
+    {"caseID": "ADV-SOURCE-001", "class": "source-truth", "severity": "critical", "expectedOutcome": "fail-closed", "releaseBlocking": true, "requirementIDs": ["P4-29", "P1-12"], "target": "tests.test_tier1_collectors.TierOneCollectorContractTests.test_available_with_unresolved_items_is_rejected"},
+    {"caseID": "ADV-AUTH-001", "class": "authority", "severity": "critical", "expectedOutcome": "fail-closed", "releaseBlocking": true, "requirementIDs": ["P4-29", "P3-25"], "target": "tests.test_priority3_runtime.Priority3RuntimeTests.test_post_dispatch_uncertainty_forbids_blind_retry_until_native_no_effect"},
+    {"caseID": "ADV-DOMAIN-001", "class": "domain-boundary", "severity": "critical", "expectedOutcome": "fail-closed", "releaseBlocking": true, "requirementIDs": ["P4-29", "P2-19"], "target": "tests.test_priority2_twin.Priority2TwinTests.test_cross_domain_capture_is_rejected"},
+    {"caseID": "ADV-PRIVACY-001", "class": "privacy", "severity": "critical", "expectedOutcome": "fail-closed", "releaseBlocking": true, "requirementIDs": ["P4-29", "P1-12"], "target": "tests.test_tier1_collectors.TierOneCollectorContractTests.test_nested_private_content_and_secret_locators_are_rejected"},
+    {"caseID": "ADV-DATA-001", "class": "data-loss", "severity": "critical", "expectedOutcome": "fail-closed", "releaseBlocking": true, "requirementIDs": ["P4-29", "P2-21"], "target": "tests.test_priority2_twin.Priority2TwinTests.test_forget_purges_derived_projection_and_playbook_content"},
+    {"caseID": "ADV-DIGEST-001", "class": "digest-schema", "severity": "critical", "expectedOutcome": "fail-closed", "releaseBlocking": true, "requirementIDs": ["P4-29", "P3-27"], "target": "tests.test_priority3_runtime.Priority3RuntimeTests.test_projection_exact_contract_digest_and_old_app_upgrade"},
+    {"caseID": "ADV-MIGRATION-001", "class": "migration-rollback", "severity": "critical", "expectedOutcome": "fail-closed", "releaseBlocking": true, "requirementIDs": ["P4-29", "P3-27"], "target": "tests.test_priority3_runtime.Priority3RuntimeTests.test_projection_migration_future_database_rejection_and_tamper_detection"},
+    {"caseID": "ADV-ACTION-001", "class": "external-action", "severity": "critical", "expectedOutcome": "fail-closed", "releaseBlocking": true, "requirementIDs": ["P4-29", "P3-25"], "target": "tests.test_priority3_runtime.Priority3RuntimeTests.test_user_confirmation_is_exact_one_time_and_native_readback_is_required"},
+    {"caseID": "ADV-TIME-001", "class": "temporal-rollover", "severity": "high", "expectedOutcome": "fail-closed", "releaseBlocking": true, "requirementIDs": ["P4-29", "P1-16"], "target": "tests.test_priority1_pipeline.PriorityOnePlanningPipelineAcceptanceTests.test_tomorrow_rollover_never_reuses_todays_calendar"},
+    {"caseID": "ADV-REPLAY-001", "class": "idempotency-replay", "severity": "high", "expectedOutcome": "fail-closed", "releaseBlocking": true, "requirementIDs": ["P4-29", "P3-24"], "target": "tests.test_priority3_runtime.Priority3RuntimeTests.test_idempotency_conflict_optimistic_versions_retry_dead_letter_replay_and_rebuild"},
+    {"caseID": "ADV-CONNECTOR-001", "class": "connector-admission", "severity": "critical", "expectedOutcome": "fail-closed", "releaseBlocking": true, "requirementIDs": ["P4-29", "P4-31", "P4-32"], "target": "tests.test_priority4_evaluation.Priority4EvaluationTests.test_jira_is_evaluating_and_unknown_or_unapproved_connector_fails_closed"},
+    {"caseID": "ADV-INJECTION-001", "class": "instruction-injection", "severity": "critical", "expectedOutcome": "ignore-untrusted-instructions", "releaseBlocking": true, "requirementIDs": ["P4-29"], "target": "tests.test_priority4_evaluation.Priority4EvaluationTests.test_untrusted_instruction_text_cannot_change_connector_or_gate_state"},
+    {"caseID": "ADV-PATH-001", "class": "path-safety", "severity": "critical", "expectedOutcome": "fail-closed", "releaseBlocking": true, "requirementIDs": ["P4-29", "P2-22"], "target": "CommandCenterContractTests.testGovernedPathRejectsTraversalAndSymlinkEscape"},
+    {"caseID": "ADV-READBACK-001", "class": "readback-forgery", "severity": "critical", "expectedOutcome": "fail-closed", "releaseBlocking": true, "requirementIDs": ["P4-29", "P4-30"], "target": "tests.test_priority4_evaluation.Priority4EvaluationTests.test_readback_requires_exact_projection_digest_and_one_known_view"}
+  ]
+}

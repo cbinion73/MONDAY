@@ -15,6 +15,7 @@ MONDAY Core owns intake, routing, source selection, evidence labeling, authority
 | Research Chronicle | Monday Knowledge `500 Research Journal` | `monday-research-chronicle`, with review before durable promotion |
 | Visual projection | Versioned Command Center payload | `monday-planning-pipeline`, `monday-command-center`; projection only |
 | Governed professional and personal Twin claims | Separate stores under `$MONDAY_TWIN_ROOT`, default `~/.codex/monday-twin` | `monday-digital-twin`; derived claim index only |
+| Evaluation, release, connector admission, and pilot evidence | `$MONDAY_EVALUATION_ROOT`, default `~/.codex/monday-evaluation` | `monday-evaluation`; evidence-locked control record only |
 
 Connected systems are evidence sources, not durable memory. Conversation and model memory may help locate evidence but never replace the owning record for consequential facts.
 
@@ -46,6 +47,7 @@ Do not ask for information that can be safely discovered. Ask when the missing c
 5. Add `monday-thermo-quality-assurance` before consequential Thermo work is final.
 6. Add planning and Command Center capabilities only when an integrated plan or cockpit projection is needed.
 7. Use Atlas, Nexus, and CRG Notebook Reviewer as independent products; MONDAY may coordinate them but never absorbs their records or methods.
+8. Add `monday-evaluation` for a MONDAY release, connector expansion, bounded pilot, or readiness claim. Its release, pilot, connector, and enterprise gates remain distinct.
 
 ## Cross-domain reconciliation
 

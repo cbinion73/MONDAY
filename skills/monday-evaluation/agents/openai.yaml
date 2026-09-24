@@ -1,0 +1,4 @@
+interface:
+  display_name: "MONDAY Evaluation"
+  short_description: "Govern releases, connectors, pilots, and readiness claims."
+  default_prompt: "Use $monday-evaluation to evaluate MONDAY against its governed release and pilot gates."

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.monday/evaluation-suite.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "suiteID", "suiteVersion", "coverageRoots", "runners", "adversarialCases", "requiredAdversarialClasses"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "suiteID": {"type": "string", "minLength": 1},
+    "suiteVersion": {"type": "string", "minLength": 1},
+    "coverageRoots": {"type": "array", "minItems": 1},
+    "runners": {"type": "array", "minItems": 1},
+    "adversarialCases": {"type": "array", "minItems": 1},
+    "requiredAdversarialClasses": {"type": "array", "minItems": 1, "uniqueItems": true}
+  }
+}

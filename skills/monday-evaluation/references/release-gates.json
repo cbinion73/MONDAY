@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "gateSetID": "monday-priority4-release-gates-v1",
+  "verdicts": ["PASS", "PASS WITH CONDITIONS", "FAIL", "BLOCKED"],
+  "gates": [
+    {
+      "id": "engineering-release",
+      "requirements": ["blocking-deterministic-pass-100", "critical-high-adversarial-pass-100", "zero-critical-control-failures", "validators-pass", "plugin-parity-pass", "app-tests-build-signature-compatibility-pass", "unresolved-blocking-zero"]
+    },
+    {
+      "id": "pilot-start",
+      "requirements": ["engineering-release-pass", "priority0-pass", "priority1-items11-17-pass", "priority2-pass", "priority3-pass", "pilot-plan-approved", "pilot-connectors-admitted", "open-critical-alerts-zero"]
+    },
+    {
+      "id": "connector-activation",
+      "requirements": ["named-use-case", "owner", "exact-route", "authority-model", "bounded-scope", "privacy-allowlist", "failure-semantics", "acceptance-tests-pass", "live-canary-pass", "allowed-consumers", "read-only", "chris-approval"]
+    },
+    {
+      "id": "enterprise-claim",
+      "requirements": ["bounded-pilot-accepted", "representative-multi-user-pilot-accepted", "security-approval", "privacy-approval", "compliance-approval", "deployment-approval", "support-recovery-ownership", "distribution-ready"]
+    }
+  ]
+}

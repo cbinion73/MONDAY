@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.monday/pilot-plan.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "pilotID", "participant", "device", "timezone", "startDate", "businessDays", "checkpointTimes", "tier1SourceIDs", "tier2ConnectorIDs", "tier3ConnectorIDs", "plannedCheckpointCount", "plannedTier1AttemptCount", "approvedBy", "approvedAt", "engineeringReleaseVerdict", "idempotencyKey"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "pilotID": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+    "participant": {"const": "Chris"},
+    "device": {"type": "string", "minLength": 1},
+    "timezone": {"const": "America/New_York"},
+    "startDate": {"type": "string", "format": "date"},
+    "businessDays": {"const": 5},
+    "checkpointTimes": {"const": ["06:01", "12:31", "17:01"]},
+    "tier1SourceIDs": {"const": ["outlook-calendar", "outlook-email", "onedrive-files", "teams", "sharepoint-files"]},
+    "tier2ConnectorIDs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "tier3ConnectorIDs": {"maxItems": 0},
+    "plannedCheckpointCount": {"const": 15},
+    "plannedTier1AttemptCount": {"const": 75},
+    "approvedBy": {"const": "Chris"},
+    "approvedAt": {"type": "string", "minLength": 1},
+    "engineeringReleaseVerdict": {"const": "PASS"},
+    "idempotencyKey": {"type": "string", "minLength": 1}
+  }
+}

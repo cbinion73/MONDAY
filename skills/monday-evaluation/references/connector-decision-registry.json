@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "registryID": "monday-connector-decisions-v1",
+  "statuses": ["proposed", "evaluating", "approved-for-pilot", "active", "rejected", "retired"],
+  "connectors": [
+    {
+      "connectorID": "twg-jira",
+      "tier": 2,
+      "status": "evaluating",
+      "route": "twg-jira",
+      "sourceID": "jira-workitems",
+      "useCase": "Bounded read-only evidence for Chris-assigned workitems and linked professional project status.",
+      "owner": "monday-thermo-project-intelligence",
+      "authorityRole": "evidence",
+      "authoritativeRecord": "project-knowledge",
+      "readOnly": true,
+      "scopeRequired": ["account", "boundedQuery", "windowStart", "windowEnd"],
+      "maximumItems": 100,
+      "privacyAllowlist": ["occurredAt", "safeSummary", "projectIDs", "evidenceClass", "signalType", "sourceLocator"],
+      "notProofOf": ["project-completion", "business-outcome", "acceptance", "complete-work-coverage"],
+      "allowedConsumers": ["monday-thermo-project-intelligence", "monday-planning-pipeline"],
+      "planningImpact": "advisory-only",
+      "liveCanary": {"required": true, "status": "not-run", "evidenceDigest": null},
+      "approval": {"required": true, "approvedBy": null, "approvedAt": null, "decisionDigest": null}
+    }
+  ],
+  "tier3Policy": {
+    "activeCount": 0,
+    "admissionRequirements": ["specific-use-case", "named-owner", "authority-model", "data-classification-retention", "read-write-boundary", "external-action-mapping-if-write", "acceptance-and-adversarial-tests", "pilot-design", "chris-digest-bound-approval"]
+  }
+}

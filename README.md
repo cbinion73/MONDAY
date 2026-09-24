@@ -59,3 +59,15 @@ python3 -m unittest tests.test_priority2_twin -v
 ```
 
 See `docs/PRIORITY-2-RELEASE.md` for the privacy, lifecycle, application, and publishing release gates.
+
+## Evaluation, expansion, and pilot gates
+
+`monday-evaluation` inventories and executes the governed behavioral and adversarial suite, produces evidence-locked release decisions, controls Tier 2 and Tier 3 connector admission, and records bounded pilot evidence. Jira through TWG is evaluating, not active. No Tier 3 integration is active. The first pilot cannot start until Priority 1 item 17 has unattended next-day proof, and no single-user pilot authorizes an enterprise-readiness claim.
+
+```bash
+python3 scripts/monday_evaluation.py audit-contracts
+python3 scripts/monday_evaluation.py run
+python3 scripts/monday_evaluation.py project
+```
+
+See `docs/PRIORITY-4-RELEASE.md` for exact gates and pilot acceptance.

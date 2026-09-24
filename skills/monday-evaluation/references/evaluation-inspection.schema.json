@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.monday/evaluation-inspection.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "projectionID", "contentDigest", "generatedAt", "validUntil", "producer", "audience", "releaseCandidate", "suite", "caseCoverage", "gateResults", "connectorDecisions", "pilot", "enterpriseClaim", "evidence", "coverage"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "projectionID": {"type": "string", "pattern": "^evaluation-[a-zA-Z0-9._-]{8,160}$"},
+    "contentDigest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "generatedAt": {"type": "string"},
+    "validUntil": {"type": "string"},
+    "producer": {"const": "monday-evaluation"},
+    "audience": {"const": "Chris-private-local"},
+    "releaseCandidate": {"type": "object", "additionalProperties": false, "required": ["releaseID", "pluginVersion", "pluginCommit", "appVersion", "appBuild", "appCommit", "minimumPluginVersion", "maximumPluginVersionExclusive", "minimumAppVersion", "maximumAppVersionExclusive", "compatibilityStatus"]},
+    "suite": {"type": "object", "additionalProperties": false, "required": ["suiteID", "suiteVersion", "suiteDigest", "requiredCaseCount"]},
+    "caseCoverage": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["caseID", "category", "severity", "result", "releaseBlocking", "requirementIDs", "evidenceIDs"]}},
+    "gateResults": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["gateID", "status", "evaluatedAt", "reasonCodes", "evidenceIDs"]}},
+    "connectorDecisions": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["connectorID", "tier", "status", "route", "sourceID", "authenticationState", "coverageState", "itemCount", "processedCount", "unresolvedCount", "readOnly", "approvalState", "evidenceIDs"]}},
+    "pilot": {"type": "object", "additionalProperties": false, "required": ["pilotID", "status", "cohort", "timezone", "plannedBusinessDays", "plannedCheckpoints", "attemptedCheckpoints", "unattendedRolloversPlanned", "unattendedRolloversCompleted", "tier1AttemptsPlanned", "tier1AttemptsRecorded", "manualInterventionCount", "disposition", "evidenceIDs"]},
+    "enterpriseClaim": {"type": "object", "additionalProperties": false, "required": ["status", "claimAllowed", "scope", "safeStatement", "unmetRequirementIDs"]},
+    "evidence": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["evidenceID", "kind", "status", "observedAt", "safeSummary"]}},
+    "coverage": {"type": "object", "additionalProperties": false, "required": ["caseCount", "gateCount", "connectorCount", "evidenceCount", "passedCaseCount", "failedCaseCount", "blockedCaseCount", "skippedCaseCount", "notRunCaseCount", "releaseBlockingCount", "releaseBlockingPassedCount", "unresolvedCount"]}
+  }
+}

@@ -21,12 +21,14 @@ Own intake, routing, authority boundaries, evidence discipline, quality gates, f
 
 Use `monday-runtime` for durable multi-step execution, retry or recovery, or any externally consequential action. The runtime records and gates the work; connector-owning capabilities still perform source-native operations.
 
+Use `monday-evaluation` for MONDAY release, connector expansion, pilot, or readiness decisions. A passing subset, authenticated connector, single successful day, or single-user pilot never becomes an enterprise-readiness claim.
+
 ## Deterministic preflight
 
 For consequential, cross-domain, automated, or externally consequential work, create a small orchestration request and run:
 
 ```bash
-python3 scripts/monday_core.py preflight --request <request.json>
+python3 skills/monday-core/scripts/monday_core.py preflight --request <request.json>
 ```
 
 Use `registry` to inspect capabilities and `validate-registry` after changing skills. Use `validate-synthesis` before treating a structured cross-domain result as final. Schemas and examples are in [the orchestration envelope contract](references/orchestration-envelope.md).

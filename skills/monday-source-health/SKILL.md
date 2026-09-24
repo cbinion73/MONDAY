@@ -21,3 +21,5 @@ Read [the source manifest contract](references/source-manifest.md) before adding
 Read [the connector routing contract](references/connector-routing.md) before collecting Microsoft evidence or changing a connector lane.
 Read [the bounded collection envelope contract](references/collection-envelope.md) before normalizing connector output.
 Follow [the five Tier 1 collector procedures](references/tier1-collectors.md) for Calendar, Email, OneDrive, Teams, and SharePoint.
+
+For any non-Tier-1 connector, use `monday-evaluation` first. Do not stage an evaluating, unregistered, rejected, or retired connector as canonical evidence. A pilot connector remains optional and cannot repair a missing Tier 1 lane.
