@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "observedAt": "2026-09-24T15:32:26-04:00",
+  "observedAt": "2026-09-24T12:31:14-04:00",
   "priorities": {
     "0": {"status": "PASS", "items": {"1-10": "PASS"}},
     "1": {"status": "PARTIAL", "items": {"11-16": "PASS", "17": "BLOCKED"}, "blocker": "No unattended next-day run has completed publication and matching app readback without manual repair."},
