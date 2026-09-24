@@ -16,6 +16,7 @@ receipt. Publication alone is not proof that the app displayed the plan.
 - [Product requirements](docs/PRODUCT-REQUIREMENTS.md)
 - [Product boundary](docs/PRODUCT-BOUNDARY.md)
 - [Repository structure](docs/REPO-STRUCTURE.md)
+- [Authoritative Codex plugin source](docs/CODEX-PLUGIN-SOURCE.md)
 
 ## Current posture
 
