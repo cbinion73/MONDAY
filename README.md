@@ -71,3 +71,9 @@ python3 scripts/monday_evaluation.py project
 ```
 
 See `docs/PRIORITY-4-RELEASE.md` for exact gates and pilot acceptance.
+
+## Consolidated implementation record
+
+See `docs/IMPLEMENTATION-STATUS-2026-09-24.md` for the complete Priority 0
+through Priority 4 change record, release identities, verification evidence,
+remaining acceptance gates, operational limits, and rollback posture.
