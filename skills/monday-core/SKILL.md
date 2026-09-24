@@ -19,6 +19,8 @@ Own intake, routing, authority boundaries, evidence discipline, quality gates, f
 8. **Publish only when requested or operationally required.** Use `monday-planning-pipeline`, then `monday-command-center`. A written projection is `published`; it is `displayed` only after matching `planID` and schema readback.
 9. **Record proportionately.** Use `monday-activity-ledger` for observable MONDAY activity and `monday-operations` for system receipts. Route authoritative project, personal-project, decision, journal, and research changes to their owning skills and records.
 
+Use `monday-runtime` for durable multi-step execution, retry or recovery, or any externally consequential action. The runtime records and gates the work; connector-owning capabilities still perform source-native operations.
+
 ## Deterministic preflight
 
 For consequential, cross-domain, automated, or externally consequential work, create a small orchestration request and run:

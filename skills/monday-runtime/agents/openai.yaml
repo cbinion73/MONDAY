@@ -1,0 +1,4 @@
+interface:
+  display_name: "MONDAY Runtime"
+  short_description: "Run and recover governed durable MONDAY workflows."
+  default_prompt: "Monday, inspect runtime health and show only actionable recovery needs."

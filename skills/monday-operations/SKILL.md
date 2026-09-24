@@ -12,3 +12,5 @@ Use the plugin-root `scripts/monday_system.py record-operation` command for rece
 Never conceal corrections, source gaps, or partial runs. An operations receipt cannot itself prove that a project, Calendar change, message, or app display was completed.
 
 Read [the operations contract](references/operations-contract.md) when adding a new receipt type or health field.
+
+Use `monday-runtime` when an operation needs durable workflow state, retry, dead-letter recovery, guarded replay, external-action confirmation/readback, compatibility handling, or the Command Center Operations projection. A narrative Operations receipt does not replace runtime state.

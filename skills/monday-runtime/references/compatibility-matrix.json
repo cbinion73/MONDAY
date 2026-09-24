@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "runtimeDatabaseVersion": 1,
+  "operationsProjectionVersion": 1,
+  "operationsReadbackVersion": 1,
+  "supportedAppVersions": {
+    "minimumInclusive": "0.4.0",
+    "maximumExclusive": "0.5.0"
+  },
+  "retryPolicy": {
+    "classifications": ["transient", "permanent", "uncertain"],
+    "workflowMaximumAttempts": 10,
+    "externalAutomaticRetry": false
+  },
+  "alertPolicy": {
+    "staleExternalActionMinutes": 15,
+    "failureWindowMinutes": 60,
+    "failureCountThreshold": 3,
+    "morningPipelineDeadline": "06:16-local",
+    "knownRunningAppReadbackMinutes": 5,
+    "blockedMinutes": 30,
+    "stalledLeaseMinutes": 15,
+    "deduplication": "code-plus-entity",
+    "cooldownMinutes": 15,
+    "resolution": "authoritative-state-no-longer-meets-trigger"
+  },
+  "projectionMigrations": [
+    {
+      "id": "operations-projection-0-to-1",
+      "from": 0,
+      "to": 1,
+      "lossless": false,
+      "requiresReview": true
+    }
+  ]
+}
