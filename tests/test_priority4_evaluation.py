@@ -422,6 +422,18 @@ class Priority4EvaluationTests(unittest.TestCase):
             self.assertEqual(module.release_plugin_commit(report), report["plugin"]["commit"])
             self.assertEqual(module.release_plugin_commit({"plugin": {"version": "0.1.9", "commit": "a" * 40}}), "unknown")
 
+    def test_release_evidence_accepts_registered_app_range_not_one_exact_build(self) -> None:
+        spec = importlib.util.spec_from_file_location("monday_evaluation_compatibility_test", SCRIPT)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self.assertTrue(module.supported_evaluation_app_release("0.4.2", 17))
+        self.assertTrue(module.supported_evaluation_app_release("0.4.3", 18))
+        self.assertFalse(module.supported_evaluation_app_release("0.4.1", 16))
+        self.assertFalse(module.supported_evaluation_app_release("0.5.0", 19))
+        self.assertFalse(module.supported_evaluation_app_release("invalid", 18))
+
     def test_projection_selects_latest_evidence_by_timestamp_not_path_name(self) -> None:
         old_path = self.runtime / "runs/z-old/evaluation-report.json"
         new_path = self.runtime / "runs/a-new/evaluation-report.json"

@@ -229,6 +229,14 @@ def command_receipt(command: list[str], cwd: Path | None = None) -> dict[str, An
     }
 
 
+def supported_evaluation_app_release(version: str, build: int) -> bool:
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+    if not match:
+        return False
+    semantic = tuple(int(part) for part in match.groups())
+    return (0, 4, 2) <= semantic < (0, 5, 0) and build >= 17
+
+
 def collect_release_evidence(app_repo: Path, installed_plugin: Path, installed_app: Path, evidence_id: str, apply: bool) -> dict[str, Any]:
     if not evidence_id or not re.fullmatch(r"[A-Za-z0-9._-]+", evidence_id):
         raise EvaluationError("release evidence requires a safe evidence ID")
@@ -255,7 +263,7 @@ def collect_release_evidence(app_repo: Path, installed_plugin: Path, installed_a
     manifest = load_json(PLUGIN_ROOT / ".codex-plugin/plugin.json")
     capabilities = manifest.get("interface", {}).get("capabilities", [])
     compatibility = {
-        "status": "PASS" if "Behavioral evaluation and bounded pilots" in capabilities and app_version == "0.4.2" and app_build == 17 else "FAIL",
+        "status": "PASS" if "Behavioral evaluation and bounded pilots" in capabilities and supported_evaluation_app_release(app_version, app_build) else "FAIL",
         "pluginVersion": plugin_version(),
         "pluginCommit": git_value(PLUGIN_ROOT, "rev-parse", "HEAD") or "unknown",
         "appVersion": app_version,
