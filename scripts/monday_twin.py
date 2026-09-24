@@ -732,10 +732,12 @@ def privacy_reduced_record(record: dict[str, Any]) -> dict[str, Any] | None:
 def build_projection() -> dict[str, Any]:
     records = [item for item in (privacy_reduced_record(record) for record in all_records()) if item is not None]
     events = read_events()[-100:]
-    reduced_events = [
-        {key: item.get(key) for key in ("eventID", "occurredAt", "action", "domain", "recordID", "reason", "beforeVersion", "afterVersion", "result")}
-        for item in events
-    ]
+    reduced_events = []
+    for item in events:
+        reduced = {key: item.get(key) for key in ("eventID", "occurredAt", "action", "domain", "recordID", "reason", "beforeVersion", "afterVersion", "result")}
+        if isinstance(reduced.get("reason"), str):
+            reduced["reason"], _ = redact_text(reduced["reason"])
+        reduced_events.append(reduced)
     policy = opt_outs()
     audit = audit_contracts()
     promise_matrix = load_json(PROMISE_MATRIX, {})
@@ -758,7 +760,11 @@ def build_projection() -> dict[str, Any]:
         for path in sorted(state_root.glob("*.json")):
             state = load_json(path)
             if isinstance(state, dict):
-                playbooks.append({key: state.get(key) for key in ("playbookID", "title", "state", "updatedAt", "audience", "qaVerdict", "packageDigest")})
+                reduced = {key: state.get(key) for key in ("playbookID", "title", "state", "updatedAt", "audience", "qaVerdict", "packageDigest")}
+                for key in ("title", "audience"):
+                    if isinstance(reduced.get(key), str):
+                        reduced[key], _ = redact_text(reduced[key])
+                playbooks.append(reduced)
     generated = now()
     core = {
         "schemaVersion": PROJECTION_SCHEMA_VERSION,
@@ -785,6 +791,9 @@ def build_projection() -> dict[str, Any]:
     }
     core["contentDigest"] = digest(core)
     core["projectionID"] = f"twin-{generated.date().isoformat()}-{core['contentDigest'][:12]}"
+    residual = forbidden_patterns(json.dumps(core, ensure_ascii=False))
+    if residual:
+        raise ValueError(f"Twin projection failed privacy scan: {', '.join(sorted(set(residual)))}")
     return core
 
 
@@ -808,6 +817,9 @@ def validate_projection(payload: Any) -> dict[str, Any]:
     core.pop("projectionID")
     if digest(core) != claimed_digest:
         raise ValueError("Twin projection content digest does not match")
+    residual = forbidden_patterns(json.dumps(payload, ensure_ascii=False))
+    if residual:
+        raise ValueError(f"Twin projection contains prohibited material: {', '.join(sorted(set(residual)))}")
     if not isinstance(payload["records"], list):
         raise ValueError("Twin projection records must be a list")
     if not isinstance(payload["promises"], list) or not isinstance(payload["authoritySources"], list) or not isinstance(payload["authorityRecords"], list):
@@ -934,6 +946,21 @@ def review_playbook(playbook_id: str, decision: str, reviewer: str, reason: str,
     return {"status": reviewed["state"], "state": reviewed, "applied": apply}
 
 
+def assert_playbook_sources_current(state: dict[str, Any]) -> None:
+    sources = state.get("sourceVersions")
+    if not isinstance(sources, list) or not sources:
+        raise ValueError("playbook source-version binding is missing")
+    for source in sources:
+        if not isinstance(source, dict):
+            raise ValueError("playbook source-version binding is invalid")
+        current = load_json(record_path("professional", source.get("recordID", "")))
+        if not isinstance(current, dict) or current.get("version") != source.get("version") or current.get("status") != "active":
+            raise ValueError("a source record changed after playbook drafting; rebuild and reapprove")
+        block = capture_block(validate_record(current, "professional"))
+        if block:
+            raise ValueError(f"a source record is now opted out; rebuild is required: {block}")
+
+
 def prepare_publication(playbook_id: str, destination: str, confirmation_id: str, apply: bool) -> dict[str, Any]:
     draft = load_json(PLAYBOOK_ROOT / "drafts" / f"{playbook_id}.json")
     state = load_json(playbook_state_path(playbook_id))
@@ -943,12 +970,7 @@ def prepare_publication(playbook_id: str, destination: str, confirmation_id: str
         raise ValueError("playbook changed after approval")
     if not isinstance(destination, str) or not destination.strip() or not isinstance(confirmation_id, str) or len(confirmation_id.strip()) < 8:
         raise ValueError("exact destination and current confirmation ID are required")
-    for source in state.get("sourceVersions", []):
-        current = load_json(record_path("professional", source.get("recordID", "")))
-        if not isinstance(current, dict) or current.get("version") != source.get("version") or current.get("status") != "active":
-            raise ValueError("a source record changed after playbook drafting; rebuild and reapprove")
-        if capture_block(validate_record(current, "professional")):
-            raise ValueError("a source record is now opted out; rebuild is required")
+    assert_playbook_sources_current(state)
     markdown_lines = [f"# {draft['title']}", "", draft["purpose"], ""]
     for claim in draft["claims"]:
         markdown_lines.append(f"- {claim['statement']} ({claim['evidenceClass']}, confidence {claim['confidence']:.2f})")
@@ -988,6 +1010,7 @@ def record_publication_attempt(playbook_id: str, package_digest: str, confirmati
         raise ValueError("only a prepared playbook can record an external attempt")
     if state.get("packageDigest") != package_digest or state.get("confirmationID") != confirmation_id:
         raise ValueError("publication attempt must match the exact approved package and confirmation")
+    assert_playbook_sources_current(state)
     attempted = dict(state)
     attempted.update({"state": "attempted", "updatedAt": iso(), "attemptedAt": iso()})
     if apply:

@@ -280,6 +280,42 @@ class Priority2TwinTests(unittest.TestCase):
         self.assertNotEqual(denied.returncode, 0)
         self.assertIn("changed after", denied.stderr)
 
+    def test_prepared_playbook_cannot_be_attempted_after_source_correction(self) -> None:
+        self.capture(self.record())
+        spec = {"schemaVersion": 1, "playbookID": "prepared-stale", "title": "Prepared", "purpose": "Test action-time revalidation", "audience": "Approved collaborator", "recordIDs": ["work-style"]}
+        drafted = json.loads(self.invoke("prepare-playbook", "--input", str(self.write("prepared-stale.json", spec)), "--apply").stdout)
+        self.invoke("review-playbook", "--playbook-id", "prepared-stale", "--decision", "approve", "--reviewer", "Chris Binion", "--reason", "Approved", "--expected-digest", drafted["draft"]["draftDigest"], "--apply")
+        prepared = json.loads(self.invoke("prepare-publication", "--playbook-id", "prepared-stale", "--destination", "approved-repository", "--confirmation-id", "confirm-123456", "--apply").stdout)
+        replacement = self.record(version=2, updated_offset=1, supersedes="work-style@1")
+        self.invoke("correct", "--domain", "professional", "--record-id", "work-style", "--input", str(self.write("prepared-corrected.json", replacement)), "--expected-version", "1", "--reason", "Changed", "--apply")
+        denied = self.invoke("record-publication-attempt", "--playbook-id", "prepared-stale", "--package-digest", prepared["package"]["packageDigest"], "--confirmation-id", "confirm-123456", "--apply", check=False)
+        self.assertNotEqual(denied.returncode, 0)
+        self.assertIn("changed after", denied.stderr)
+
+    def test_prepared_playbook_cannot_be_attempted_after_source_opt_out(self) -> None:
+        self.capture(self.record())
+        spec = {"schemaVersion": 1, "playbookID": "prepared-optout", "title": "Prepared", "purpose": "Test action-time opt-out", "audience": "Approved collaborator", "recordIDs": ["work-style"]}
+        drafted = json.loads(self.invoke("prepare-playbook", "--input", str(self.write("prepared-optout.json", spec)), "--apply").stdout)
+        self.invoke("review-playbook", "--playbook-id", "prepared-optout", "--decision", "approve", "--reviewer", "Chris Binion", "--reason", "Approved", "--expected-digest", drafted["draft"]["draftDigest"], "--apply")
+        prepared = json.loads(self.invoke("prepare-publication", "--playbook-id", "prepared-optout", "--destination", "approved-repository", "--confirmation-id", "confirm-123456", "--apply").stdout)
+        self.invoke("opt-out", "--scope", "source", "--key", "project-knowledge", "--enabled", "yes", "--reason", "Chris opted out", "--apply")
+        denied = self.invoke("record-publication-attempt", "--playbook-id", "prepared-optout", "--package-digest", prepared["package"]["packageDigest"], "--confirmation-id", "confirm-123456", "--apply", check=False)
+        self.assertNotEqual(denied.returncode, 0)
+        self.assertIn("opted out", denied.stderr)
+
+    def test_projection_redacts_governance_and_playbook_metadata(self) -> None:
+        self.capture(self.record())
+        private = "Private statement at user@example.com in /Users/chris/private.txt"
+        self.invoke("opt-out", "--scope", "record-type", "--key", "capability", "--enabled", "yes", "--reason", private, "--apply")
+        spec = {"schemaVersion": 1, "playbookID": "metadata-redaction", "title": private, "purpose": "Projection privacy test", "audience": private, "recordIDs": ["work-style"]}
+        self.invoke("prepare-playbook", "--input", str(self.write("metadata-redaction.json", spec)), "--apply")
+        projection = json.loads(self.invoke("project", "--apply").stdout)
+        rendered = json.dumps(projection)
+        self.assertNotIn("user@example.com", rendered)
+        self.assertNotIn("/Users/chris/private.txt", rendered)
+        self.assertIn("[REDACTED EMAIL]", rendered)
+        self.assertIn("[REDACTED PATH]", rendered)
+
 
 if __name__ == "__main__":
     unittest.main()
