@@ -102,6 +102,17 @@ class Priority2TwinTests(unittest.TestCase):
         self.assertIn("not authorized", result.stderr)
         self.assertFalse((self.twin / "records/professional/work-style.json").exists())
 
+    def test_unsupported_twin_inference_is_rejected(self) -> None:
+        payload = self.record(evidence_class="inferred")
+        denied = self.invoke("capture", "--input", str(self.write("unsupported-inference.json", payload)), "--apply", check=False)
+        self.assertNotEqual(denied.returncode, 0)
+        self.assertIn("inferenceBasis is required", denied.stderr)
+        self.assertFalse((self.twin / "records/professional/work-style.json").exists())
+
+        payload["inferenceBasis"] = "The claim is a bounded interpretation of the identified governed project evidence."
+        accepted = json.loads(self.invoke("capture", "--input", str(self.write("supported-inference.json", payload)), "--apply").stdout)
+        self.assertEqual(accepted["status"], "captured")
+
     def test_journal_source_capture_is_rejected(self) -> None:
         payload = self.record(source_id="captains-log")
         result = self.invoke("capture", "--input", str(self.write("journal.json", payload)), check=False)

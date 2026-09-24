@@ -231,7 +231,7 @@ class Priority4EvaluationTests(unittest.TestCase):
         self.assertEqual(value["status"], "PASS")
         self.assertGreaterEqual(value["discovered"]["python"], 76)
         self.assertGreaterEqual(value["discovered"]["swift"], 27)
-        self.assertEqual(value["adversarialClassCount"], 16)
+        self.assertEqual(value["adversarialClassCount"], 17)
         self.assertEqual(value["tier3ActiveCount"], 0)
         self.assertEqual(len(value["testInventory"]["python"]), value["discovered"]["python"])
 

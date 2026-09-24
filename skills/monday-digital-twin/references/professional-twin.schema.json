@@ -23,10 +23,12 @@
     "learningAllowed": {"const": true},
     "consentBasis": {"enum": ["explicit", "user-supplied", "governed-record"]},
     "sourceRefs": {"type": "array", "minItems": 1, "maxItems": 20, "items": {"$ref": "#/$defs/sourceRef"}},
+    "inferenceBasis": {"type": "string", "minLength": 10, "maxLength": 1000},
     "contradictions": {"type": "array", "maxItems": 20, "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"}},
     "supersedes": {"type": ["string", "null"]},
     "projection": {"$ref": "#/$defs/projection"}
   },
+  "allOf": [{"if": {"properties": {"evidenceClass": {"const": "inferred"}}}, "then": {"required": ["inferenceBasis"]}, "else": {"not": {"required": ["inferenceBasis"]}}}],
   "$defs": {
     "sourceRef": {"type": "object", "additionalProperties": false, "required": ["sourceID", "evidenceID", "sourceDate", "capturedAt"], "properties": {"sourceID": {"type": "string"}, "evidenceID": {"type": "string", "pattern": "^[a-zA-Z0-9._:-]{3,160}$"}, "sourceDate": {"type": "string", "format": "date-time"}, "capturedAt": {"type": "string", "format": "date-time"}, "locator": {"type": "string", "maxLength": 300}}},
     "projection": {"type": "object", "additionalProperties": false, "required": ["includeInCommandCenter", "includeStatement"], "properties": {"includeInCommandCenter": {"type": "boolean"}, "includeStatement": {"type": "boolean"}}}

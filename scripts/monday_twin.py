@@ -49,9 +49,9 @@ CONSENT = {"professional": {"explicit", "user-supplied", "governed-record"}, "pe
 RECORD_KEYS = {
     "schemaVersion", "recordID", "domain", "recordType", "statement", "purpose", "evidenceClass", "confidence",
     "sensitivity", "status", "version", "createdAt", "updatedAt", "reviewAt", "learningAllowed", "consentBasis",
-    "sourceRefs", "contradictions", "supersedes", "projection",
+    "sourceRefs", "contradictions", "supersedes", "inferenceBasis", "projection",
 }
-REQUIRED_RECORD_KEYS = RECORD_KEYS - {"contradictions", "supersedes"}
+REQUIRED_RECORD_KEYS = RECORD_KEYS - {"contradictions", "supersedes", "inferenceBasis"}
 SOURCE_REF_KEYS = {"sourceID", "evidenceID", "sourceDate", "capturedAt", "locator"}
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{2,127}$")
 OPAQUE_LOCATOR = re.compile(r"^[a-zA-Z0-9._:-]{3,300}$")
@@ -223,8 +223,15 @@ def validate_record(payload: Any, expected_domain: str | None = None) -> dict[st
         raise ValueError("statement must contain 1 to 2000 characters")
     if not isinstance(purpose, str) or not 1 <= len(purpose.strip()) <= 500:
         raise ValueError("purpose must contain 1 to 500 characters")
-    if payload.get("evidenceClass") not in EVIDENCE_CLASSES:
+    evidence_class = payload.get("evidenceClass")
+    if evidence_class not in EVIDENCE_CLASSES:
         raise ValueError("evidenceClass is invalid")
+    inference_basis = payload.get("inferenceBasis")
+    if evidence_class == "inferred":
+        if not isinstance(inference_basis, str) or not 10 <= len(inference_basis.strip()) <= 1000:
+            raise ValueError("inferenceBasis is required for inferred Twin claims and must contain 10 to 1000 characters")
+    elif inference_basis is not None:
+        raise ValueError("inferenceBasis is allowed only for inferred Twin claims")
     confidence = payload.get("confidence")
     if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not 0 <= confidence <= 1:
         raise ValueError("confidence must be between 0 and 1")
@@ -278,6 +285,8 @@ def validate_record(payload: Any, expected_domain: str | None = None) -> dict[st
     result["purpose"] = purpose.strip()
     result["sourceRefs"] = normalized_refs
     result["confidence"] = float(confidence)
+    if evidence_class == "inferred":
+        result["inferenceBasis"] = inference_basis.strip()
     return result
 
 
