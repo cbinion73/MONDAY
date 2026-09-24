@@ -21,8 +21,8 @@ from zoneinfo import ZoneInfo
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 REFERENCE_ROOT = PLUGIN_ROOT / "skills/monday-evaluation/references"
-DEFAULT_APP_REPO = Path("/Users/chris.binion/Documents/Codex/2026-09-11/https-github-com-cbinion73-monday-command/monday-command-center")
 ROOT = Path(os.environ.get("MONDAY_EVALUATION_ROOT", Path.home() / ".codex/monday-evaluation"))
+CONFIG_PATH = ROOT / "config.json"
 SUITE_PATH = REFERENCE_ROOT / "priority4-evaluation-suite.json"
 GATES_PATH = REFERENCE_ROOT / "release-gates.json"
 CONNECTORS_PATH = REFERENCE_ROOT / "connector-decision-registry.json"
@@ -99,6 +99,42 @@ def git_value(root: Path, *arguments: str) -> str | None:
 
 def plugin_version() -> str:
     return str(load_json(PLUGIN_ROOT / ".codex-plugin/plugin.json")["version"])
+
+
+def validate_app_repo(path: Path) -> Path:
+    resolved = path.expanduser().resolve()
+    if not (resolved / "project.yml").is_file() or not (resolved / "MondayCommandCenter.xcodeproj").is_dir() or not (resolved / "Tests/CommandCenterContractTests.swift").is_file():
+        raise EvaluationError("Command Center source repository is invalid; configure or pass its exact path")
+    return resolved
+
+
+def resolve_app_repo(explicit: str | Path | None = None) -> Path:
+    if explicit:
+        return validate_app_repo(Path(explicit))
+    configured = os.environ.get("MONDAY_COMMAND_CENTER_REPO")
+    if configured:
+        return validate_app_repo(Path(configured))
+    if CONFIG_PATH.exists():
+        value = load_json(CONFIG_PATH)
+        configured_path = value.get("commandCenterRepo") if isinstance(value, dict) else None
+        if configured_path:
+            return validate_app_repo(Path(str(configured_path)))
+    for candidate in [Path.cwd(), *Path.cwd().parents]:
+        if (candidate / "project.yml").is_file() and (candidate / "MondayCommandCenter.xcodeproj").is_dir():
+            return validate_app_repo(candidate)
+    raise EvaluationError("Command Center source repository is not configured; use configure --app-repo <path> --apply or pass --app-repo")
+
+
+def configure(app_repo: str, apply: bool) -> dict[str, Any]:
+    resolved = resolve_app_repo(app_repo)
+    value = {
+        "schemaVersion": 1,
+        "commandCenterRepo": str(resolved),
+        "configuredAt": iso(),
+    }
+    if apply:
+        atomic_json(CONFIG_PATH, value)
+    return {**value, "applied": apply}
 
 
 def parse_timestamp(value: Any, label: str) -> datetime:
@@ -920,16 +956,17 @@ def app_metadata(app_repo: Path) -> tuple[str, int]:
     return (version.group(1) if version else "0.4.2", int(build.group(1)) if build else 17)
 
 
-def project_inspection() -> dict[str, Any]:
+def project_inspection(app_repo: Path | None = None) -> dict[str, Any]:
+    app_repo = resolve_app_repo(app_repo)
     suite = load_json(SUITE_PATH)
-    audit = audit_contracts(DEFAULT_APP_REPO)
+    audit = audit_contracts(app_repo)
     reports = sorted(ROOT.glob("runs/*/evaluation-report.json"))
     release = sorted(ROOT.glob("release-decisions/*.json"))
     pilots = sorted(ROOT.glob("pilots/*/pilot-state.json"))
     latest_report = latest_json(reports)
     latest_release = latest_json(release)
     latest_pilot = latest_json(pilots)
-    app_version, app_build = app_metadata(DEFAULT_APP_REPO)
+    app_version, app_build = app_metadata(app_repo)
     roadmap = effective_roadmap()
     rollover_pass = roadmap["priorities"]["1"]["items"].get("17") == "PASS"
     evidence = [
@@ -977,7 +1014,7 @@ def project_inspection() -> dict[str, Any]:
     core = {
         "schemaVersion": 1, "generatedAt": iso(), "validUntil": iso(now() + timedelta(minutes=15)),
         "producer": "monday-evaluation", "audience": "Chris-private-local",
-        "releaseCandidate": {"releaseID": latest_report.get("runID", "priority4-not-evaluated") if latest_report else "priority4-not-evaluated", "pluginVersion": plugin_version(), "pluginCommit": git_value(PLUGIN_ROOT, "rev-parse", "HEAD") or "unknown", "appVersion": app_version, "appBuild": app_build, "appCommit": git_value(DEFAULT_APP_REPO, "rev-parse", "HEAD") or "unknown", "minimumPluginVersion": "0.1.0", "maximumPluginVersionExclusive": "0.2.0", "minimumAppVersion": "0.4.2", "maximumAppVersionExclusive": "0.5.0", "compatibilityStatus": "compatible"},
+        "releaseCandidate": {"releaseID": latest_report.get("runID", "priority4-not-evaluated") if latest_report else "priority4-not-evaluated", "pluginVersion": plugin_version(), "pluginCommit": git_value(PLUGIN_ROOT, "rev-parse", "HEAD") or "unknown", "appVersion": app_version, "appBuild": app_build, "appCommit": git_value(app_repo, "rev-parse", "HEAD") or "unknown", "minimumPluginVersion": "0.1.0", "maximumPluginVersionExclusive": "0.2.0", "minimumAppVersion": "0.4.2", "maximumAppVersionExclusive": "0.5.0", "compatibilityStatus": "compatible"},
         "suite": {"suiteID": suite["suiteID"], "suiteVersion": suite["suiteVersion"], "suiteDigest": digest(suite), "requiredCaseCount": len(case_coverage)},
         "caseCoverage": case_coverage,
         "gateResults": gate_results,
@@ -1017,10 +1054,11 @@ def input_json(path: str) -> dict[str, Any]:
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description=__doc__)
     commands = root.add_subparsers(dest="command", required=True)
-    audit = commands.add_parser("audit-contracts"); audit.add_argument("--app-repo", default=str(DEFAULT_APP_REPO))
+    configure_parser = commands.add_parser("configure"); configure_parser.add_argument("--app-repo", required=True); configure_parser.add_argument("--apply", action="store_true")
+    audit = commands.add_parser("audit-contracts"); audit.add_argument("--app-repo")
     listing = commands.add_parser("list-cases"); listing.add_argument("--category")
-    run = commands.add_parser("run"); run.add_argument("--app-repo", default=str(DEFAULT_APP_REPO)); run.add_argument("--run-id")
-    evidence = commands.add_parser("collect-release-evidence"); evidence.add_argument("--evidence-id", required=True); evidence.add_argument("--app-repo", default=str(DEFAULT_APP_REPO)); evidence.add_argument("--installed-plugin", required=True); evidence.add_argument("--installed-app", default=str(DEFAULT_INSTALLED_APP)); evidence.add_argument("--apply", action="store_true")
+    run = commands.add_parser("run"); run.add_argument("--app-repo"); run.add_argument("--run-id")
+    evidence = commands.add_parser("collect-release-evidence"); evidence.add_argument("--evidence-id", required=True); evidence.add_argument("--app-repo"); evidence.add_argument("--installed-plugin", required=True); evidence.add_argument("--installed-app", default=str(DEFAULT_INSTALLED_APP)); evidence.add_argument("--apply", action="store_true")
     gate = commands.add_parser("gate"); gate.add_argument("--gate", required=True); gate.add_argument("--run"); gate.add_argument("--evidence")
     connector = commands.add_parser("connector-review"); connector.add_argument("--input", required=True); connector.add_argument("--apply", action="store_true")
     commands.add_parser("connector-status")
@@ -1039,12 +1077,13 @@ def parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = parser().parse_args()
     try:
-        if args.command == "audit-contracts": result = audit_contracts(Path(args.app_repo).expanduser())
+        if args.command == "configure": result = configure(args.app_repo, args.apply)
+        elif args.command == "audit-contracts": result = audit_contracts(resolve_app_repo(args.app_repo))
         elif args.command == "list-cases":
             suite = load_json(SUITE_PATH); cases = suite["adversarialCases"]
             result = {"suiteID": suite["suiteID"], "cases": [item for item in cases if not args.category or item["class"] == args.category]}
-        elif args.command == "run": result = execute_suite(Path(args.app_repo).expanduser(), args.run_id)
-        elif args.command == "collect-release-evidence": result = collect_release_evidence(Path(args.app_repo).expanduser(), Path(args.installed_plugin).expanduser(), Path(args.installed_app).expanduser(), args.evidence_id, args.apply)
+        elif args.command == "run": result = execute_suite(resolve_app_repo(args.app_repo), args.run_id)
+        elif args.command == "collect-release-evidence": result = collect_release_evidence(resolve_app_repo(args.app_repo), Path(args.installed_plugin).expanduser(), Path(args.installed_app).expanduser(), args.evidence_id, args.apply)
         elif args.command == "gate":
             report = load_json(Path(args.run).expanduser()) if args.run else None
             evidence = input_json(args.evidence) if args.evidence else {}
@@ -1062,7 +1101,8 @@ def main() -> None:
         else:
             reports = list(ROOT.glob("runs/*/evaluation-report.json")); pilots = list(ROOT.glob("pilots/*/pilot-state.json"))
             latest_report_path = latest_path(reports); latest_pilot_path = latest_path(pilots)
-            result = {"status": "ok", "contractAudit": audit_contracts(DEFAULT_APP_REPO)["status"], "latestRun": str(latest_report_path) if latest_report_path else None, "latestPilot": str(latest_pilot_path) if latest_pilot_path else None, "inspection": str(INSPECTION_PATH)}
+            app_repo = resolve_app_repo()
+            result = {"status": "ok", "contractAudit": audit_contracts(app_repo)["status"], "latestRun": str(latest_report_path) if latest_report_path else None, "latestPilot": str(latest_pilot_path) if latest_pilot_path else None, "inspection": str(INSPECTION_PATH), "commandCenterRepo": str(app_repo)}
         print(json.dumps(result, indent=2, sort_keys=True))
     except EvaluationError as error:
         print(json.dumps({"status": "error", "error": str(error)}, indent=2, sort_keys=True))

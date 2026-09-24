@@ -32,6 +32,7 @@ class Priority4EvaluationTests(unittest.TestCase):
             "MONDAY_SOURCES_ROOT": str(self.sources),
             "MONDAY_PLANNER_ROOT": str(self.planner),
             "MONDAY_CONTINUITY_ROOT": str(self.continuity),
+            "MONDAY_COMMAND_CENTER_REPO": str(APP),
         }
 
     def tearDown(self) -> None:
@@ -228,9 +229,16 @@ class Priority4EvaluationTests(unittest.TestCase):
         self.assertEqual(value["status"], "PASS")
         self.assertGreaterEqual(value["discovered"]["python"], 76)
         self.assertGreaterEqual(value["discovered"]["swift"], 27)
-        self.assertEqual(value["adversarialClassCount"], 15)
+        self.assertEqual(value["adversarialClassCount"], 16)
         self.assertEqual(value["tier3ActiveCount"], 0)
         self.assertEqual(len(value["testInventory"]["python"]), value["discovered"]["python"])
+
+    def test_command_center_repo_is_explicitly_configured_without_packaged_user_path(self) -> None:
+        _, configured = self.invoke("configure", arguments=["--app-repo", str(APP)], apply=True)
+        self.assertTrue(configured["applied"])
+        self.assertEqual(Path(configured["commandCenterRepo"]), APP.resolve())
+        stored = json.loads((self.runtime / "config.json").read_text(encoding="utf-8"))
+        self.assertEqual(Path(stored["commandCenterRepo"]), APP.resolve())
 
     def test_engineering_gate_requires_complete_suite_and_every_release_receipt(self) -> None:
         report = self.inputs / "report.json"

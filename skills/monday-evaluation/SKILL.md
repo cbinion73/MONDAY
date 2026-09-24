@@ -11,6 +11,14 @@ Read [the evaluation contract](references/evaluation-contract.md) before changin
 
 Priority 1 item 17 is never changed by narrative judgment or a hand-edited packaged roadmap. After a genuinely unattended next-day run has staged all five canonical source attempts, published the current-day schema-3 plan, and received matching native readback without manual repair, submit the bounded evidence envelope to `scripts/monday_evaluation.py verify-unattended-rollover --input <file> --apply`. The verifier reads the source manifests, plan, planning run, and app receipt directly, writes an immutable evidence receipt, and only then promotes the runtime roadmap gate.
 
+Configure the Command Center source repository explicitly on each machine before running source-coupled evaluation:
+
+```bash
+python3 scripts/monday_evaluation.py configure --app-repo <command-center-source> --apply
+```
+
+The plugin never packages a creator-specific source checkout path. Explicit `--app-repo` and `MONDAY_COMMAND_CENTER_REPO` override the persisted local configuration.
+
 ## Invariants
 
 - The suite denominator is discovered and recorded before execution. A blocking case that is skipped, blocked, unresolved, or not run fails its gate.

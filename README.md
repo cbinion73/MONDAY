@@ -65,6 +65,7 @@ See `docs/PRIORITY-2-RELEASE.md` for the privacy, lifecycle, application, and pu
 `monday-evaluation` inventories and executes the governed behavioral and adversarial suite, produces evidence-locked release decisions, controls Tier 2 and Tier 3 connector admission, and records bounded pilot evidence. Jira through TWG is evaluating, not active. No Tier 3 integration is active. The first pilot cannot start until Priority 1 item 17 has unattended next-day proof, and no single-user pilot authorizes an enterprise-readiness claim.
 
 ```bash
+python3 scripts/monday_evaluation.py configure --app-repo <command-center-source> --apply
 python3 scripts/monday_evaluation.py audit-contracts
 python3 scripts/monday_evaluation.py run
 python3 scripts/monday_evaluation.py project

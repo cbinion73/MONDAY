@@ -4,7 +4,7 @@ Priority 4 implements roadmap items 29 through 33 as a governed evaluation and p
 
 ## Item 29: behavioral and adversarial evaluation
 
-`monday-evaluation` discovers every packaged Python test and Command Center contract test, executes versioned runners, records exact denominators and privacy-reduced receipts, and fails when a blocking case is skipped, blocked, unresolved, or not run. The adversarial inventory covers source truth, authority, domain boundaries, privacy, data loss, schemas and digests, migration rollback, external actions, temporal rollover, idempotency and replay, connector admission, untrusted instructions, path safety, readback forgery, and pilot-evidence forgery.
+`monday-evaluation` discovers every packaged Python test and Command Center contract test, executes versioned runners, records exact denominators and privacy-reduced receipts, and fails when a blocking case is skipped, blocked, unresolved, or not run. The adversarial inventory covers source truth, authority, domain boundaries, privacy, data loss, schemas and digests, migration rollback, external actions, temporal rollover, idempotency and replay, connector admission, untrusted instructions, path safety, readback forgery, pilot-evidence forgery, and stable project identity through file and display-name changes.
 
 ## Item 30: measurable release gates
 
@@ -29,6 +29,7 @@ An accepted pilot supports only the tested single-user local configuration. Ente
 ## Verification
 
 ```bash
+python3 scripts/monday_evaluation.py configure --app-repo <command-center-source> --apply
 python3 scripts/monday_evaluation.py audit-contracts
 python3 -m unittest tests.test_priority4_evaluation -v
 python3 scripts/monday_evaluation.py collect-release-evidence --evidence-id <id> --installed-plugin <path> --apply

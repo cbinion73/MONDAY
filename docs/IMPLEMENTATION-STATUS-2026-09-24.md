@@ -7,9 +7,9 @@ read-only application that implements the plugin's projection contracts.
 
 ## Release identity
 
-- Plugin version: `0.1.0+codex.20260924173012`
+- Plugin version: `0.1.0+codex.20260924174602`
 - Source identity: the commit referenced by the immutable release tag below
-- Immutable source tag: `v0.1.0-codex.20260924173012`
+- Immutable source tag: `v0.1.0-codex.20260924174602`
 - Published Git branch: `monday-plugin` in `cbinion73/MONDAY`
 - Compatible Command Center: `0.4.2 (17)`
 - Command Center source commit: `20e9aea500ca5b944439f4674ab3b3fe2412fbfe`
@@ -143,17 +143,17 @@ claim.
 
 ## Verification evidence
 
-The final release run passed 151 tests:
+The final release run passed 153 tests:
 
-- 93 plugin tests
+- 95 plugin tests
 - 14 MONDAY core tests
 - 3 meeting-continuity tests
 - 5 project-intelligence tests
 - 36 Command Center tests
 
-All 15 blocking adversarial categories passed. The current evaluation report
+All 16 blocking adversarial categories passed. The current evaluation report
 is stored outside the repository at
-`~/.codex/monday-evaluation/runs/priority4-pilot-hardening-final-20260924/evaluation-report.json`.
+`~/.codex/monday-evaluation/runs/priority4-project-identity-portability-20260924/evaluation-report.json`.
 The digest-bound engineering evidence receipt is stored at
 `~/.codex/monday-evaluation/release-evidence/release-20260924173012-app-0.4.2-17.json`.
 These local receipts are intentionally not committed because they contain

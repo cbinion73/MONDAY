@@ -382,6 +382,64 @@ class PriorityOnePlanningPipelineAcceptanceTests(unittest.TestCase):
         self.assertTrue(any("connected-source signals" in finding for finding in posture["findings"]))
         self.assertEqual(plan["brief"]["analysis"]["externalEvidence"]["signalCount"], 1)
 
+    def test_renamed_project_preserves_stable_identity_and_evidence_route(self) -> None:
+        original = self.write_record(
+            self.project_root,
+            "old-project-name.md",
+            {
+                "id": "stable-project-001",
+                "type": "project",
+                "title": "Old Project Name",
+                "status": "active",
+                "owner": "Chris",
+                "updated": self.today.isoformat(),
+                "next_action": "Review the routed evidence",
+            },
+        )
+        artifact = self.write_json(
+            self.sources / "outlook-email-renamed-project.json",
+            {
+                "items": [{
+                    "occurredAt": self.now.isoformat(),
+                    "safeSummary": "A material signal belongs to the stable project identity",
+                    "projectIDs": ["stable-project-001"],
+                    "evidenceClass": "observed",
+                    "signalType": "commitment",
+                    "sourceLocator": "mail:stable-project-001",
+                }]
+            },
+        )
+        self.stage_source(
+            "outlook-email", "email", "available", artifact,
+            item_count=1, processed_count=1, unresolved_count=0,
+            succeeded_at=self.now, watermark="mail:stable-project-001",
+        )
+        _, before = self.publish()
+        before_posture = next(item for item in before["brief"]["analysis"]["projectPosture"] if item["projectID"] == "stable-project-001")
+        self.assertEqual(before_posture["title"], "Old Project Name")
+        self.assertEqual(before_posture["externalSignalCount"], 1)
+
+        original.unlink()
+        self.write_record(
+            self.project_root,
+            "new-project-name.md",
+            {
+                "id": "stable-project-001",
+                "type": "project",
+                "title": "New Project Name",
+                "status": "active",
+                "owner": "Chris",
+                "updated": self.today.isoformat(),
+                "next_action": "Review the routed evidence",
+            },
+        )
+        _, after = self.publish()
+        matching = [item for item in after["brief"]["analysis"]["projectPosture"] if item["projectID"] == "stable-project-001"]
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0]["title"], "New Project Name")
+        self.assertEqual(matching[0]["externalSignalCount"], 1)
+        self.assertNotIn("stable-project-001", after["brief"]["analysis"]["externalEvidence"].get("unmatchedProjectIDs", []))
+
     def test_activity_ledger_content_is_analyzed_with_limitations_visible(self) -> None:
         receipt = {
             "schemaVersion": 1,
