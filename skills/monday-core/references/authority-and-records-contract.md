@@ -27,10 +27,13 @@ Confirmation authorizes an attempt, not a successful outcome. Record `attempted`
 | Captain's Log | Chris's first-person journal material | Automatic activity-trace narration or unapproved inference |
 | Research Chronicle | Reviewed MONDAY system-building evidence | Unreviewed polished entries or personal journal content |
 | Command Center | Minimum-necessary projection of governed records | New commitments, silent writes, secret data, or certainty upgrades |
+| Professional Twin | Provenance-bound professional working preferences, capabilities, responsibilities, constraints, and reviewed patterns | Private personal material or authoritative project status |
+| Personal Twin | Explicitly consented private preferences, routines, capacity signals, values, goals, and reviewed patterns | Professional reporting, JARVIS, playbooks, or project status |
+| Redacted playbook | Approved, current, shareable professional Twin claims with sanitized provenance | Personal records, raw communications, secrets, source locators, or unverified publication claims |
 
 ## Correction and deletion
 
-Keep corrections inspectable. Append a superseding receipt where the ledger contract requires it. Use the owning record's correction, archive, or deletion procedure. Never conceal that a record existed or was corrected, and never broaden a deletion target beyond the exact authorized record.
+Keep corrections inspectable. Append a superseding receipt where the ledger contract requires it. Use the owning record's correction, archive, or deletion procedure. Never broaden a deletion target beyond the exact authorized record. For an authorized Twin forgetting request, remove the exact Twin-held content and its derived projections while retaining only the content-free tombstone defined by `monday-digital-twin`; upstream records remain under their own deletion authority.
 
 ## Privacy rule
 

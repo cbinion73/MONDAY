@@ -48,3 +48,14 @@ python3 -m unittest discover -s tests -v
 ```
 
 See `docs/PRIORITY-1-RELEASE.md` for the release requirements and unattended next-day gate.
+
+## Governed Digital Twin
+
+`monday-digital-twin` owns separate professional and personal claim indexes, Promise Traceability and Source Authority matrices, versioned schemas, correction and supersession, exact forgetting, durable learning opt-outs, deterministic redaction, Command Center inspection projection/readback, and the approval-gated redacted playbook workflow.
+
+```bash
+python3 scripts/monday_twin.py audit-contracts
+python3 -m unittest tests.test_priority2_twin -v
+```
+
+See `docs/PRIORITY-2-RELEASE.md` for the privacy, lifecycle, application, and publishing release gates.

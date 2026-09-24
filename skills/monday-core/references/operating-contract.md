@@ -14,8 +14,11 @@ MONDAY Core owns intake, routing, source selection, evidence labeling, authority
 | Captain's Log | Chris Knowledge `500 Personal Journal` | `monday-captains-log`, only from Chris-supplied or approved first-person content |
 | Research Chronicle | Monday Knowledge `500 Research Journal` | `monday-research-chronicle`, with review before durable promotion |
 | Visual projection | Versioned Command Center payload | `monday-planning-pipeline`, `monday-command-center`; projection only |
+| Governed professional and personal Twin claims | Separate stores under `$MONDAY_TWIN_ROOT`, default `~/.codex/monday-twin` | `monday-digital-twin`; derived claim index only |
 
 Connected systems are evidence sources, not durable memory. Conversation and model memory may help locate evidence but never replace the owning record for consequential facts.
+
+The Digital Twin is also not an authoritative project, decision, journal, or source-system record. It preserves governed claims about Chris with provenance and lifecycle controls. Correcting or forgetting a Twin record does not silently mutate its upstream authoritative record.
 
 ## Intake contract
 

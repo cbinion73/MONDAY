@@ -1,0 +1,4 @@
+interface:
+  display_name: "MONDAY Digital Twin"
+  short_description: "Govern inspectable professional and personal Twin records."
+  default_prompt: "Monday, show me why you believe this and the governing Twin record."
