@@ -185,6 +185,8 @@ class Priority4EvaluationTests(unittest.TestCase):
         self.assertEqual(projection["releaseCandidate"]["releaseID"], "new-run")
         evaluation = next(item for item in projection["evidence"] if item["evidenceID"] == "evaluation-run")
         self.assertEqual(evaluation["observedAt"], "2026-09-24T16:00:00Z")
+        _, status = self.invoke("status")
+        self.assertTrue(status["latestRun"].endswith("a-new/evaluation-report.json"))
 
     def test_readback_requires_exact_projection_digest_and_one_known_view(self) -> None:
         projection = self.invoke("project")[1]

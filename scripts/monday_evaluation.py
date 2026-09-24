@@ -415,31 +415,30 @@ def pilot_complete(request: dict[str, Any], apply: bool) -> dict[str, Any]:
     return value
 
 
-def latest_json(paths: list[Path]) -> dict[str, Any] | None:
-    if not paths:
-        return None
-
+def evidence_time(path: Path) -> datetime:
     timestamp_fields = ("completedAt", "recordedAt", "startedAt", "generatedAt")
+    value = load_json(path)
+    for field in timestamp_fields:
+        raw = value.get(field)
+        if not isinstance(raw, str):
+            continue
+        try:
+            observed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if observed.tzinfo is None:
+            observed = observed.replace(tzinfo=timezone.utc)
+        return observed.astimezone(timezone.utc)
+    return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
 
-    def candidate(path: Path) -> tuple[datetime, str, dict[str, Any]]:
-        value = load_json(path)
-        observed: datetime | None = None
-        for field in timestamp_fields:
-            raw = value.get(field)
-            if not isinstance(raw, str):
-                continue
-            try:
-                observed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-            except ValueError:
-                continue
-            if observed.tzinfo is None:
-                observed = observed.replace(tzinfo=timezone.utc)
-            break
-        if observed is None:
-            observed = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
-        return observed.astimezone(timezone.utc), str(path), value
 
-    return max((candidate(path) for path in paths), key=lambda item: (item[0], item[1]))[2]
+def latest_path(paths: list[Path]) -> Path | None:
+    return max(paths, key=lambda path: (evidence_time(path), str(path))) if paths else None
+
+
+def latest_json(paths: list[Path]) -> dict[str, Any] | None:
+    path = latest_path(paths)
+    return load_json(path) if path else None
 
 
 def app_metadata(app_repo: Path) -> tuple[str, int]:
@@ -586,8 +585,9 @@ def main() -> None:
         elif args.command == "project": result = project_inspection()
         elif args.command == "reconcile-readback": result = reconcile_readback(args.apply)
         else:
-            reports = sorted(ROOT.glob("runs/*/evaluation-report.json")); pilots = sorted(ROOT.glob("pilots/*/pilot-state.json"))
-            result = {"status": "ok", "contractAudit": audit_contracts(DEFAULT_APP_REPO)["status"], "latestRun": str(reports[-1]) if reports else None, "latestPilot": str(pilots[-1]) if pilots else None, "inspection": str(INSPECTION_PATH)}
+            reports = list(ROOT.glob("runs/*/evaluation-report.json")); pilots = list(ROOT.glob("pilots/*/pilot-state.json"))
+            latest_report_path = latest_path(reports); latest_pilot_path = latest_path(pilots)
+            result = {"status": "ok", "contractAudit": audit_contracts(DEFAULT_APP_REPO)["status"], "latestRun": str(latest_report_path) if latest_report_path else None, "latestPilot": str(latest_pilot_path) if latest_pilot_path else None, "inspection": str(INSPECTION_PATH)}
         print(json.dumps(result, indent=2, sort_keys=True))
     except EvaluationError as error:
         print(json.dumps({"status": "error", "error": str(error)}, indent=2, sort_keys=True))
