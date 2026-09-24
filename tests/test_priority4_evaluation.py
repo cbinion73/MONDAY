@@ -160,6 +160,32 @@ class Priority4EvaluationTests(unittest.TestCase):
         expected_digest = hashlib.sha256(json.dumps(core, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
         self.assertEqual(supplied, expected_digest)
 
+    def test_projection_selects_latest_evidence_by_timestamp_not_path_name(self) -> None:
+        old_path = self.runtime / "runs/z-old/evaluation-report.json"
+        new_path = self.runtime / "runs/a-new/evaluation-report.json"
+        old_path.parent.mkdir(parents=True)
+        new_path.parent.mkdir(parents=True)
+        old_path.write_text(json.dumps({
+            "runID": "old-run", "status": "PASS", "completedAt": "2026-09-24T15:00:00Z",
+            "caseCoverage": []
+        }), encoding="utf-8")
+        new_path.write_text(json.dumps({
+            "runID": "new-run", "status": "PASS", "completedAt": "2026-09-24T16:00:00Z",
+            "caseCoverage": []
+        }), encoding="utf-8")
+        release_root = self.runtime / "release-decisions"
+        release_root.mkdir(parents=True)
+        (release_root / "z-old.json").write_text(json.dumps({
+            "recordedAt": "2026-09-24T15:00:00Z", "engineeringReleaseVerdict": "PASS"
+        }), encoding="utf-8")
+        (release_root / "a-new.json").write_text(json.dumps({
+            "recordedAt": "2026-09-24T16:00:00Z", "engineeringReleaseVerdict": "PASS"
+        }), encoding="utf-8")
+        _, projection = self.invoke("project")
+        self.assertEqual(projection["releaseCandidate"]["releaseID"], "new-run")
+        evaluation = next(item for item in projection["evidence"] if item["evidenceID"] == "evaluation-run")
+        self.assertEqual(evaluation["observedAt"], "2026-09-24T16:00:00Z")
+
     def test_readback_requires_exact_projection_digest_and_one_known_view(self) -> None:
         projection = self.invoke("project")[1]
         receipt = {

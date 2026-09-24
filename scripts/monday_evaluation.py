@@ -416,7 +416,30 @@ def pilot_complete(request: dict[str, Any], apply: bool) -> dict[str, Any]:
 
 
 def latest_json(paths: list[Path]) -> dict[str, Any] | None:
-    return load_json(paths[-1]) if paths else None
+    if not paths:
+        return None
+
+    timestamp_fields = ("completedAt", "recordedAt", "startedAt", "generatedAt")
+
+    def candidate(path: Path) -> tuple[datetime, str, dict[str, Any]]:
+        value = load_json(path)
+        observed: datetime | None = None
+        for field in timestamp_fields:
+            raw = value.get(field)
+            if not isinstance(raw, str):
+                continue
+            try:
+                observed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if observed.tzinfo is None:
+                observed = observed.replace(tzinfo=timezone.utc)
+            break
+        if observed is None:
+            observed = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        return observed.astimezone(timezone.utc), str(path), value
+
+    return max((candidate(path) for path in paths), key=lambda item: (item[0], item[1]))[2]
 
 
 def app_metadata(app_repo: Path) -> tuple[str, int]:
