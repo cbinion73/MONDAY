@@ -17,7 +17,7 @@
     {"runnerID": "command-center-tests", "kind": "xcodebuild", "command": ["xcodebuild", "test", "-project", "MondayCommandCenter.xcodeproj", "-scheme", "MondayCommandCenter", "-destination", "platform=macOS", "ENABLE_HARDENED_RUNTIME=NO", "CODE_SIGNING_ALLOWED=NO", "CODE_SIGNING_REQUIRED=NO"], "releaseBlocking": true, "requiresAppRepo": true}
   ],
   "requiredAdversarialClasses": [
-    "source-truth", "authority", "domain-boundary", "privacy", "data-loss", "digest-schema", "migration-rollback", "external-action", "temporal-rollover", "idempotency-replay", "connector-admission", "instruction-injection", "path-safety", "readback-forgery"
+    "source-truth", "authority", "domain-boundary", "privacy", "data-loss", "digest-schema", "migration-rollback", "external-action", "temporal-rollover", "idempotency-replay", "connector-admission", "instruction-injection", "path-safety", "readback-forgery", "pilot-evidence-forgery"
   ],
   "adversarialCases": [
     {"caseID": "ADV-SOURCE-001", "class": "source-truth", "severity": "critical", "expectedOutcome": "fail-closed", "releaseBlocking": true, "requirementIDs": ["P4-29", "P1-12"], "target": "tests.test_tier1_collectors.TierOneCollectorContractTests.test_available_with_unresolved_items_is_rejected"},
@@ -33,6 +33,7 @@
     {"caseID": "ADV-CONNECTOR-001", "class": "connector-admission", "severity": "critical", "expectedOutcome": "fail-closed", "releaseBlocking": true, "requirementIDs": ["P4-29", "P4-31", "P4-32"], "target": "tests.test_priority4_evaluation.Priority4EvaluationTests.test_jira_is_evaluating_and_unknown_or_unapproved_connector_fails_closed"},
     {"caseID": "ADV-INJECTION-001", "class": "instruction-injection", "severity": "critical", "expectedOutcome": "ignore-untrusted-instructions", "releaseBlocking": true, "requirementIDs": ["P4-29"], "target": "tests.test_priority4_evaluation.Priority4EvaluationTests.test_untrusted_instruction_text_cannot_change_connector_or_gate_state"},
     {"caseID": "ADV-PATH-001", "class": "path-safety", "severity": "critical", "expectedOutcome": "fail-closed", "releaseBlocking": true, "requirementIDs": ["P4-29", "P2-22"], "target": "CommandCenterContractTests.testGovernedPathRejectsTraversalAndSymlinkEscape"},
-    {"caseID": "ADV-READBACK-001", "class": "readback-forgery", "severity": "critical", "expectedOutcome": "fail-closed", "releaseBlocking": true, "requirementIDs": ["P4-29", "P4-30"], "target": "tests.test_priority4_evaluation.Priority4EvaluationTests.test_readback_requires_exact_projection_digest_and_one_known_view"}
+    {"caseID": "ADV-READBACK-001", "class": "readback-forgery", "severity": "critical", "expectedOutcome": "fail-closed", "releaseBlocking": true, "requirementIDs": ["P4-29", "P4-30"], "target": "tests.test_priority4_evaluation.Priority4EvaluationTests.test_readback_requires_exact_projection_digest_and_one_known_view"},
+    {"caseID": "ADV-PILOT-001", "class": "pilot-evidence-forgery", "severity": "critical", "expectedOutcome": "fail-closed", "releaseBlocking": true, "requirementIDs": ["P4-29", "P4-33"], "target": "tests.test_priority4_evaluation.Priority4EvaluationTests.test_pilot_completion_rejects_tampered_chain_and_prohibited_incident"}
   ]
 }

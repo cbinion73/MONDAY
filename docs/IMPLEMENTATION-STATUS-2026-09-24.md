@@ -7,9 +7,9 @@ read-only application that implements the plugin's projection contracts.
 
 ## Release identity
 
-- Plugin version: `0.1.0+codex.20260924170945`
+- Plugin version: `0.1.0+codex.20260924173012`
 - Source identity: the commit referenced by the immutable release tag below
-- Immutable source tag: `v0.1.0-codex.20260924170945`
+- Immutable source tag: `v0.1.0-codex.20260924173012`
 - Published Git branch: `monday-plugin` in `cbinion73/MONDAY`
 - Compatible Command Center: `0.4.2 (17)`
 - Command Center source commit: `20e9aea500ca5b944439f4674ab3b3fe2412fbfe`
@@ -127,6 +127,11 @@ Status: engineering release gates pass; the bounded pilot is not complete.
 - Defined a five-business-day, one-user local pilot with fifteen checkpoints,
   seventy-five Tier 1 attempts, five unattended rollovers, exact projection
   readback, meeting dispositions, and project readbacks.
+- Bound every pilot checkpoint to the exact immutable schedule and direct
+  verification of five named source manifests, Planner publication, native
+  readback, planning-run completion, Meeting Continuity denominators, and the
+  append-only digest chain. Caller-supplied pass claims cannot satisfy the
+  pilot.
 - Added a six-view Command Center Evaluation and Pilot projection with
   independent readback receipts.
 
@@ -138,19 +143,19 @@ claim.
 
 ## Verification evidence
 
-The final release run passed 147 tests:
+The final release run passed 151 tests:
 
-- 89 plugin tests
+- 93 plugin tests
 - 14 MONDAY core tests
 - 3 meeting-continuity tests
 - 5 project-intelligence tests
 - 36 Command Center tests
 
-All 14 blocking adversarial categories passed. The current evaluation report
+All 15 blocking adversarial categories passed. The current evaluation report
 is stored outside the repository at
-`~/.codex/monday-evaluation/runs/priority4-release-final-20260924/evaluation-report.json`.
+`~/.codex/monday-evaluation/runs/priority4-pilot-hardening-final-20260924/evaluation-report.json`.
 The digest-bound engineering evidence receipt is stored at
-`~/.codex/monday-evaluation/release-evidence/release-20260924170945-app-0.4.2-17.json`.
+`~/.codex/monday-evaluation/release-evidence/release-20260924173012-app-0.4.2-17.json`.
 These local receipts are intentionally not committed because they contain
 machine-specific operational evidence.
 

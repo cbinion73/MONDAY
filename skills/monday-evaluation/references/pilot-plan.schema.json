@@ -14,7 +14,7 @@
     "businessDays": {"const": 5},
     "checkpointTimes": {"const": ["06:01", "12:31", "17:01"]},
     "tier1SourceIDs": {"const": ["outlook-calendar", "outlook-email", "onedrive-files", "teams", "sharepoint-files"]},
-    "tier2ConnectorIDs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "tier2ConnectorIDs": {"maxItems": 0},
     "tier3ConnectorIDs": {"maxItems": 0},
     "plannedCheckpointCount": {"const": 15},
     "plannedTier1AttemptCount": {"const": 75},

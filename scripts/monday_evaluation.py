@@ -32,6 +32,7 @@ READBACK_PATH = ROOT / "readback.json"
 RUNTIME_ROADMAP_PATH = ROOT / "roadmap-status.json"
 SOURCES_ROOT = Path(os.environ.get("MONDAY_SOURCES_ROOT", Path.home() / ".codex/monday-sources"))
 PLANNER_ROOT = Path(os.environ.get("MONDAY_PLANNER_ROOT", Path.home() / ".codex/monday-planner"))
+CONTINUITY_ROOT = Path(os.environ.get("MONDAY_CONTINUITY_ROOT", Path.home() / ".codex/monday-meeting-continuity"))
 PLUGIN_VALIDATOR = Path.home() / ".codex/skills/.system/plugin-creator/scripts/validate_plugin.py"
 DEFAULT_INSTALLED_APP = Path("/Applications/Command Center.app")
 ALLOWED_VIEWS = {
@@ -39,6 +40,12 @@ ALLOWED_VIEWS = {
     "evaluation-connectors", "evaluation-pilot", "evaluation-enterprise-claim",
 }
 VERDICTS = {"PASS", "PASS WITH CONDITIONS", "FAIL", "BLOCKED"}
+TIER1_SOURCE_IDS = ("outlook-calendar", "outlook-email", "onedrive-files", "teams", "sharepoint-files")
+PILOT_CHECKPOINT_TIMES = ("06:01", "12:31", "17:01")
+PILOT_SOURCE_STATUSES = {"available", "empty", "partial", "blocked", "unavailable", "unknown"}
+PILOT_INCIDENT_SEVERITIES = {"low", "medium", "high", "critical"}
+PILOT_INCIDENT_STATUSES = {"open", "resolved"}
+PILOT_PROHIBITED_INCIDENT_CATEGORIES = {"privacy", "domain-boundary", "unauthorized-action", "false-verification", "data-loss", "blind-retry", "hidden-source-failure"}
 
 
 class EvaluationError(RuntimeError):
@@ -104,6 +111,68 @@ def parse_timestamp(value: Any, label: str) -> datetime:
     if parsed.tzinfo is None:
         raise EvaluationError(f"{label} must be timezone-aware")
     return parsed
+
+
+def parse_date(value: Any, label: str):
+    if not isinstance(value, str):
+        raise EvaluationError(f"{label} must use YYYY-MM-DD")
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError as error:
+        raise EvaluationError(f"{label} must use YYYY-MM-DD") from error
+
+
+def safe_identifier(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{2,127}", value):
+        raise EvaluationError(f"{label} must be a safe identifier")
+    return value
+
+
+def pilot_schedule(plan: dict[str, Any]) -> list[dict[str, str]]:
+    zone = ZoneInfo("America/New_York")
+    current = parse_date(plan.get("startDate"), "pilot startDate")
+    dates = []
+    while len(dates) < 5:
+        if current.weekday() < 5:
+            dates.append(current)
+        current += timedelta(days=1)
+    schedule = []
+    for local_date in dates:
+        for clock in PILOT_CHECKPOINT_TIMES:
+            hour, minute = (int(value) for value in clock.split(":"))
+            scheduled = datetime(local_date.year, local_date.month, local_date.day, hour, minute, tzinfo=zone)
+            schedule.append({
+                "checkpointID": f"{local_date.isoformat()}-{clock.replace(':', '')}",
+                "scheduledAt": scheduled.isoformat(timespec="seconds"),
+            })
+    return schedule
+
+
+def validate_pilot_plan(plan: dict[str, Any]) -> list[dict[str, str]]:
+    required = {"schemaVersion", "pilotID", "participant", "device", "timezone", "startDate", "businessDays", "checkpointTimes", "tier1SourceIDs", "tier2ConnectorIDs", "tier3ConnectorIDs", "plannedCheckpointCount", "plannedTier1AttemptCount", "approvedBy", "approvedAt", "engineeringReleaseVerdict", "idempotencyKey"}
+    if set(plan) != required:
+        raise EvaluationError(f"pilot plan shape mismatch: {sorted(set(plan) ^ required)}")
+    safe_identifier(plan.get("pilotID"), "pilotID")
+    safe_identifier(plan.get("idempotencyKey"), "pilot idempotencyKey")
+    if plan.get("schemaVersion") != 1 or plan.get("participant") != "Chris" or plan.get("timezone") != "America/New_York":
+        raise EvaluationError("pilot plan violates identity, schema, or timezone controls")
+    if not isinstance(plan.get("device"), str) or not plan["device"].strip() or len(plan["device"]) > 128:
+        raise EvaluationError("pilot plan requires one bounded device name")
+    start_date = parse_date(plan.get("startDate"), "pilot startDate")
+    if start_date.weekday() >= 5:
+        raise EvaluationError("pilot startDate must be a business day")
+    approved_at = parse_timestamp(plan.get("approvedAt"), "pilot approvedAt")
+    if approved_at > now() + timedelta(minutes=5):
+        raise EvaluationError("pilot approval timestamp cannot be in the future")
+    if plan.get("businessDays") != 5 or plan.get("checkpointTimes") != list(PILOT_CHECKPOINT_TIMES):
+        raise EvaluationError("pilot plan violates the five-day checkpoint contract")
+    if plan.get("tier1SourceIDs") != list(TIER1_SOURCE_IDS) or plan.get("tier2ConnectorIDs") != [] or plan.get("tier3ConnectorIDs") != []:
+        raise EvaluationError("pilot plan violates the approved connector contract")
+    if plan.get("plannedCheckpointCount") != 15 or plan.get("plannedTier1AttemptCount") != 75:
+        raise EvaluationError("pilot plan violates immutable denominators")
+    if plan.get("approvedBy") != "Chris" or plan.get("engineeringReleaseVerdict") != "PASS":
+        raise EvaluationError("pilot plan lacks exact approval or engineering release evidence")
+    return pilot_schedule(plan)
 
 
 def effective_roadmap() -> dict[str, Any]:
@@ -598,12 +667,8 @@ def verify_unattended_rollover(request: dict[str, Any], apply: bool) -> dict[str
 
 
 def pilot_start(plan: dict[str, Any], apply: bool) -> dict[str, Any]:
-    required = {"schemaVersion", "pilotID", "participant", "device", "timezone", "startDate", "businessDays", "checkpointTimes", "tier1SourceIDs", "tier2ConnectorIDs", "tier3ConnectorIDs", "plannedCheckpointCount", "plannedTier1AttemptCount", "approvedBy", "approvedAt", "engineeringReleaseVerdict", "idempotencyKey"}
-    if set(plan) != required:
-        raise EvaluationError(f"pilot plan shape mismatch: {sorted(set(plan) ^ required)}")
-    if plan["participant"] != "Chris" or plan["timezone"] != "America/New_York" or plan["businessDays"] != 5 or plan["checkpointTimes"] != ["06:01", "12:31", "17:01"] or plan["plannedCheckpointCount"] != 15 or plan["plannedTier1AttemptCount"] != 75 or plan["tier3ConnectorIDs"]:
-        raise EvaluationError("pilot plan violates the bounded pilot contract")
-    decision = gate_decision("pilot-start", None, {"engineeringReleaseVerdict": plan.get("engineeringReleaseVerdict"), "pilotPlanApproved": True, "pilotConnectorsAdmitted": not plan["tier2ConnectorIDs"], "noOpenCriticalAlerts": True})
+    schedule = validate_pilot_plan(plan)
+    decision = gate_decision("pilot-start", None, {"engineeringReleaseVerdict": plan["engineeringReleaseVerdict"], "pilotPlanApproved": True, "pilotConnectorsAdmitted": True, "noOpenCriticalAlerts": True})
     result = {"pilotID": plan["pilotID"], "status": "ready" if decision["verdict"] == "PASS" else "blocked", "gate": decision, "planDigest": digest(plan), "applied": False}
     if decision["verdict"] != "PASS":
         return result
@@ -613,62 +678,207 @@ def pilot_start(plan: dict[str, Any], apply: bool) -> dict[str, Any]:
         if existing.get("planDigest") != result["planDigest"]: raise EvaluationError("pilot ID cannot be reused for a changed plan")
         return {**existing, "idempotentReplay": True}
     if apply:
-        result.update({"status": "running", "startedAt": iso(), "sequence": 0, "lastObservationDigest": None, "applied": True})
+        result.update({"status": "not-started", "preparedAt": iso(), "startedAt": None, "sequence": 0, "lastObservationDigest": None, "plan": plan, "schedule": schedule, "tier1AttemptsRecorded": 0, "manualInterventionCount": 0, "unattendedRolloversCompleted": 0, "applied": True})
         atomic_json(path, result)
     return result
 
 
 def pilot_record(observation: dict[str, Any], apply: bool) -> dict[str, Any]:
+    required = {"schemaVersion", "pilotID", "checkpointID", "scheduledAt", "observedAt", "manualRepair", "incidents", "idempotencyKey"}
+    if set(observation) != required:
+        raise EvaluationError(f"pilot checkpoint shape mismatch: {sorted(set(observation) ^ required)}")
+    if observation.get("schemaVersion") != 1:
+        raise EvaluationError("pilot checkpoint requires schema 1")
     pilot_id = str(observation.get("pilotID") or "")
+    safe_identifier(pilot_id, "pilotID")
+    safe_identifier(observation.get("idempotencyKey"), "pilot checkpoint idempotencyKey")
     state_path = ROOT / "pilots" / pilot_id / "pilot-state.json"
-    if not state_path.exists(): raise EvaluationError("pilot is not running")
+    if not state_path.exists(): raise EvaluationError("pilot is not prepared")
     state = load_json(state_path)
-    if state.get("status") != "running": raise EvaluationError("pilot is not running")
+    if state.get("status") not in {"not-started", "running"}: raise EvaluationError("pilot is not open for observations")
+    if state.get("pilotID") != pilot_id or not isinstance(state.get("schedule"), list) or len(state["schedule"]) != 15:
+        raise EvaluationError("pilot state does not contain the immutable schedule")
     observation_path = state_path.parent / "observations.jsonl"
     existing_observations = [json.loads(line) for line in observation_path.read_text(encoding="utf-8").splitlines() if line.strip()] if observation_path.exists() else []
     replay = next((item for item in existing_observations if item.get("idempotencyKey") == observation.get("idempotencyKey")), None)
     if replay:
-        comparison = dict(replay); comparison.pop("observationDigest", None)
-        if digest(comparison) != digest(observation): raise EvaluationError("conflicting pilot observation idempotency key")
+        if replay.get("requestDigest") != digest(observation): raise EvaluationError("conflicting pilot observation idempotency key")
         return {**replay, "applied": apply, "idempotentReplay": True}
     expected = state["sequence"] + 1
-    if observation.get("sequence") != expected or observation.get("priorDigest") != state.get("lastObservationDigest"):
-        raise EvaluationError("pilot observation sequence or digest chain mismatch")
-    required = {"pilotID", "sequence", "priorDigest", "checkpointID", "scheduledAt", "observedAt", "tier1AttemptCount", "publicationState", "readbackState", "manualRepair", "eligibleMeetingCount", "meetingDispositionCount", "materialImpactCount", "projectReadbackCount", "incidents", "evidenceDigests", "idempotencyKey"}
-    if set(observation) != required: raise EvaluationError("pilot observation shape mismatch")
-    if observation["meetingDispositionCount"] > observation["eligibleMeetingCount"] or observation["projectReadbackCount"] > observation["materialImpactCount"]:
-        raise EvaluationError("pilot observation denominator mismatch")
-    value = {**observation, "observationDigest": digest(observation)}
+    if expected > len(state["schedule"]): raise EvaluationError("pilot already has every planned checkpoint")
+    checkpoint = state["schedule"][expected - 1]
+    if observation["checkpointID"] != checkpoint.get("checkpointID") or observation["scheduledAt"] != checkpoint.get("scheduledAt"):
+        raise EvaluationError("pilot checkpoint does not match the next immutable schedule entry")
+    zone = ZoneInfo("America/New_York")
+    scheduled = parse_timestamp(observation["scheduledAt"], "checkpoint scheduledAt").astimezone(zone)
+    observed = parse_timestamp(observation["observedAt"], "checkpoint observedAt").astimezone(zone)
+    if not scheduled <= observed <= scheduled + timedelta(hours=2):
+        raise EvaluationError("pilot checkpoint observation is outside the bounded window")
+    if not isinstance(observation.get("manualRepair"), bool):
+        raise EvaluationError("pilot checkpoint manualRepair must be boolean")
+    incidents = observation.get("incidents")
+    if not isinstance(incidents, list): raise EvaluationError("pilot incidents must be a list")
+    for incident in incidents:
+        keys = {"incidentID", "severity", "category", "status", "evidenceDigest"}
+        if not isinstance(incident, dict) or set(incident) != keys:
+            raise EvaluationError("pilot incident shape mismatch")
+        safe_identifier(incident.get("incidentID"), "pilot incidentID")
+        if incident.get("severity") not in PILOT_INCIDENT_SEVERITIES or incident.get("status") not in PILOT_INCIDENT_STATUSES:
+            raise EvaluationError("pilot incident severity or status is invalid")
+        if not isinstance(incident.get("category"), str) or not incident["category"].strip():
+            raise EvaluationError("pilot incident category is required")
+        if not isinstance(incident.get("evidenceDigest"), str) or not re.fullmatch(r"[0-9a-f]{64}", incident["evidenceDigest"]):
+            raise EvaluationError("pilot incident evidence digest is invalid")
+
+    source_attempts = []
+    evidence_digests = []
+    for source_id in TIER1_SOURCE_IDS:
+        manifest_path = SOURCES_ROOT / f"{source_id}.manifest.json"
+        manifest = load_json(manifest_path)
+        if manifest.get("sourceID") != source_id or manifest.get("status") not in PILOT_SOURCE_STATUSES:
+            raise EvaluationError(f"{source_id} pilot manifest identity or status is invalid")
+        attempted = parse_timestamp(manifest.get("attemptedAt"), f"{source_id}.attemptedAt").astimezone(zone)
+        if not scheduled - timedelta(minutes=5) <= attempted <= observed:
+            raise EvaluationError(f"{source_id} was not attempted inside the checkpoint window")
+        counts = (manifest.get("itemCount"), manifest.get("processedCount"), manifest.get("unresolvedCount"))
+        if not all(isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in counts) or counts[0] != counts[1] + counts[2]:
+            raise EvaluationError(f"{source_id} pilot denominator is invalid")
+        manifest_id = safe_identifier(manifest.get("manifestID"), f"{source_id}.manifestID")
+        manifest_digest = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+        source_attempts.append({"sourceID": source_id, "status": manifest["status"], "attemptedAt": manifest["attemptedAt"], "manifestID": manifest_id, "manifestDigest": manifest_digest, "itemCount": counts[0], "processedCount": counts[1], "unresolvedCount": counts[2]})
+        evidence_digests.append(manifest_digest)
+        if source_id == "outlook-calendar":
+            scope = manifest.get("scope") if isinstance(manifest.get("scope"), dict) else {}
+            day_start = datetime(scheduled.year, scheduled.month, scheduled.day, tzinfo=zone)
+            day_end = day_start + timedelta(days=1)
+            if manifest["status"] not in {"available", "empty"} or counts[2] != 0 or parse_timestamp(scope.get("windowStart"), "calendar.windowStart").astimezone(zone) != day_start or parse_timestamp(scope.get("windowEnd"), "calendar.windowEnd").astimezone(zone) != day_end:
+                raise EvaluationError("pilot Calendar attempt is not a complete current-day collection")
+
+    publication_state = "not-published"
+    readback_state = "not-applicable"
+    plan_evidence: dict[str, Any] = {}
+    plan_path = PLANNER_ROOT / "daily-plan.json"
+    readback_path = PLANNER_ROOT / "readback.json"
+    run_path = PLANNER_ROOT / "planning-run.json"
+    if plan_path.exists():
+        plan = load_json(plan_path)
+        generated = parse_timestamp(plan.get("generatedAt"), "pilot plan.generatedAt").astimezone(zone)
+        if plan.get("schemaVersion") == 3 and plan.get("date") == scheduled.date().isoformat() and scheduled - timedelta(minutes=5) <= generated <= observed and plan.get("publication", {}).get("state") == "published" and plan.get("qualityAssurance", {}).get("verdict") in {"PASS", "PASS WITH CONDITIONS"}:
+            publication_state = "published"
+            plan_digest = hashlib.sha256(plan_path.read_bytes()).hexdigest()
+            evidence_digests.append(plan_digest)
+            plan_evidence = {"planID": plan.get("planID"), "planDigest": plan_digest, "generatedAt": plan.get("generatedAt")}
+            if readback_path.exists() and run_path.exists():
+                readback = load_json(readback_path)
+                run = load_json(run_path)
+                consumed = parse_timestamp(readback.get("consumedAt"), "pilot readback.consumedAt").astimezone(zone)
+                stage = next((item for item in run.get("stages", []) if item.get("name") == "readback"), None)
+                if readback.get("planID") == plan.get("planID") and readback.get("planSchemaVersion") == 3 and readback.get("state") == "displayed" and generated <= consumed <= observed and run.get("planID") == plan.get("planID") and run.get("status") == "completed" and stage and stage.get("status") == "completed" and stage.get("planID") == plan.get("planID"):
+                    readback_state = "matched"
+                    readback_digest = hashlib.sha256(readback_path.read_bytes()).hexdigest()
+                    run_digest = hashlib.sha256(run_path.read_bytes()).hexdigest()
+                    evidence_digests.extend([readback_digest, run_digest])
+                    plan_evidence.update({"readbackDigest": readback_digest, "planningRunID": run.get("runID"), "planningRunDigest": run_digest})
+                else:
+                    readback_state = "mismatched"
+            else:
+                readback_state = "missing"
+
+    continuity_path = CONTINUITY_ROOT / "summary.json"
+    continuity = load_json(continuity_path)
+    continuity_generated = parse_timestamp(continuity.get("generated_at"), "continuity.generated_at").astimezone(zone)
+    if not scheduled - timedelta(minutes=5) <= continuity_generated <= observed:
+        raise EvaluationError("Meeting Continuity summary is outside the checkpoint window")
+    coverage = continuity.get("coverage") if isinstance(continuity.get("coverage"), dict) else {}
+    eligible = coverage.get("meetings_in_scope")
+    disposition = coverage.get("accounted")
+    if not all(isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in (eligible, disposition)) or disposition > eligible:
+        raise EvaluationError("Meeting Continuity checkpoint denominator is invalid")
+    receipts = continuity.get("project_update_receipts") if isinstance(continuity.get("project_update_receipts"), list) else []
+    material_impacts = len(receipts)
+    project_readbacks = sum(1 for receipt in receipts if isinstance(receipt, dict) and receipt.get("project_path") and receipt.get("continuity_run_id"))
+    if project_readbacks != material_impacts:
+        raise EvaluationError("Meeting Continuity project readback evidence is incomplete")
+    continuity_digest = hashlib.sha256(continuity_path.read_bytes()).hexdigest()
+    evidence_digests.append(continuity_digest)
+
+    value = {
+        "schemaVersion": 1, "pilotID": pilot_id, "sequence": expected, "priorDigest": state.get("lastObservationDigest"),
+        "checkpointID": observation["checkpointID"], "scheduledAt": observation["scheduledAt"], "observedAt": observation["observedAt"],
+        "tier1AttemptCount": len(source_attempts), "sourceAttempts": source_attempts,
+        "publicationState": publication_state, "readbackState": readback_state, "planEvidence": plan_evidence,
+        "manualRepair": observation["manualRepair"], "eligibleMeetingCount": eligible, "meetingDispositionCount": disposition,
+        "materialImpactCount": material_impacts, "projectReadbackCount": project_readbacks,
+        "continuityRunID": continuity.get("run_id"), "continuityDigest": continuity_digest,
+        "incidents": incidents, "evidenceDigests": sorted(set(evidence_digests)), "idempotencyKey": observation["idempotencyKey"],
+        "requestDigest": digest(observation),
+    }
+    value["observationDigest"] = digest(value)
     if apply:
         append_jsonl(observation_path, value)
-        state.update({"sequence": expected, "lastObservationDigest": value["observationDigest"], "updatedAt": iso(), "tier1AttemptsRecorded": int(state.get("tier1AttemptsRecorded", 0)) + int(observation["tier1AttemptCount"]), "manualInterventionCount": int(state.get("manualInterventionCount", 0)) + (1 if observation["manualRepair"] else 0), "unattendedRolloversCompleted": int(state.get("unattendedRolloversCompleted", 0)) + (1 if observation["scheduledAt"][11:16] == "06:01" and not observation["manualRepair"] and observation["publicationState"] == "published" and observation["readbackState"] == "matched" else 0)})
+        state.update({"status": "running", "startedAt": state.get("startedAt") or observation["observedAt"], "sequence": expected, "lastObservationDigest": value["observationDigest"], "updatedAt": iso(), "tier1AttemptsRecorded": int(state.get("tier1AttemptsRecorded", 0)) + len(source_attempts), "manualInterventionCount": int(state.get("manualInterventionCount", 0)) + (1 if observation["manualRepair"] else 0), "unattendedRolloversCompleted": int(state.get("unattendedRolloversCompleted", 0)) + (1 if scheduled.strftime("%H:%M") == "06:01" and not observation["manualRepair"] and publication_state == "published" and readback_state == "matched" else 0)})
         atomic_json(state_path, state)
     return {**value, "applied": apply}
 
 
 def pilot_complete(request: dict[str, Any], apply: bool) -> dict[str, Any]:
-    pilot_id = str(request.get("pilotID") or "")
+    required = {"schemaVersion", "pilotID", "disposition", "approvedBy", "approvedAt", "finalObservationDigest", "idempotencyKey"}
+    if set(request) != required:
+        raise EvaluationError(f"pilot completion shape mismatch: {sorted(set(request) ^ required)}")
+    if request.get("schemaVersion") != 1:
+        raise EvaluationError("pilot completion requires schema 1")
+    pilot_id = safe_identifier(request.get("pilotID"), "pilotID")
+    safe_identifier(request.get("idempotencyKey"), "pilot completion idempotencyKey")
+    approved_at = parse_timestamp(request.get("approvedAt"), "pilot completion approvedAt")
+    if approved_at > now() + timedelta(minutes=5):
+        raise EvaluationError("pilot completion approval cannot be in the future")
     root = ROOT / "pilots" / pilot_id
     state = load_json(root / "pilot-state.json")
+    receipt_path = root / "acceptance.json"
+    request_digest = digest(request)
+    if receipt_path.exists():
+        existing = load_json(receipt_path)
+        if existing.get("requestDigest") != request_digest:
+            raise EvaluationError("pilot completion cannot be reused for changed evidence")
+        return {**existing, "idempotentReplay": True}
+    if state.get("pilotID") != pilot_id or state.get("status") != "running":
+        raise EvaluationError("pilot is not running")
     lines = (root / "observations.jsonl").read_text(encoding="utf-8").splitlines() if (root / "observations.jsonl").exists() else []
     observations = [json.loads(line) for line in lines if line.strip()]
     checkpoint_count = len(observations)
-    tier1_attempts = sum(int(item["tier1AttemptCount"]) for item in observations)
-    morning = [item for item in observations if "T06:01" in item["scheduledAt"] or item["scheduledAt"][11:16] == "06:01"]
-    critical_incidents = [incident for item in observations for incident in item["incidents"] if incident.get("severity") == "critical"]
+    tier1_attempts = sum(int(item.get("tier1AttemptCount", 0)) for item in observations)
+    morning = [item for item in observations if isinstance(item.get("scheduledAt"), str) and item["scheduledAt"][11:16] == "06:01"]
+    incidents = [incident for item in observations for incident in item.get("incidents", [])]
+    unresolved_critical = [incident for incident in incidents if incident.get("severity") == "critical" and incident.get("status") != "resolved"]
+    prohibited_incidents = [incident for incident in incidents if incident.get("category") in PILOT_PROHIBITED_INCIDENT_CATEGORIES]
     reasons: list[str] = []
+    prior_digest = None
+    for index, item in enumerate(observations, start=1):
+        supplied_digest = item.get("observationDigest")
+        core = dict(item); core.pop("observationDigest", None)
+        if item.get("sequence") != index or item.get("priorDigest") != prior_digest or not isinstance(supplied_digest, str) or supplied_digest != digest(core):
+            reasons.append("observation-digest-chain-invalid")
+            break
+        prior_digest = supplied_digest
+    if request.get("finalObservationDigest") != state.get("lastObservationDigest") or prior_digest != state.get("lastObservationDigest"):
+        reasons.append("final-observation-digest-mismatch")
     if checkpoint_count != 15: reasons.append("checkpoint-denominator-not-15-of-15")
+    expected_schedule = state.get("schedule") if isinstance(state.get("schedule"), list) else []
+    if len(expected_schedule) != 15 or [(item.get("checkpointID"), item.get("scheduledAt")) for item in observations] != [(item.get("checkpointID"), item.get("scheduledAt")) for item in expected_schedule]: reasons.append("checkpoint-schedule-mismatch")
     if tier1_attempts != 75: reasons.append("tier1-attempt-denominator-not-75-of-75")
-    if len(morning) != 5 or any(item["manualRepair"] for item in morning): reasons.append("morning-rollover-not-5-of-5-unattended")
-    if any(item["publicationState"] == "published" and item["readbackState"] != "matched" for item in observations): reasons.append("published-plan-missing-readback")
-    if any(item["meetingDispositionCount"] != item["eligibleMeetingCount"] or item["projectReadbackCount"] != item["materialImpactCount"] for item in observations): reasons.append("meeting-continuity-denominator-gap")
-    if critical_incidents: reasons.append("critical-incident-present")
+    if any(len(item.get("sourceAttempts", [])) != 5 or {attempt.get("sourceID") for attempt in item.get("sourceAttempts", [])} != set(TIER1_SOURCE_IDS) for item in observations): reasons.append("tier1-source-identity-gap")
+    if len(morning) != 5 or any(item.get("manualRepair") for item in morning): reasons.append("morning-rollover-not-5-of-5-unattended")
+    if any(item.get("publicationState") != "published" or item.get("readbackState") != "matched" for item in observations): reasons.append("checkpoint-publication-or-readback-gap")
+    if any(item.get("meetingDispositionCount") != item.get("eligibleMeetingCount") or item.get("projectReadbackCount") != item.get("materialImpactCount") for item in observations): reasons.append("meeting-continuity-denominator-gap")
+    if unresolved_critical: reasons.append("unresolved-critical-incident-present")
+    if prohibited_incidents: reasons.append("prohibited-control-incident-present")
     disposition = request.get("disposition")
     if disposition not in {"accept", "extend", "stop"} or request.get("approvedBy") != "Chris": reasons.append("missing-chris-disposition")
     accepted = not reasons and disposition == "accept"
-    value = {"schemaVersion": 1, "pilotID": pilot_id, "status": "accepted" if accepted else "not-accepted", "disposition": disposition, "completedAt": iso(), "checkpointCount": checkpoint_count, "tier1AttemptCount": tier1_attempts, "morningRolloverCount": len(morning), "criticalIncidentCount": len(critical_incidents), "reasons": reasons, "finalObservationDigest": state.get("lastObservationDigest"), "enterpriseReady": False, "scopeClaim": "single-user-local-pilot-only", "applied": apply}
+    status = "accepted" if accepted else "extended" if disposition == "extend" else "stopped" if disposition == "stop" else "not-accepted"
+    value = {"schemaVersion": 1, "pilotID": pilot_id, "status": status, "disposition": disposition, "approvedBy": request.get("approvedBy"), "approvedAt": request.get("approvedAt"), "completedAt": iso(), "checkpointCount": checkpoint_count, "tier1AttemptCount": tier1_attempts, "morningRolloverCount": len(morning), "unresolvedCriticalIncidentCount": len(unresolved_critical), "prohibitedControlIncidentCount": len(prohibited_incidents), "reasons": sorted(set(reasons)), "finalObservationDigest": state.get("lastObservationDigest"), "requestDigest": request_digest, "enterpriseReady": False, "scopeClaim": "single-user-local-pilot-only", "applied": apply}
     if apply:
-        atomic_json(root / "acceptance.json", value)
+        atomic_json(receipt_path, value)
         state.update({"status": value["status"], "completedAt": value["completedAt"]})
         atomic_json(root / "pilot-state.json", state)
     return value

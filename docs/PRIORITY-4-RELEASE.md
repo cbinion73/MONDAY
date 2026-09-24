@@ -4,7 +4,7 @@ Priority 4 implements roadmap items 29 through 33 as a governed evaluation and p
 
 ## Item 29: behavioral and adversarial evaluation
 
-`monday-evaluation` discovers every packaged Python test and Command Center contract test, executes versioned runners, records exact denominators and privacy-reduced receipts, and fails when a blocking case is skipped, blocked, unresolved, or not run. The adversarial inventory covers source truth, authority, domain boundaries, privacy, data loss, schemas and digests, migration rollback, external actions, temporal rollover, idempotency and replay, connector admission, untrusted instructions, path safety, and readback forgery.
+`monday-evaluation` discovers every packaged Python test and Command Center contract test, executes versioned runners, records exact denominators and privacy-reduced receipts, and fails when a blocking case is skipped, blocked, unresolved, or not run. The adversarial inventory covers source truth, authority, domain boundaries, privacy, data loss, schemas and digests, migration rollback, external actions, temporal rollover, idempotency and replay, connector admission, untrusted instructions, path safety, readback forgery, and pilot-evidence forgery.
 
 ## Item 30: measurable release gates
 
@@ -20,7 +20,7 @@ No Tier 3 integration is active. Unknown and speculative integrations fail close
 
 ## Item 33: bounded pilot
 
-The first pilot is one participant, one Mac, five business days, fifteen checkpoints, seventy-five Tier 1 attempts, and zero Tier 3 integrations. Observations are append-only and digest chained. Acceptance requires all denominators, five unattended morning rollovers, exact publication readback, complete meeting dispositions and project readbacks, no critical control incident, and Chris's final disposition.
+The first pilot is one participant, one Mac, five business days, fifteen immutable scheduled checkpoints, seventy-five Tier 1 attempts, and zero Tier 2 or Tier 3 integrations. Observations are append-only and digest chained. `pilot-record` directly verifies the five canonical manifests, Planner publication, planning-run and native readback, and Meeting Continuity summary for the checkpoint window rather than accepting caller-supplied pass claims. Acceptance requires the exact schedule and denominators, five unattended morning rollovers, exact publication readback, complete meeting dispositions and project readbacks, no critical control incident, and Chris's final disposition.
 
 Priority 1 item 17 is promoted only by `verify-unattended-rollover`. The verifier reads all five canonical source manifests and the live plan, planning-run, and native-readback artifacts, rejects manual repair or mismatched dates and denominators, and writes an immutable digest-bound receipt before creating the runtime roadmap override. The packaged roadmap remains blocked by default, so a reinstall cannot silently inherit a machine-specific operational PASS.
 

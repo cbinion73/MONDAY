@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.monday/pilot-checkpoint-input.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "pilotID",
+    "checkpointID",
+    "scheduledAt",
+    "observedAt",
+    "manualRepair",
+    "incidents",
+    "idempotencyKey"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "pilotID": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$"},
+    "checkpointID": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}-(0601|1231|1701)$"},
+    "scheduledAt": {"type": "string", "format": "date-time"},
+    "observedAt": {"type": "string", "format": "date-time"},
+    "manualRepair": {"type": "boolean"},
+    "incidents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["incidentID", "severity", "category", "status", "evidenceDigest"],
+        "properties": {
+          "incidentID": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$"},
+          "severity": {"enum": ["low", "medium", "high", "critical"]},
+          "category": {"type": "string", "minLength": 1},
+          "status": {"enum": ["open", "resolved"]},
+          "evidenceDigest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "idempotencyKey": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$"}
+  }
+}

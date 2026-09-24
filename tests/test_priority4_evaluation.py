@@ -21,14 +21,17 @@ class Priority4EvaluationTests(unittest.TestCase):
         self.inputs = Path(self.temp.name) / "inputs"
         self.sources = Path(self.temp.name) / "sources"
         self.planner = Path(self.temp.name) / "planner"
+        self.continuity = Path(self.temp.name) / "continuity"
         self.inputs.mkdir()
         self.sources.mkdir()
         self.planner.mkdir()
+        self.continuity.mkdir()
         self.environment = {
             **os.environ,
             "MONDAY_EVALUATION_ROOT": str(self.runtime),
             "MONDAY_SOURCES_ROOT": str(self.sources),
             "MONDAY_PLANNER_ROOT": str(self.planner),
+            "MONDAY_CONTINUITY_ROOT": str(self.continuity),
         }
 
     def tearDown(self) -> None:
@@ -55,7 +58,7 @@ class Priority4EvaluationTests(unittest.TestCase):
             "checkpointTimes": ["06:01", "12:31", "17:01"],
             "tier1SourceIDs": ["outlook-calendar", "outlook-email", "onedrive-files", "teams", "sharepoint-files"],
             "tier2ConnectorIDs": [], "tier3ConnectorIDs": [], "plannedCheckpointCount": 15,
-            "plannedTier1AttemptCount": 75, "approvedBy": "Chris", "approvedAt": "2026-09-24T16:00:00-04:00",
+            "plannedTier1AttemptCount": 75, "approvedBy": "Chris", "approvedAt": "2026-09-24T12:00:00-04:00",
             "engineeringReleaseVerdict": "PASS", "idempotencyKey": "pilot-start-one",
         }
 
@@ -144,12 +147,88 @@ class Priority4EvaluationTests(unittest.TestCase):
             "manualRepair": False,
         }
 
+    def prepare_pilot(self) -> None:
+        self.invoke("verify-unattended-rollover", payload=self.rollover_fixture(), apply=True)
+        _, pilot = self.invoke("pilot-start", payload=self.pilot_plan(), apply=True)
+        self.assertEqual(pilot["status"], "not-started")
+
+    def checkpoint_fixture(self, *, source_attempted_at: str = "2026-09-28T06:05:00-04:00") -> dict:
+        for source_id in ["outlook-calendar", "outlook-email", "onedrive-files", "teams", "sharepoint-files"]:
+            manifest = {
+                "schemaVersion": 1, "manifestID": f"checkpoint-{source_id}", "sourceID": source_id,
+                "status": "available", "attemptedAt": source_attempted_at,
+                "itemCount": 1, "processedCount": 1, "unresolvedCount": 0,
+                "scope": {"timezone": "America/New_York"},
+            }
+            if source_id == "outlook-calendar":
+                manifest["scope"].update({"windowStart": "2026-09-28T00:00:00-04:00", "windowEnd": "2026-09-29T00:00:00-04:00"})
+            (self.sources / f"{source_id}.manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        plan = {
+            "schemaVersion": 3, "planID": "plan-2026-09-28-pilot", "date": "2026-09-28",
+            "generatedAt": "2026-09-28T06:10:00-04:00", "validUntil": "2026-09-29T00:00:00-04:00",
+            "qualityAssurance": {"verdict": "PASS"}, "publication": {"state": "published"},
+        }
+        readback = {"schemaVersion": 1, "planID": plan["planID"], "planSchemaVersion": 3, "state": "displayed", "appVersion": "0.4.2", "consumedAt": "2026-09-28T06:11:00-04:00"}
+        run = {"runID": "pilot-planning-run-1", "planID": plan["planID"], "status": "completed", "stages": [{"name": "readback", "status": "completed", "planID": plan["planID"], "schemaVersion": 3}]}
+        (self.planner / "daily-plan.json").write_text(json.dumps(plan), encoding="utf-8")
+        (self.planner / "readback.json").write_text(json.dumps(readback), encoding="utf-8")
+        (self.planner / "planning-run.json").write_text(json.dumps(run), encoding="utf-8")
+        continuity = {
+            "schema_version": 1, "run_id": "pilot-continuity-1", "generated_at": "2026-09-28T06:12:00-04:00",
+            "coverage": {"meetings_in_scope": 1, "accounted": 1, "reconciled": 1, "pending": 0, "blocked": 0, "complete": True},
+            "project_update_receipts": [{"project_path": "03 Projects/Foundry.md", "continuity_run_id": "pilot-continuity-1"}],
+        }
+        (self.continuity / "summary.json").write_text(json.dumps(continuity), encoding="utf-8")
+        return {
+            "schemaVersion": 1, "pilotID": "pilot-one", "checkpointID": "2026-09-28-0601",
+            "scheduledAt": "2026-09-28T06:01:00-04:00", "observedAt": "2026-09-28T06:13:00-04:00",
+            "manualRepair": False, "incidents": [], "idempotencyKey": "pilot-checkpoint-one",
+        }
+
+    def completed_pilot_fixture(self) -> tuple[dict, str]:
+        self.prepare_pilot()
+        state_path = self.runtime / "pilots/pilot-one/pilot-state.json"
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        prior = None
+        observations = []
+        import hashlib
+        for sequence, checkpoint in enumerate(state["schedule"], start=1):
+            attempts = [{
+                "sourceID": source_id, "status": "available", "attemptedAt": checkpoint["scheduledAt"],
+                "manifestID": f"manifest-{sequence}-{source_id}", "manifestDigest": hashlib.sha256(f"{sequence}-{source_id}".encode()).hexdigest(),
+                "itemCount": 1, "processedCount": 1, "unresolvedCount": 0,
+            } for source_id in ["outlook-calendar", "outlook-email", "onedrive-files", "teams", "sharepoint-files"]]
+            core = {
+                "schemaVersion": 1, "pilotID": "pilot-one", "sequence": sequence, "priorDigest": prior,
+                "checkpointID": checkpoint["checkpointID"], "scheduledAt": checkpoint["scheduledAt"], "observedAt": checkpoint["scheduledAt"],
+                "tier1AttemptCount": 5, "sourceAttempts": attempts, "publicationState": "published", "readbackState": "matched",
+                "planEvidence": {"planID": f"plan-{sequence}"}, "manualRepair": False,
+                "eligibleMeetingCount": 0, "meetingDispositionCount": 0, "materialImpactCount": 0, "projectReadbackCount": 0,
+                "continuityRunID": f"continuity-{sequence}", "continuityDigest": "a" * 64, "incidents": [],
+                "evidenceDigests": sorted({item["manifestDigest"] for item in attempts} | {"a" * 64}),
+                "idempotencyKey": f"checkpoint-{sequence}", "requestDigest": hashlib.sha256(f"request-{sequence}".encode()).hexdigest(),
+            }
+            observation_digest = hashlib.sha256(json.dumps(core, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+            observation = {**core, "observationDigest": observation_digest}
+            observations.append(observation)
+            prior = observation_digest
+        observation_path = state_path.parent / "observations.jsonl"
+        observation_path.write_text("\n".join(json.dumps(item, sort_keys=True, separators=(",", ":")) for item in observations) + "\n", encoding="utf-8")
+        state.update({"status": "running", "sequence": 15, "lastObservationDigest": prior, "tier1AttemptsRecorded": 75, "unattendedRolloversCompleted": 5})
+        state_path.write_text(json.dumps(state), encoding="utf-8")
+        request = {
+            "schemaVersion": 1, "pilotID": "pilot-one", "disposition": "accept", "approvedBy": "Chris",
+            "approvedAt": "2026-09-24T12:00:00-04:00", "finalObservationDigest": prior,
+            "idempotencyKey": "complete-pilot-one",
+        }
+        return request, prior
+
     def test_contract_audit_inventories_all_current_tests_and_adversarial_classes(self) -> None:
         _, value = self.invoke("audit-contracts", arguments=["--app-repo", str(APP)])
         self.assertEqual(value["status"], "PASS")
         self.assertGreaterEqual(value["discovered"]["python"], 76)
         self.assertGreaterEqual(value["discovered"]["swift"], 27)
-        self.assertEqual(value["adversarialClassCount"], 14)
+        self.assertEqual(value["adversarialClassCount"], 15)
         self.assertEqual(value["tier3ActiveCount"], 0)
         self.assertEqual(len(value["testInventory"]["python"]), value["discovered"]["python"])
 
@@ -182,7 +261,7 @@ class Priority4EvaluationTests(unittest.TestCase):
         _, replay = self.invoke("verify-unattended-rollover", payload=request, apply=True)
         self.assertTrue(replay["idempotentReplay"])
         _, pilot = self.invoke("pilot-start", payload=self.pilot_plan(), apply=True)
-        self.assertEqual(pilot["status"], "running")
+        self.assertEqual(pilot["status"], "not-started")
         self.assertEqual(pilot["gate"]["verdict"], "PASS")
 
     def test_unattended_rollover_rejects_manual_repair_and_mismatched_readback(self) -> None:
@@ -248,25 +327,59 @@ class Priority4EvaluationTests(unittest.TestCase):
         self.assertEqual(registry["connectors"][0]["status"], "evaluating")
 
     def test_append_only_pilot_observation_requires_exact_sequence_and_denominators(self) -> None:
-        pilot_root = self.runtime / "pilots/pilot-ledger"
-        pilot_root.mkdir(parents=True)
-        (pilot_root / "pilot-state.json").write_text(json.dumps({"pilotID": "pilot-ledger", "status": "running", "sequence": 0, "lastObservationDigest": None}), encoding="utf-8")
-        observed = datetime(2026, 9, 28, 10, 2, tzinfo=timezone.utc)
-        payload = {
-            "pilotID": "pilot-ledger", "sequence": 1, "priorDigest": None, "checkpointID": "2026-09-28-0601",
-            "scheduledAt": "2026-09-28T06:01:00-04:00", "observedAt": observed.isoformat(), "tier1AttemptCount": 5,
-            "publicationState": "published", "readbackState": "matched", "manualRepair": False,
-            "eligibleMeetingCount": 1, "meetingDispositionCount": 1, "materialImpactCount": 1, "projectReadbackCount": 1,
-            "incidents": [], "evidenceDigests": ["a" * 64], "idempotencyKey": "observation-one",
-        }
+        self.prepare_pilot()
+        payload = self.checkpoint_fixture()
         _, first = self.invoke("pilot-record", payload=payload, apply=True)
         self.assertTrue(first["applied"])
+        self.assertEqual(first["tier1AttemptCount"], 5)
+        self.assertEqual({item["sourceID"] for item in first["sourceAttempts"]}, {"outlook-calendar", "outlook-email", "onedrive-files", "teams", "sharepoint-files"})
+        self.assertEqual((first["publicationState"], first["readbackState"]), ("published", "matched"))
+        self.assertEqual((first["eligibleMeetingCount"], first["meetingDispositionCount"], first["materialImpactCount"], first["projectReadbackCount"]), (1, 1, 1, 1))
         _, replay = self.invoke("pilot-record", payload=payload, apply=True)
         self.assertTrue(replay["idempotentReplay"])
-        bad = {**payload, "sequence": 2, "priorDigest": first["observationDigest"], "eligibleMeetingCount": 0, "meetingDispositionCount": 1, "idempotencyKey": "bad-denominator"}
+        bad = {**payload, "checkpointID": "2026-09-28-1231", "idempotencyKey": "bad-schedule"}
         result, error = self.invoke("pilot-record", payload=bad, apply=True, check=False)
         self.assertEqual(result.returncode, 2)
-        self.assertIn("denominator mismatch", error["error"])
+        self.assertIn("immutable schedule", error["error"])
+
+    def test_pilot_checkpoint_rejects_stale_or_incomplete_source_attempts(self) -> None:
+        self.prepare_pilot()
+        payload = self.checkpoint_fixture(source_attempted_at="2026-09-27T06:05:00-04:00")
+        result, error = self.invoke("pilot-record", payload=payload, apply=True, check=False)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("checkpoint window", error["error"])
+
+    def test_pilot_plan_rejects_unapproved_connector_and_weekend_start(self) -> None:
+        self.invoke("verify-unattended-rollover", payload=self.rollover_fixture(), apply=True)
+        bad_connector = {**self.pilot_plan(), "tier2ConnectorIDs": ["twg-jira"], "idempotencyKey": "bad-connector"}
+        result, error = self.invoke("pilot-start", payload=bad_connector, apply=True, check=False)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("connector contract", error["error"])
+        weekend = {**self.pilot_plan(), "startDate": "2026-09-27", "idempotencyKey": "bad-weekend"}
+        result, error = self.invoke("pilot-start", payload=weekend, apply=True, check=False)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("business day", error["error"])
+
+    def test_pilot_completion_requires_exact_digest_chain_and_remains_non_enterprise(self) -> None:
+        request, _ = self.completed_pilot_fixture()
+        _, completed = self.invoke("pilot-complete", payload=request, apply=True)
+        self.assertEqual(completed["status"], "accepted")
+        self.assertFalse(completed["enterpriseReady"])
+        self.assertEqual((completed["checkpointCount"], completed["tier1AttemptCount"], completed["morningRolloverCount"]), (15, 75, 5))
+        _, replay = self.invoke("pilot-complete", payload=request, apply=True)
+        self.assertTrue(replay["idempotentReplay"])
+
+    def test_pilot_completion_rejects_tampered_chain_and_prohibited_incident(self) -> None:
+        request, _ = self.completed_pilot_fixture()
+        observation_path = self.runtime / "pilots/pilot-one/observations.jsonl"
+        observations = [json.loads(line) for line in observation_path.read_text(encoding="utf-8").splitlines()]
+        observations[0]["observationDigest"] = "f" * 64
+        observations[0]["incidents"] = [{"incidentID": "privacy-one", "severity": "low", "category": "privacy", "status": "resolved", "evidenceDigest": "e" * 64}]
+        observation_path.write_text("\n".join(json.dumps(item) for item in observations) + "\n", encoding="utf-8")
+        _, completed = self.invoke("pilot-complete", payload=request)
+        self.assertEqual(completed["status"], "not-accepted")
+        self.assertIn("observation-digest-chain-invalid", completed["reasons"])
+        self.assertIn("prohibited-control-incident-present", completed["reasons"])
 
     def test_inspection_projection_is_privacy_reduced_and_enterprise_blocked(self) -> None:
         _, projection = self.invoke("project")
