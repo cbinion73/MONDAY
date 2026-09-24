@@ -956,6 +956,25 @@ def app_metadata(app_repo: Path) -> tuple[str, int]:
     return (version.group(1) if version else "0.4.2", int(build.group(1)) if build else 17)
 
 
+def release_plugin_commit(latest_report: dict[str, Any] | None = None) -> str:
+    """Resolve the immutable plugin commit in source and installed-cache runtimes.
+
+    Installed Codex plugin builds intentionally omit ``.git``. In that context,
+    the latest governed evaluation report is the release-bound source of truth,
+    provided that its plugin version matches the installed manifest.
+    """
+    source_commit = git_value(PLUGIN_ROOT, "rev-parse", "HEAD")
+    if isinstance(source_commit, str) and re.fullmatch(r"[a-f0-9]{7,64}", source_commit):
+        return source_commit
+    if latest_report:
+        report_plugin = latest_report.get("plugin")
+        if isinstance(report_plugin, dict) and report_plugin.get("version") == plugin_version():
+            report_commit = report_plugin.get("commit")
+            if isinstance(report_commit, str) and re.fullmatch(r"[a-f0-9]{7,64}", report_commit):
+                return report_commit
+    return "unknown"
+
+
 def project_inspection(app_repo: Path | None = None) -> dict[str, Any]:
     app_repo = resolve_app_repo(app_repo)
     suite = load_json(SUITE_PATH)
@@ -1014,7 +1033,7 @@ def project_inspection(app_repo: Path | None = None) -> dict[str, Any]:
     core = {
         "schemaVersion": 1, "generatedAt": iso(), "validUntil": iso(now() + timedelta(minutes=15)),
         "producer": "monday-evaluation", "audience": "Chris-private-local",
-        "releaseCandidate": {"releaseID": latest_report.get("runID", "priority4-not-evaluated") if latest_report else "priority4-not-evaluated", "pluginVersion": plugin_version(), "pluginCommit": git_value(PLUGIN_ROOT, "rev-parse", "HEAD") or "unknown", "appVersion": app_version, "appBuild": app_build, "appCommit": git_value(app_repo, "rev-parse", "HEAD") or "unknown", "minimumPluginVersion": "0.1.0", "maximumPluginVersionExclusive": "0.2.0", "minimumAppVersion": "0.4.2", "maximumAppVersionExclusive": "0.5.0", "compatibilityStatus": "compatible"},
+        "releaseCandidate": {"releaseID": latest_report.get("runID", "priority4-not-evaluated") if latest_report else "priority4-not-evaluated", "pluginVersion": plugin_version(), "pluginCommit": release_plugin_commit(latest_report), "appVersion": app_version, "appBuild": app_build, "appCommit": git_value(app_repo, "rev-parse", "HEAD") or "unknown", "minimumPluginVersion": "0.1.0", "maximumPluginVersionExclusive": "0.2.0", "minimumAppVersion": "0.4.2", "maximumAppVersionExclusive": "0.5.0", "compatibilityStatus": "compatible"},
         "suite": {"suiteID": suite["suiteID"], "suiteVersion": suite["suiteVersion"], "suiteDigest": digest(suite), "requiredCaseCount": len(case_coverage)},
         "caseCoverage": case_coverage,
         "gateResults": gate_results,

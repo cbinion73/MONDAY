@@ -1,6 +1,6 @@
 # Priority 4 project-identity and portability hardening
 
-Release: `0.1.0+codex.20260924174602`
+Superseded release: `0.1.0+codex.20260924174602`
 
 This immutable build closes two gaps found during the line-by-line audit of
 the original MONDAY plan. It does not change the bounded pilot schedule or
@@ -37,7 +37,7 @@ metadata.
 
 ## Verification
 
-The governed suite discovered and passed 153 of 153 tests:
+That governed release suite discovered and passed 153 of 153 tests:
 
 - 95 plugin tests
 - 14 MONDAY core tests

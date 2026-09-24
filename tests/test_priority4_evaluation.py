@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 import os
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -403,6 +405,22 @@ class Priority4EvaluationTests(unittest.TestCase):
         import hashlib
         expected_digest = hashlib.sha256(json.dumps(core, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
         self.assertEqual(supplied, expected_digest)
+
+    def test_installed_projection_uses_matching_governed_report_commit_without_git_metadata(self) -> None:
+        spec = importlib.util.spec_from_file_location("monday_evaluation_under_test", SCRIPT)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        report = {
+            "plugin": {
+                "version": module.plugin_version(),
+                "commit": "24a62eeb4edd0302ac2868ada736aa4bea0189c5",
+            }
+        }
+        with patch.object(module, "git_value", return_value=None):
+            self.assertEqual(module.release_plugin_commit(report), report["plugin"]["commit"])
+            self.assertEqual(module.release_plugin_commit({"plugin": {"version": "0.1.9", "commit": "a" * 40}}), "unknown")
 
     def test_projection_selects_latest_evidence_by_timestamp_not_path_name(self) -> None:
         old_path = self.runtime / "runs/z-old/evaluation-report.json"

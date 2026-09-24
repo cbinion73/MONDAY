@@ -7,12 +7,12 @@ read-only application that implements the plugin's projection contracts.
 
 ## Release identity
 
-- Plugin version: `0.1.0+codex.20260924174602`
+- Plugin version: `0.1.0+codex.20260924180615`
 - Source identity: the commit referenced by the immutable release tag below
-- Immutable source tag: `v0.1.0-codex.20260924174602`
+- Immutable source tag: `v0.1.0-codex.20260924180615`
 - Published Git branch: `monday-plugin` in `cbinion73/MONDAY`
-- Compatible Command Center: `0.4.2 (17)`
-- Command Center source commit: `20e9aea500ca5b944439f4674ab3b3fe2412fbfe`
+- Compatible Command Center: `0.4.3 (18)`
+- Command Center source commit: `d5461b075dcbfd3fa862c54778e0752450724326`
 
 The plugin branch is intentionally separate from the `MONDAY` repository's
 Apple-application `main` history. Publishing the plugin did not rewrite or
@@ -143,19 +143,19 @@ claim.
 
 ## Verification evidence
 
-The final release run passed 153 tests:
+The final release run passed 156 tests:
 
-- 95 plugin tests
+- 96 plugin tests
 - 14 MONDAY core tests
 - 3 meeting-continuity tests
 - 5 project-intelligence tests
-- 36 Command Center tests
+- 38 Command Center tests
 
 All 16 blocking adversarial categories passed. The current evaluation report
 is stored outside the repository at
-`~/.codex/monday-evaluation/runs/priority4-project-identity-portability-20260924/evaluation-report.json`.
+`~/.codex/monday-evaluation/runs/priority4-rollover-hardening-final-20260924/evaluation-report.json`.
 The digest-bound engineering evidence receipt is stored at
-`~/.codex/monday-evaluation/release-evidence/release-20260924173012-app-0.4.2-17.json`.
+`~/.codex/monday-evaluation/release-evidence/release-20260924180615-app-0.4.3-18.json`.
 These local receipts are intentionally not committed because they contain
 machine-specific operational evidence.
 
@@ -170,12 +170,12 @@ The release was also checked for:
 
 ## Current operational limits
 
-- The native app is locally signed. External distribution still requires a
-  Developer ID Application signature, notarization, stapling, and Gatekeeper
-  acceptance of the distributed artifact.
-- Command Center discovers plugin cache paths at launch. After replacing an
-  installed plugin while the app is already open, restart the app so it pairs
-  with the new immutable cache path.
+- The installed native app is Developer ID signed. External distribution still
+  requires notarization, stapling, and Gatekeeper acceptance of the final
+  distributed artifact.
+- Command Center discovers and advances to the newest valid managed-cache
+  plugin at launch. Explicit plugin selections outside the managed cache remain
+  under user control.
 - The first unattended next-day run and the five-day pilot remain evidence
   gates, not implementation tasks that can be declared complete in advance.
 - Enterprise readiness remains blocked pending representative multi-user
