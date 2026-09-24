@@ -4,6 +4,11 @@ This directory is the authoritative source for Chris Binion's primary MONDAY
 plugin. The installed Codex cache is a generated copy and must never be edited
 as the sole source of a fix.
 
+The native presentation companion is maintained separately in
+[monday-command-center](https://github.com/cbinion73/monday-command-center).
+The plugin owns MONDAY's operating intelligence and contracts; Command Center
+implements their governed macOS presentation and readback runtime.
+
 ## Release sequence
 
 1. Update and test this source directory.
